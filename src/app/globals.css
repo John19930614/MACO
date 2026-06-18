@@ -1,0 +1,84 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+/*
+  SafetyIQ design tokens — Reliance Predictive Safety Technologies
+  EHS platform visual language (matches platform/index.html CSS variables)
+*/
+@theme {
+  /* Primary blue */
+  --color-primary: #2563eb;
+  --color-primary-deep: #1d4ed8;
+  --color-primary-soft: #dbeafe;
+
+  /* Hazard / critical risk */
+  --color-hazard: #dc2626;
+  --color-hazard-deep: #b91c1c;
+  --color-hazard-soft: #fee2e2;
+
+  /* Warning / due soon */
+  --color-warning: #f59e0b;
+  --color-warning-deep: #d97706;
+  --color-warning-soft: #fef3c7;
+
+  /* Safe / compliant */
+  --color-safe: #10b981;
+  --color-safe-deep: #059669;
+  --color-safe-soft: #d1fae5;
+
+  /* AI / P-Engine purple */
+  --color-ai: #7c3aed;
+  --color-ai-soft: #ede9fe;
+
+  /* Orange accent (waste, high-but-not-critical) */
+  --color-accent: #f97316;
+  --color-accent-soft: #fff7ed;
+
+  /* Severity */
+  --color-sev-low: #10b981;
+  --color-sev-medium: #f59e0b;
+  --color-sev-high: #f97316;
+  --color-sev-critical: #dc2626;
+}
+
+:root {
+  color-scheme: light;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+/* Thin scrollbar utility used throughout the app shell */
+.iq-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+/* Critical hazard pulse (formaldehyde carcinogen alerts, etc.) */
+@keyframes iq-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.55); }
+  70%  { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
+
+.iq-pulse {
+  animation: iq-pulse 1.8s infinite;
+}
+
+@media print {
+  .iq-scroll { overflow: visible !important; height: auto !important; }
+  .rounded-xl, .rounded-lg { break-inside: avoid; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

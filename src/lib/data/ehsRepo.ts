@@ -1,0 +1,686 @@
+import "server-only";
+import { cache } from "react";
+import { getStore } from "./store";
+import { MOCK_TENANT_ID, MOCK_SITE_ID } from "./mock";
+import { MOCK_MODE } from "@/lib/env";
+import { createServerSupabase, DEMO_TENANT_ID } from "@/lib/supabase/server";
+import type {
+  Chemical, LegalRequirement, Audit, AuditFinding, CapaAction,
+  TrainingCourse, TrainingRecord, Document, WasteStream, Equipment,
+  RiskAssessment, Incident, ComplianceScore, AiFinding,
+  PredictabilityRun, AuditEntry, RelianceInsight, Profile,
+  WorkspaceTask, BiosafetyLab, BiohazardAgent, CapaSourceType,
+  DocumentAcknowledgment,
+} from "@/lib/types";
+import type { Severity, CapaStatus, AuditStatus, RiskLevel, TrainingDelivery } from "@/lib/constants";
+
+function sb() { return createServerSupabase(); }
+
+// ── CAPA ─────────────────────────────────────────────────────────────────────
+
+export const getCapaActions = cache(async (tenantId = MOCK_TENANT_ID): Promise<CapaAction[]> => {
+  if (MOCK_MODE) return getStore().capaActions.filter((c) => c.tenant_id === tenantId);
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("capa_records")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? MOCK_SITE_ID,
+    title: r.title,
+    description: r.description,
+    kind: r.kind as "corrective" | "preventive",
+    source_type: (r.source_type ?? "manual") as CapaSourceType,
+    source_id: r.source_id ?? null,
+    root_cause: r.root_cause ?? null,
+    severity: (r.severity ?? "medium") as Severity,
+    owner_id: r.owner_id ?? null,
+    due_date: r.due_date ?? null,
+    status: (r.status ?? "open") as CapaStatus,
+    verification_method: r.verification_method ?? null,
+    closed_at: r.closed_at ?? null,
+    closure_note: r.closure_note ?? null,
+    closed_with_evidence: r.closed_with_evidence ?? false,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+// ── Incidents ─────────────────────────────────────────────────────────────────
+
+export const getIncidents = cache(async (tenantId = MOCK_TENANT_ID): Promise<Incident[]> => {
+  if (MOCK_MODE) return getStore().incidents.filter((i) => i.tenant_id === tenantId);
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("incidents")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? MOCK_SITE_ID,
+    title: r.title,
+    description: r.description,
+    incident_type: r.incident_type as Incident["incident_type"],
+    severity: r.severity as Severity,
+    status: r.status as Incident["status"],
+    occurred_at: r.occurred_at,
+    location: r.location,
+    injured_party: r.injured_party ?? null,
+    injuries_description: r.injuries_description ?? null,
+    immediate_actions: r.immediate_actions ?? null,
+    root_cause: r.root_cause ?? null,
+    reported_by: r.reported_by ?? "",
+    owner_id: r.owner_id ?? null,
+    lost_time_days: r.lost_time_days ?? null,
+    medical_treatment_required: r.medical_treatment_required ?? false,
+    regulatory_reportable: r.regulatory_reportable ?? false,
+    regulatory_report_date: r.regulatory_report_date ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+// ── Chemicals ────────────────────────────────────────────────────────────────
+
+export const getChemicals = cache(async (tenantId = MOCK_TENANT_ID): Promise<Chemical[]> => {
+  if (MOCK_MODE) return getStore().chemicals.filter((c) => c.tenant_id === tenantId);
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("chemical_inventory")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .is("archived_at", null)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? MOCK_SITE_ID,
+    name: r.name,
+    cas_number: r.cas_number ?? null,
+    un_number: r.un_number ?? null,
+    chemical_formula: r.chemical_formula ?? null,
+    ghs_classes: r.ghs_classes ?? [],
+    quantity: Number(r.quantity) || 0,
+    unit: r.unit ?? "L",
+    storage_location: r.storage_location ?? "",
+    sds_url: r.sds_url ?? null,
+    sds_expiry: r.sds_expiry ?? null,
+    hazard_statements: r.hazard_statements ?? [],
+    precautionary_statements: r.precautionary_statements ?? [],
+    is_scheduled: r.is_scheduled ?? false,
+    schedule_ref: r.schedule_ref ?? null,
+    supplier: r.supplier ?? null,
+    date_received: r.date_received ?? null,
+    status: (r.status ?? "active") as Chemical["status"],
+    owner_id: r.owner_id ?? null,
+    created_by: r.created_by ?? "",
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+// ── Audits ────────────────────────────────────────────────────────────────────
+
+export const getAudits = cache(async (tenantId = MOCK_TENANT_ID): Promise<Audit[]> => {
+  if (MOCK_MODE) return getStore().audits.filter((a) => a.tenant_id === tenantId);
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("audits")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? MOCK_SITE_ID,
+    title: r.title,
+    type: r.type as Audit["type"],
+    scheduled_date: r.scheduled_date,
+    completed_date: r.completed_date ?? null,
+    status: (r.status ?? "scheduled") as AuditStatus,
+    lead_auditor_id: r.lead_auditor_id ?? null,
+    scope: r.scope ?? null,
+    notes: r.notes ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+// ── Audit Findings ─────────────────────────────────────────────────────────────
+
+export const getAuditFindings = cache(async (tenantId = MOCK_TENANT_ID): Promise<AuditFinding[]> => {
+  if (MOCK_MODE) return getStore().auditFindings.filter((f) => f.tenant_id === tenantId);
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("audit_findings")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    audit_id: r.audit_id,
+    title: r.title,
+    description: r.description,
+    category: r.category,
+    severity: r.severity as Severity,
+    status: r.status as AuditFinding["status"],
+    owner_id: r.owner_id ?? null,
+    due_date: r.due_date ?? null,
+    closed_at: r.closed_at ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+// ── Risk Assessments ──────────────────────────────────────────────────────────
+
+export const getRiskAssessments = cache(async (tenantId = MOCK_TENANT_ID): Promise<RiskAssessment[]> => {
+  if (MOCK_MODE) return getStore().riskAssessments.filter((r) => r.tenant_id === tenantId);
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("risk_assessments")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? MOCK_SITE_ID,
+    title: r.title,
+    description: r.description,
+    category: r.category,
+    activity: r.activity,
+    hazards: r.hazards ?? [],
+    existing_controls: r.existing_controls ?? [],
+    likelihood_score: r.likelihood_score,
+    consequence_score: r.consequence_score,
+    risk_score: r.risk_score,
+    risk_level: r.risk_level as RiskLevel,
+    additional_controls: r.additional_controls ?? [],
+    residual_likelihood: r.residual_likelihood ?? null,
+    residual_consequence: r.residual_consequence ?? null,
+    residual_risk_score: r.residual_risk_score ?? null,
+    residual_risk_level: (r.residual_risk_level ?? null) as RiskLevel | null,
+    owner_id: r.owner_id ?? null,
+    review_date: r.review_date,
+    status: r.status as RiskAssessment["status"],
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+// ── Waste Streams ─────────────────────────────────────────────────────────────
+
+export const getWasteStreams = cache(async (tenantId = MOCK_TENANT_ID): Promise<WasteStream[]> => {
+  if (MOCK_MODE) return getStore().wasteStreams.filter((w) => w.tenant_id === tenantId);
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("waste_streams")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? MOCK_SITE_ID,
+    waste_name: r.waste_name,
+    waste_code: r.waste_code ?? null,
+    classification: r.classification as WasteStream["classification"],
+    quantity: Number(r.quantity) || 0,
+    unit: r.unit,
+    disposal_method: r.disposal_method,
+    disposal_contractor: r.disposal_contractor ?? null,
+    manifest_number: r.manifest_number ?? null,
+    disposal_date: r.disposal_date ?? null,
+    regulatory_limit: r.regulatory_limit ?? null,
+    regulatory_unit: r.regulatory_unit ?? null,
+    status: r.status as WasteStream["status"],
+    created_by: r.created_by ?? "",
+    created_at: r.created_at,
+  }));
+});
+
+// ── Equipment ─────────────────────────────────────────────────────────────────
+
+export const getEquipment = cache(async (tenantId = MOCK_TENANT_ID): Promise<Equipment[]> => {
+  if (MOCK_MODE) return getStore().equipment.filter((e) => e.tenant_id === tenantId);
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("equipment")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? MOCK_SITE_ID,
+    name: r.name,
+    type: r.type,
+    serial_number: r.serial_number ?? null,
+    location: r.location,
+    last_calibration_date: r.last_calibration_date ?? null,
+    next_calibration_date: r.next_calibration_date ?? null,
+    last_inspection_date: r.last_inspection_date ?? null,
+    next_inspection_date: r.next_inspection_date ?? null,
+    calibration_interval_days: r.calibration_interval_days ?? null,
+    status: r.status as Equipment["status"],
+    regulatory_ref: r.regulatory_ref ?? null,
+    notes: r.notes ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+// ── Training Courses ──────────────────────────────────────────────────────────
+
+export const getTrainingCourses = cache(async (tenantId = MOCK_TENANT_ID): Promise<TrainingCourse[]> => {
+  if (MOCK_MODE) return getStore().trainingCourses.filter((c) => c.tenant_id === tenantId);
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("training_courses")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    title: r.title,
+    description: r.description ?? "",
+    course_type: r.course_type,
+    duration_minutes: r.duration_minutes,
+    pass_score: r.pass_score ?? null,
+    validity_period_days: r.validity_period_days ?? null,
+    required_roles: r.required_roles ?? [],
+    regulatory_ref: r.regulatory_ref ?? null,
+    active: r.active ?? true,
+    created_at: r.created_at,
+  }));
+});
+
+// ── Training Records ──────────────────────────────────────────────────────────
+
+export const getTrainingRecords = cache(async (tenantId = MOCK_TENANT_ID): Promise<TrainingRecord[]> => {
+  if (MOCK_MODE) return getStore().trainingRecords.filter((r) => r.tenant_id === tenantId);
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("training_records")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? MOCK_SITE_ID,
+    profile_id: r.profile_id,
+    course_id: r.course_id,
+    completed_date: r.completed_date,
+    expiry_date: r.expiry_date ?? null,
+    score: r.score ?? null,
+    passed: r.passed ?? true,
+    delivery_method: r.delivery_method as TrainingDelivery,
+    instructor_id: r.instructor_id ?? null,
+    notes: r.notes ?? null,
+    created_at: r.created_at,
+  }));
+});
+
+// ── Mock-only getters ─────────────────────────────────────────────────────────
+
+export const getLegalRequirements = cache(async (tenantId = MOCK_TENANT_ID): Promise<LegalRequirement[]> => {
+  if (MOCK_MODE) return getStore().legalRequirements.filter((l) => l.tenant_id === tenantId);
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("legal_requirements")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? null,
+    regulation_ref: r.regulation_ref,
+    title: r.title,
+    description: r.description ?? "",
+    jurisdiction: r.jurisdiction,
+    category: r.category,
+    applicable_sectors: r.applicable_sectors ?? [],
+    review_frequency_days: r.review_frequency_days ?? 365,
+    next_review_date: r.next_review_date,
+    status: r.status as LegalRequirement["status"],
+    compliance_notes: r.compliance_notes ?? null,
+    evidence_url: r.evidence_url ?? null,
+    owner_id: r.owner_id ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+export const getDocuments = cache(async (tenantId = MOCK_TENANT_ID): Promise<Document[]> => {
+  if (MOCK_MODE) return getStore().documents.filter((d) => d.tenant_id === tenantId);
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("documents")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? null,
+    title: r.title,
+    category: r.category,
+    version: r.version,
+    storage_path: r.storage_path ?? "",
+    effective_date: r.effective_date,
+    review_date: r.review_date,
+    status: r.status as Document["status"],
+    owner_id: r.owner_id ?? null,
+    acknowledgment_required: r.acknowledgment_required ?? false,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+export const getComplianceScores = cache(async (tenantId = MOCK_TENANT_ID): Promise<ComplianceScore[]> => {
+  return getStore().complianceScores.filter((s) => s.tenant_id === tenantId);
+});
+
+export const getAiFindings = cache(async (tenantId = MOCK_TENANT_ID): Promise<AiFinding[]> => {
+  return getStore().aiFindings.filter((f) => f.tenant_id === tenantId);
+});
+
+export const getPredictabilityRuns = cache(async (tenantId = MOCK_TENANT_ID): Promise<PredictabilityRun[]> => {
+  return getStore().predictabilityRuns.filter((r) => r.tenant_id === tenantId);
+});
+
+export const getAuditLog = cache(async (tenantId = MOCK_TENANT_ID): Promise<AuditEntry[]> => {
+  return getStore().auditLog.filter((e) => e.tenant_id === tenantId);
+});
+
+export const getProfiles = cache(async (tenantId = MOCK_TENANT_ID): Promise<Profile[]> => {
+  if (MOCK_MODE) {
+    return getStore().profiles.filter(
+      (p) => p.tenant_id === tenantId || p.tenant_id === null,
+    );
+  }
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("profiles")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID);
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    display_name: r.display_name,
+    role: r.role as Profile["role"],
+    default_site_id: r.default_site_id ?? null,
+    job_title: r.job_title ?? null,
+    department: r.department ?? null,
+    active: r.active ?? true,
+  }));
+});
+
+export const getRelianceInsights = cache(async (): Promise<RelianceInsight[]> => {
+  return getStore().relianceInsights;
+});
+
+export const getWorkspaceTasks = cache(async (profileId: string): Promise<WorkspaceTask[]> => {
+  if (MOCK_MODE) return [];
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("workspace_tasks")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("profile_id", profileId)
+    .order("due_date", { ascending: true });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    profile_id: r.profile_id,
+    title: r.title,
+    type: r.type,
+    due_date: r.due_date ?? null,
+    priority: r.priority as WorkspaceTask["priority"],
+    status: r.status as WorkspaceTask["status"],
+    assigned_by: r.assigned_by ?? null,
+    completed_by: r.completed_by ?? null,
+    completed_at: r.completed_at ?? null,
+    completion_notes: r.completion_notes ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+export const getDocumentAcknowledgments = cache(async (profileId: string): Promise<DocumentAcknowledgment[]> => {
+  if (MOCK_MODE) return [];
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("document_acknowledgments")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("profile_id", profileId);
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id as string,
+    tenant_id: r.tenant_id as string,
+    document_id: r.document_id as string,
+    profile_id: r.profile_id as string,
+    acknowledged_at: r.acknowledged_at as string,
+    created_at: r.created_at as string,
+  }));
+});
+
+export async function currentUser(): Promise<Profile> {
+  const sarah = getStore().profiles.find((p) => p.id === "p-sarah-chen-001");
+  if (!sarah) throw new Error("Mock user not found");
+  return sarah;
+}
+
+// ── Derived helpers ───────────────────────────────────────────────────────────
+
+export async function overallComplianceScore(tenantId = MOCK_TENANT_ID): Promise<number> {
+  const scores = await getComplianceScores(tenantId);
+  if (scores.length === 0) return 0;
+  const avg = scores.reduce((s, c) => s + c.percentage, 0) / scores.length;
+  return Math.round(avg);
+}
+
+export async function latestPredictabilityRun(tenantId = MOCK_TENANT_ID): Promise<PredictabilityRun | null> {
+  const runs = await getPredictabilityRuns(tenantId);
+  if (runs.length === 0) return null;
+  return [...runs].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  )[0];
+}
+
+// ── By-ID lookups ─────────────────────────────────────────────────────────────
+// These reuse the cached list functions, so they don't double-fetch within a render.
+
+export async function getRiskById(id: string): Promise<RiskAssessment | null> {
+  const all = await getRiskAssessments();
+  return all.find((r) => r.id === id) ?? null;
+}
+
+export async function getWasteStreamById(id: string): Promise<WasteStream | null> {
+  const all = await getWasteStreams();
+  return all.find((w) => w.id === id) ?? null;
+}
+
+export async function getEquipmentById(id: string): Promise<Equipment | null> {
+  const all = await getEquipment();
+  return all.find((e) => e.id === id) ?? null;
+}
+
+export async function getIncidentById(id: string): Promise<Incident | null> {
+  const all = await getIncidents();
+  return all.find((i) => i.id === id) ?? null;
+}
+
+export async function getCapaById(id: string): Promise<CapaAction | null> {
+  const all = await getCapaActions();
+  return all.find((c) => c.id === id) ?? null;
+}
+
+export async function getAuditById(id: string): Promise<Audit | null> {
+  const all = await getAudits();
+  return all.find((a) => a.id === id) ?? null;
+}
+
+export async function getChemicalById(id: string): Promise<Chemical | null> {
+  const all = await getChemicals();
+  return all.find((c) => c.id === id) ?? null;
+}
+
+export async function getLegalById(id: string): Promise<LegalRequirement | null> {
+  const all = await getLegalRequirements();
+  return all.find((l) => l.id === id) ?? null;
+}
+
+export async function getTrainingRecordById(id: string): Promise<TrainingRecord | null> {
+  const all = await getTrainingRecords();
+  return all.find((r) => r.id === id) ?? null;
+}
+
+export async function getDocumentById(id: string): Promise<Document | null> {
+  const all = await getDocuments();
+  return all.find((d) => d.id === id) ?? null;
+}
+
+// ── Biosafety Labs ────────────────────────────────────────────────────────────
+
+export const getBiosafetyLabs = cache(async (): Promise<BiosafetyLab[]> => {
+  if (MOCK_MODE) return [];
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("biosafety_labs")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .order("lab_code", { ascending: true });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    lab_code: r.lab_code,
+    name: r.name,
+    bsl_level: r.bsl_level,
+    personnel_count: r.personnel_count,
+    last_inspection: r.last_inspection ?? null,
+    next_inspection: r.next_inspection ?? null,
+    status: r.status as BiosafetyLab["status"],
+    open_findings: r.open_findings,
+    notes: r.notes ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+// ── Biohazard Agents ──────────────────────────────────────────────────────────
+
+export const getBiohazardAgents = cache(async (): Promise<BiohazardAgent[]> => {
+  if (MOCK_MODE) return [];
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("biohazard_agents")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .order("agent_code", { ascending: true });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    agent_code: r.agent_code,
+    agent_name: r.agent_name,
+    risk_class: r.risk_class,
+    storage_location: r.storage_location,
+    quantity: r.quantity,
+    status: r.status as BiohazardAgent["status"],
+    notes: r.notes ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+// ── Biosafety Incidents ───────────────────────────────────────────────────────
+
+export const getBiosafetyIncidents = cache(async (): Promise<Incident[]> => {
+  if (MOCK_MODE) return [];
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("incidents")
+    .select("*")
+    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("category", "biosafety")
+    .order("occurred_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? MOCK_SITE_ID,
+    title: r.title,
+    description: r.description,
+    incident_type: r.incident_type as Incident["incident_type"],
+    severity: r.severity as Severity,
+    status: r.status as Incident["status"],
+    occurred_at: r.occurred_at,
+    location: r.location,
+    injured_party: r.injured_party ?? null,
+    injuries_description: r.injuries_description ?? null,
+    immediate_actions: r.immediate_actions ?? null,
+    root_cause: r.root_cause ?? null,
+    reported_by: r.reported_by ?? "",
+    owner_id: r.owner_id ?? null,
+    lost_time_days: r.lost_time_days ?? null,
+    medical_treatment_required: r.medical_treatment_required ?? false,
+    regulatory_reportable: r.regulatory_reportable ?? false,
+    regulatory_report_date: r.regulatory_report_date ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+// ── Re-exports ────────────────────────────────────────────────────────────────
+
+export type {
+  Chemical, LegalRequirement, Audit, AuditFinding, CapaAction,
+  TrainingCourse, TrainingRecord, Document, WasteStream, Equipment,
+  RiskAssessment, Incident, ComplianceScore, AiFinding,
+  PredictabilityRun, AuditEntry, RelianceInsight, Profile,
+};

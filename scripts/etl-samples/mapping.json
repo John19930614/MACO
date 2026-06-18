@@ -1,0 +1,19 @@
+{
+  "fields": {
+    "title": "Title",
+    "description": "Description",
+    "task": "Activity",
+    "severity": "Sev",
+    "likelihood": "Likelihood",
+    "energySource": "Energy",
+    "exposureType": "Exposure",
+    "trigger": "Trigger",
+    "controlGap": "Gap",
+    "site_id": "Site",
+    "location_id": "Location"
+  },
+  "valueMaps": {
+    "severity": { "1": "low", "2": "medium", "3": "high", "4": "critical" }
+  },
+  "legacyIdColumn": "ExternalRef"
+}

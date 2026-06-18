@@ -1,0 +1,5 @@
+ExternalRef,Title,Description,Activity,Sev,Likelihood,Energy,Exposure,Trigger,Gap,Site,Location
+INC-1001,Trip hazard from loose cabling near gate,Loose cabling run across the pedestrian walkway,Gate operations,high,3,motion,fall,housekeeping,missing,site_harbor,loc_gate
+INC-1002,Unsecured load on forklift,Container load not strapped before travel,Container unloading,2,4,motion,struck_by,production pressure,weak,site_harbor,loc_dock_a
+INC-1003,,Row intentionally missing a title and task to show rejection,,low,1,motion,fall,x,missing,site_harbor,loc_gate
+INC-1004,Crane radio check skipped,Lift commenced without confirming radio comms,Crane lift,4,3,gravity,line_of_fire,comms gap,unverified,site_harbor,loc_crane_3
