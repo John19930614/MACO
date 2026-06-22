@@ -1,179 +1,184 @@
-import Link from "next/link";
-import { getTrainingCourses, getTrainingRecords, getProfiles } from "@/lib/data/ehsRepo";
-import { PageHeader, Stat, Card, CardHeader, Pill } from "@/components/ui/primitives";
+﻿import { getTrainingCourses, getTrainingRecords, getProfiles, getChemicals } from "@/lib/data/ehsRepo";
+import { getServerTenantId } from "@/lib/auth/session";
+import { MOCK_TENANT_ID } from "@/lib/data/mock";
+import { PageHeader, Card, CardHeader } from "@/components/ui/primitives";
 import { AddTrainingButton } from "./AddTrainingButton";
-
-function fmt(s: string | null) {
-  if (!s) return "—";
-  return new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-function isExpired(s: string | null): boolean {
-  if (!s) return false;
-  return new Date(s) < new Date();
-}
-
-function isExpiringSoon(s: string | null): boolean {
-  if (!s) return false;
-  const d = new Date(s);
-  const now = new Date();
-  return d > now && d.getTime() - now.getTime() < 30 * 24 * 60 * 60 * 1000;
-}
+import { TrainingExportButton } from "./TrainingExportButton";
+import { TrainingDashboard } from "./TrainingDashboard";
 
 export default async function TrainingPage() {
-  const courses = await getTrainingCourses();
-  const records = await getTrainingRecords();
-  const profiles = await getProfiles();
+  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const [courses, records, profiles, chemicals] = await Promise.all([
+    getTrainingCourses(tenantId),
+    getTrainingRecords(tenantId),
+    getProfiles(tenantId),
+    getChemicals(tenantId),
+  ]);
 
-  const profileMap = Object.fromEntries(profiles.map((p) => [p.id, p.display_name]));
-  const courseMap  = Object.fromEntries(courses.map((c) => [c.id, c]));
+  // â”€â”€ Analytics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  const passed   = records.filter((r) => r.passed).length;
-  const expired  = records.filter((r) => isExpired(r.expiry_date)).length;
-  const expiring = records.filter((r) => isExpiringSoon(r.expiry_date)).length;
-  const overdue  = expired + records.filter((r) => !r.passed).length;
+  const activeCourses = courses.filter((c) => c.active);
+  const nowMs = Date.now();
+
+  // Pass rate per active course, sorted lowest first
+  const courseStats = activeCourses
+    .map((c) => {
+      const recs = records.filter((r) => r.course_id === c.id);
+      const passed = recs.filter((r) => r.passed).length;
+      return {
+        id: c.id,
+        title: c.title,
+        passed,
+        total: recs.length,
+        pct: recs.length > 0 ? Math.round((passed / recs.length) * 100) : null,
+      };
+    })
+    .filter((c) => c.total > 0)
+    .sort((a, b) => (a.pct ?? 100) - (b.pct ?? 100));
+
+  // Certificate expiry urgency buckets
+  const certBuckets = [
+    {
+      label: "Expired",
+      count: records.filter((r) => r.passed && r.expiry_date && new Date(r.expiry_date).getTime() < nowMs).length,
+      cls: "bg-red-500", txt: "text-red-700",
+    },
+    {
+      label: "Expiring < 30d",
+      count: records.filter((r) => {
+        if (!r.passed || !r.expiry_date) return false;
+        const ms = new Date(r.expiry_date).getTime() - nowMs;
+        return ms >= 0 && ms < 30 * 86400_000;
+      }).length,
+      cls: "bg-amber-400", txt: "text-amber-700",
+    },
+    {
+      label: "Expiring 30â€“90d",
+      count: records.filter((r) => {
+        if (!r.passed || !r.expiry_date) return false;
+        const ms = new Date(r.expiry_date).getTime() - nowMs;
+        return ms >= 30 * 86400_000 && ms < 90 * 86400_000;
+      }).length,
+      cls: "bg-yellow-300", txt: "text-yellow-700",
+    },
+    {
+      label: "Current (> 90d)",
+      count: records.filter((r) => r.passed && r.expiry_date && new Date(r.expiry_date).getTime() - nowMs >= 90 * 86400_000).length,
+      cls: "bg-emerald-400", txt: "text-emerald-700",
+    },
+    {
+      label: "No Expiry",
+      count: records.filter((r) => r.passed && !r.expiry_date).length,
+      cls: "bg-slate-300", txt: "text-slate-500",
+    },
+  ].filter((b) => b.count > 0);
+
+  // 12-month completion trend
+  const months: { label: string; count: number }[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    const yr = d.getFullYear();
+    const mo = d.getMonth();
+    months.push({
+      label: d.toLocaleDateString("en-US", { month: "short" }),
+      count: records.filter((r) => {
+        const rd = new Date(r.completed_date);
+        return rd.getFullYear() === yr && rd.getMonth() === mo;
+      }).length,
+    });
+  }
+  const maxMonth = Math.max(...months.map((m) => m.count), 1);
 
   return (
     <div className="flex h-full flex-col">
       <PageHeader
         title="Training & Competency"
-        subtitle="EHS training courses, completion records, and certificate expiry tracking"
-        actions={<AddTrainingButton courses={courses} profiles={profiles} />}
+        subtitle="Role-based training matrix, chemical-triggered assignments, expiring certifications, and completion reporting"
+        actions={
+          <div className="flex gap-2">
+            <TrainingExportButton courses={courses} records={records} profiles={profiles} />
+            <AddTrainingButton courses={courses} profiles={profiles.filter((p) => p.tenant_id !== null)} />
+          </div>
+        }
       />
 
       <div className="iq-scroll flex-1 overflow-y-auto p-6">
-        {/* KPIs */}
-        <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Stat label="Active Courses"     value={courses.filter((c) => c.active).length} hint="In curriculum" />
-          <Stat label="Completions"        value={passed}     hint="Passed records"       accent="#10b981" />
-          <Stat label="Expiring (30 days)" value={expiring}   hint="Certificates due"     accent={expiring > 0 ? "#f59e0b" : "#10b981"} />
-          <Stat label="Expired / Failed"   value={overdue}    hint="Action required"      accent={overdue > 0 ? "#dc2626" : "#10b981"} />
-        </div>
 
-        {/* Alert for expired */}
-        {expired > 0 && (
-          <div className="mb-5 rounded-xl border-l-4 border-red-500 bg-red-50 p-4">
-            <div className="text-sm font-semibold text-red-900">
-              {expired} Training Certificate{expired > 1 ? "s" : ""} Expired — Re-enrolment Required
+        {/* Analytics strip */}
+        <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          {/* Pass rate by course */}
+          <Card>
+            <CardHeader title="Pass Rate by Course" subtitle="Lowest first Â· active courses" />
+            <div className="space-y-2 px-4 pb-4">
+              {courseStats.slice(0, 5).map((c) => (
+                <div key={c.id} className="flex items-center gap-2">
+                  <div className="w-28 shrink-0 truncate text-[10px] text-slate-500">{c.title}</div>
+                  <div className="flex-1 h-3.5 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className={`h-full rounded-full transition-all ${(c.pct ?? 0) >= 80 ? "bg-emerald-400" : (c.pct ?? 0) >= 60 ? "bg-amber-400" : "bg-red-500"}`}
+                      style={{ width: `${Math.max(c.pct ?? 0, 5)}%` }}
+                    />
+                  </div>
+                  <div className={`w-9 text-right text-xs font-bold ${(c.pct ?? 0) >= 80 ? "text-emerald-700" : (c.pct ?? 0) >= 60 ? "text-amber-700" : "text-red-700"}`}>
+                    {c.pct !== null ? `${c.pct}%` : "â€”"}
+                  </div>
+                </div>
+              ))}
+              {courseStats.length === 0 && <div className="text-xs text-slate-400">No records yet.</div>}
             </div>
-            <div className="mt-0.5 text-xs text-red-700">
-              Expired training may constitute a regulatory compliance gap under OSHA training requirements.
+          </Card>
+
+          {/* Cert expiry urgency */}
+          <Card>
+            <CardHeader title="Certificate Urgency" subtitle={`${records.filter((r) => r.passed).length} valid certs tracked`} />
+            <div className="space-y-2 px-4 pb-4">
+              {certBuckets.map((b) => (
+                <div key={b.label} className="flex items-center gap-2">
+                  <div className={`h-2.5 w-2.5 shrink-0 rounded-full ${b.cls}`} />
+                  <div className="flex-1 text-xs text-slate-600">{b.label}</div>
+                  <div className={`text-xs font-bold ${b.txt}`}>{b.count}</div>
+                </div>
+              ))}
+              {certBuckets.length === 0 && <div className="text-xs text-slate-400">No certificates yet.</div>}
             </div>
-          </div>
-        )}
+          </Card>
 
-        {/* Courses */}
-        <Card className="mb-5">
-          <CardHeader title="Course Catalogue" subtitle={`${courses.length} courses`} />
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-4 py-2.5 text-left">Course</th>
-                  <th className="px-4 py-2.5 text-left">Type</th>
-                  <th className="px-4 py-2.5 text-left">Duration</th>
-                  <th className="px-4 py-2.5 text-left">Validity</th>
-                  <th className="px-4 py-2.5 text-left">Regulatory Ref.</th>
-                  <th className="px-4 py-2.5 text-left">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {courses.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-800">{c.title}</div>
-                      <div className="mt-0.5 text-xs text-slate-400 line-clamp-1">{c.description}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Pill className="bg-blue-50 text-blue-700 text-xs capitalize">
-                        {c.course_type.replace(/_/g, " ")}
-                      </Pill>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-600">{c.duration_minutes} min</td>
-                    <td className="px-4 py-3 text-xs text-slate-600">
-                      {c.validity_period_days ? `${Math.round(c.validity_period_days / 365)} year` : "No expiry"}
-                    </td>
-                    <td className="px-4 py-3 text-xs font-mono text-slate-500">{c.regulatory_ref ?? "—"}</td>
-                    <td className="px-4 py-3">
-                      <Pill className={c.active ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}>
-                        {c.active ? "Active" : "Inactive"}
-                      </Pill>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        {/* Training records */}
-        <Card>
-          <CardHeader
-            title="Training Records"
-            subtitle={`${records.length} completions · ${expired} expired · ${expiring} expiring`}
-          />
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-4 py-2.5 text-left">Employee</th>
-                  <th className="px-4 py-2.5 text-left">Course</th>
-                  <th className="px-4 py-2.5 text-left">Completed</th>
-                  <th className="px-4 py-2.5 text-left">Expires</th>
-                  <th className="px-4 py-2.5 text-left">Score</th>
-                  <th className="px-4 py-2.5 text-left">Method</th>
-                  <th className="px-4 py-2.5 text-left">Result</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {records.map((r) => {
-                  const expired_  = isExpired(r.expiry_date);
-                  const expiring_ = isExpiringSoon(r.expiry_date);
-                  const course    = courseMap[r.course_id];
+          {/* 12-month completion trend */}
+          <Card>
+            <CardHeader title="Completions â€” 12 Months" subtitle={`${records.length} total training records`} />
+            <div className="px-4 pb-4">
+              <svg viewBox="0 0 240 56" className="w-full">
+                {months.map((m, i) => {
+                  const barH = Math.max((m.count / maxMonth) * 44, m.count > 0 ? 4 : 0);
                   return (
-                    <tr key={r.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 text-sm font-medium text-slate-800">
-                        {profileMap[r.profile_id] ?? r.profile_id}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-700 max-w-56">
-                        <Link href={`/training/${r.id}`} className="font-medium text-blue-600 hover:underline">
-                          {course?.title ?? r.course_id}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 text-xs tabular-nums text-slate-600">{fmt(r.completed_date)}</td>
-                      <td className="px-4 py-3 text-xs tabular-nums">
-                        <span className={expired_ ? "font-semibold text-red-600" : expiring_ ? "font-semibold text-amber-600" : "text-slate-600"}>
-                          {fmt(r.expiry_date)}
-                        </span>
-                        {expired_ && <div className="text-[10px] text-red-500 font-medium">EXPIRED</div>}
-                        {expiring_ && !expired_ && <div className="text-[10px] text-amber-500 font-medium">Due soon</div>}
-                      </td>
-                      <td className="px-4 py-3 text-xs tabular-nums text-slate-600">
-                        {r.score != null ? `${r.score}%` : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-600 capitalize">
-                        {r.delivery_method.replace(/_/g, " ")}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Pill className={r.passed ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}>
-                          {r.passed ? "Passed" : "Failed"}
-                        </Pill>
-                      </td>
-                    </tr>
+                    <g key={i}>
+                      <rect x={i * 20 + 2} y={44 - barH} width={16} height={barH} rx={2} fill="#3b82f6" opacity={0.7} />
+                      <text x={i * 20 + 10} y={55} textAnchor="middle" fontSize="6" fill="#94a3b8">
+                        {m.label.slice(0, 1)}
+                      </text>
+                    </g>
                   );
                 })}
-                {records.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-400">
-                      No training records.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+              </svg>
+              <div className="mt-0.5 flex justify-between text-[9px] tabular-nums text-slate-400">
+                {months.map((m, i) => <span key={i}>{m.count > 0 ? m.count : ""}</span>)}
+              </div>
+            </div>
+          </Card>
+
+        </div>
+
+        <TrainingDashboard
+          courses={courses}
+          records={records}
+          profiles={profiles}
+          chemicals={chemicals}
+        />
       </div>
     </div>
   );
 }
+

@@ -10,7 +10,8 @@ import type {
   RiskAssessment, Incident, ComplianceScore, AiFinding,
   PredictabilityRun, AuditEntry, RelianceInsight, Profile,
   WorkspaceTask, BiosafetyLab, BiohazardAgent, CapaSourceType,
-  DocumentAcknowledgment,
+  DocumentAcknowledgment, OshaCase,
+  ErgonomicsWorkstation, ErgonomicsJobTask,
 } from "@/lib/types";
 import type { Severity, CapaStatus, AuditStatus, RiskLevel, TrainingDelivery } from "@/lib/constants";
 
@@ -25,7 +26,7 @@ export const getCapaActions = cache(async (tenantId = MOCK_TENANT_ID): Promise<C
   const { data, error } = await client
     .from("capa_records")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
   return data.map((r) => ({
@@ -60,7 +61,7 @@ export const getIncidents = cache(async (tenantId = MOCK_TENANT_ID): Promise<Inc
   const { data, error } = await client
     .from("incidents")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
   return data.map((r) => ({
@@ -98,7 +99,7 @@ export const getChemicals = cache(async (tenantId = MOCK_TENANT_ID): Promise<Che
   const { data, error } = await client
     .from("chemical_inventory")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .is("archived_at", null)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
@@ -139,7 +140,7 @@ export const getAudits = cache(async (tenantId = MOCK_TENANT_ID): Promise<Audit[
   const { data, error } = await client
     .from("audits")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
   return data.map((r) => ({
@@ -168,13 +169,14 @@ export const getAuditFindings = cache(async (tenantId = MOCK_TENANT_ID): Promise
   const { data, error } = await client
     .from("audit_findings")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
   return data.map((r) => ({
     id: r.id,
     tenant_id: r.tenant_id,
     audit_id: r.audit_id,
+    site_id: r.site_id ?? "",
     title: r.title,
     description: r.description,
     category: r.category,
@@ -183,6 +185,8 @@ export const getAuditFindings = cache(async (tenantId = MOCK_TENANT_ID): Promise
     owner_id: r.owner_id ?? null,
     due_date: r.due_date ?? null,
     closed_at: r.closed_at ?? null,
+    capa_required: r.capa_required ?? false,
+    capa_id: r.capa_id ?? null,
     created_at: r.created_at,
     updated_at: r.updated_at,
   }));
@@ -197,7 +201,7 @@ export const getRiskAssessments = cache(async (tenantId = MOCK_TENANT_ID): Promi
   const { data, error } = await client
     .from("risk_assessments")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
   return data.map((r) => ({
@@ -236,7 +240,7 @@ export const getWasteStreams = cache(async (tenantId = MOCK_TENANT_ID): Promise<
   const { data, error } = await client
     .from("waste_streams")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
   return data.map((r) => ({
@@ -269,7 +273,7 @@ export const getEquipment = cache(async (tenantId = MOCK_TENANT_ID): Promise<Equ
   const { data, error } = await client
     .from("equipment")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
   return data.map((r) => ({
@@ -302,7 +306,7 @@ export const getTrainingCourses = cache(async (tenantId = MOCK_TENANT_ID): Promi
   const { data, error } = await client
     .from("training_courses")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
   return data.map((r) => ({
@@ -330,7 +334,7 @@ export const getTrainingRecords = cache(async (tenantId = MOCK_TENANT_ID): Promi
   const { data, error } = await client
     .from("training_records")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
   return data.map((r) => ({
@@ -359,7 +363,7 @@ export const getLegalRequirements = cache(async (tenantId = MOCK_TENANT_ID): Pro
   const { data, error } = await client
     .from("legal_requirements")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
   return data.map((r) => ({
@@ -390,7 +394,7 @@ export const getDocuments = cache(async (tenantId = MOCK_TENANT_ID): Promise<Doc
   const { data, error } = await client
     .from("documents")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
   return data.map((r) => ({
@@ -438,7 +442,7 @@ export const getProfiles = cache(async (tenantId = MOCK_TENANT_ID): Promise<Prof
   const { data, error } = await client
     .from("profiles")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID);
+    .eq("tenant_id", tenantId);
   if (error || !data) return [];
   return data.map((r) => ({
     id: r.id,
@@ -456,14 +460,14 @@ export const getRelianceInsights = cache(async (): Promise<RelianceInsight[]> =>
   return getStore().relianceInsights;
 });
 
-export const getWorkspaceTasks = cache(async (profileId: string): Promise<WorkspaceTask[]> => {
-  if (MOCK_MODE) return [];
+export const getWorkspaceTasks = cache(async (profileId: string, tenantId = MOCK_TENANT_ID): Promise<WorkspaceTask[]> => {
+  if (MOCK_MODE) return getStore().workspaceTasks.filter((t) => t.profile_id === profileId);
   const client = sb();
   if (!client) return [];
   const { data, error } = await client
     .from("workspace_tasks")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .eq("profile_id", profileId)
     .order("due_date", { ascending: true });
   if (error || !data) return [];
@@ -485,14 +489,14 @@ export const getWorkspaceTasks = cache(async (profileId: string): Promise<Worksp
   }));
 });
 
-export const getDocumentAcknowledgments = cache(async (profileId: string): Promise<DocumentAcknowledgment[]> => {
-  if (MOCK_MODE) return [];
+export const getDocumentAcknowledgments = cache(async (profileId: string, tenantId = MOCK_TENANT_ID): Promise<DocumentAcknowledgment[]> => {
+  if (MOCK_MODE) return getStore().documentAcknowledgments.filter((a) => a.profile_id === profileId && a.tenant_id === tenantId);
   const client = sb();
   if (!client) return [];
   const { data, error } = await client
     .from("document_acknowledgments")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .eq("profile_id", profileId);
   if (error || !data) return [];
   return data.map((r) => ({
@@ -583,14 +587,14 @@ export async function getDocumentById(id: string): Promise<Document | null> {
 
 // ── Biosafety Labs ────────────────────────────────────────────────────────────
 
-export const getBiosafetyLabs = cache(async (): Promise<BiosafetyLab[]> => {
-  if (MOCK_MODE) return [];
+export const getBiosafetyLabs = cache(async (tenantId = MOCK_TENANT_ID): Promise<BiosafetyLab[]> => {
+  if (MOCK_MODE) return getStore().biosafetyLabs;
   const client = sb();
   if (!client) return [];
   const { data, error } = await client
     .from("biosafety_labs")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .order("lab_code", { ascending: true });
   if (error || !data) return [];
   return data.map((r) => ({
@@ -612,14 +616,14 @@ export const getBiosafetyLabs = cache(async (): Promise<BiosafetyLab[]> => {
 
 // ── Biohazard Agents ──────────────────────────────────────────────────────────
 
-export const getBiohazardAgents = cache(async (): Promise<BiohazardAgent[]> => {
-  if (MOCK_MODE) return [];
+export const getBiohazardAgents = cache(async (tenantId = MOCK_TENANT_ID): Promise<BiohazardAgent[]> => {
+  if (MOCK_MODE) return getStore().biohazardAgents;
   const client = sb();
   if (!client) return [];
   const { data, error } = await client
     .from("biohazard_agents")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .order("agent_code", { ascending: true });
   if (error || !data) return [];
   return data.map((r) => ({
@@ -639,14 +643,22 @@ export const getBiohazardAgents = cache(async (): Promise<BiohazardAgent[]> => {
 
 // ── Biosafety Incidents ───────────────────────────────────────────────────────
 
-export const getBiosafetyIncidents = cache(async (): Promise<Incident[]> => {
-  if (MOCK_MODE) return [];
+export const getBiosafetyIncidents = cache(async (tenantId = MOCK_TENANT_ID): Promise<Incident[]> => {
+  if (MOCK_MODE) {
+    // Return lab/bio-related incidents (chemical splashes, near-misses) as biosafety events
+    return getStore().incidents.filter((i) =>
+      i.incident_type === "near_miss" ||
+      i.location?.toLowerCase().includes("lab") ||
+      i.title?.toLowerCase().includes("spill") ||
+      i.title?.toLowerCase().includes("exposure")
+    );
+  }
   const client = sb();
   if (!client) return [];
   const { data, error } = await client
     .from("incidents")
     .select("*")
-    .eq("tenant_id", DEMO_TENANT_ID)
+    .eq("tenant_id", tenantId)
     .eq("category", "biosafety")
     .order("occurred_at", { ascending: false });
   if (error || !data) return [];
@@ -673,6 +685,134 @@ export const getBiosafetyIncidents = cache(async (): Promise<Incident[]> => {
     regulatory_report_date: r.regulatory_report_date ?? null,
     created_at: r.created_at,
     updated_at: r.updated_at,
+  }));
+});
+
+// ── Ergonomics ────────────────────────────────────────────────────────────────
+
+export const getErgonomicsWorkstations = cache(async (tenantId = MOCK_TENANT_ID): Promise<ErgonomicsWorkstation[]> => {
+  if (MOCK_MODE) return getStore().ergonomicsWorkstations.filter((w) => w.tenant_id === tenantId);
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("ergonomics_workstations")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("workstation_code", { ascending: true });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    workstation_code: r.workstation_code,
+    name: r.name,
+    department: r.department,
+    worker_count: r.worker_count,
+    last_assessment: r.last_assessment ?? null,
+    next_assessment: r.next_assessment ?? null,
+    risk_level: r.risk_level as ErgonomicsWorkstation["risk_level"],
+    status: r.status as ErgonomicsWorkstation["status"],
+    open_findings: r.open_findings,
+    primary_hazards: r.primary_hazards ?? [],
+    notes: r.notes ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+export const getErgonomicsJobTasks = cache(async (tenantId = MOCK_TENANT_ID): Promise<ErgonomicsJobTask[]> => {
+  if (MOCK_MODE) return getStore().ergonomicsJobTasks.filter((t) => t.tenant_id === tenantId);
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("ergonomics_job_tasks")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("task_code", { ascending: true });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    task_code: r.task_code,
+    task_title: r.task_title,
+    department: r.department,
+    hazard_type: r.hazard_type as ErgonomicsJobTask["hazard_type"],
+    risk_score: r.risk_score,
+    controls: r.controls ?? [],
+    status: r.status as ErgonomicsJobTask["status"],
+    notes: r.notes ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+export const getErgonomicsIncidents = cache(async (tenantId = MOCK_TENANT_ID): Promise<Incident[]> => {
+  if (MOCK_MODE) {
+    return getStore().incidents.filter((i) =>
+      i.title?.toLowerCase().includes("strain") ||
+      i.title?.toLowerCase().includes("sprain") ||
+      i.title?.toLowerCase().includes("ergon") ||
+      i.description?.toLowerCase().includes("repetitive") ||
+      i.description?.toLowerCase().includes("manual handling")
+    );
+  }
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("incidents")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .eq("category", "ergonomic")
+    .order("occurred_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? MOCK_SITE_ID,
+    title: r.title,
+    description: r.description,
+    incident_type: r.incident_type as Incident["incident_type"],
+    severity: r.severity as Incident["severity"],
+    status: r.status as Incident["status"],
+    occurred_at: r.occurred_at,
+    location: r.location,
+    injured_party: r.injured_party ?? null,
+    injuries_description: r.injuries_description ?? null,
+    immediate_actions: r.immediate_actions ?? null,
+    root_cause: r.root_cause ?? null,
+    reported_by: r.reported_by,
+    owner_id: r.owner_id ?? null,
+    lost_time_days: r.lost_time_days ?? null,
+    medical_treatment_required: r.medical_treatment_required ?? false,
+    regulatory_reportable: r.regulatory_reportable ?? false,
+    regulatory_report_date: r.regulatory_report_date ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+// ── OSHA Recordkeeping ────────────────────────────────────────────────────────
+
+export const getOshaCases = cache(async (tenantId = MOCK_TENANT_ID): Promise<OshaCase[]> => {
+  if (MOCK_MODE) return getStore().oshaStore.filter((c) => c.tenant_id === tenantId);
+  const client = sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("osha_cases")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("date", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id, tenant_id: r.tenant_id, caseNo: r.case_no, employee: r.employee,
+    jobTitle: r.job_title, date: r.date, location: r.location, description: r.description,
+    classification: r.classification as OshaCase["classification"],
+    injuryType: r.injury_type as OshaCase["injuryType"],
+    daysAway: r.days_away ?? 0, daysRestricted: r.days_restricted ?? 0,
+    isPrivacy: r.is_privacy ?? false, isSevereInjury: r.is_severe_injury ?? false,
+    howOccurred: r.how_occurred ?? "", equipment: r.equipment ?? "",
+    physician: r.physician ?? "", medFacility: r.med_facility ?? "",
+    treatmentER: r.treatment_er ?? false, treatmentHospitalized: r.treatment_hospitalized ?? false,
+    capaId: r.capa_id ?? undefined, created_at: r.created_at,
   }));
 });
 

@@ -1,11 +1,12 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClipboardList } from "lucide-react";
-import { Modal, Field, Input, Select, SubmitRow } from "@/components/modals/Modal";
+import { Modal, Field, Input, Select, Textarea, SubmitRow } from "@/components/modals/Modal";
 import { addWorkspaceTask } from "@/lib/actions/ehs";
 import type { Profile } from "@/lib/types";
+import { playCreateSound } from "@/lib/sounds";
 
 export function AddTaskButton({ currentProfileId, profiles }: { currentProfileId: string; profiles: Profile[] }) {
   const [open, setOpen] = useState(false);
@@ -16,7 +17,7 @@ export function AddTaskButton({ currentProfileId, profiles }: { currentProfileId
     e.preventDefault();
     setPending(true);
     const res = await addWorkspaceTask(null, new FormData(e.currentTarget));
-    if (res.ok) { setOpen(false); router.refresh(); }
+    if (res.ok) { playCreateSound(); setOpen(false); router.refresh(); }
     setPending(false);
   }
 
@@ -35,6 +36,9 @@ export function AddTaskButton({ currentProfileId, profiles }: { currentProfileId
           <div className="flex flex-col gap-4 px-6 py-5">
             <Field label="Title" required>
               <Input name="title" placeholder="Describe the task…" required />
+            </Field>
+            <Field label="Notes">
+              <Textarea name="notes" placeholder="Additional context, instructions, or references…" />
             </Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Type">
@@ -76,3 +80,4 @@ export function AddTaskButton({ currentProfileId, profiles }: { currentProfileId
     </>
   );
 }
+

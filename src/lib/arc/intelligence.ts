@@ -144,8 +144,8 @@ export function computeHsl(input: HslInputs, now: number): ComputedHsl[] {
   const contractorCells = cells.filter((c) => (c.company ?? "—") !== primary).length;
   const invisibleWorkforce = Math.round((contractorCells / total) * 100);
 
-  // psych_safety_gap (silence): low share of field-contributor reports => high gap.
-  const contributorReports = cells.filter((c) => roleById.get(c.created_by) === "contributor").length;
+  // psych_safety_gap (silence): low share of field_officer reports => high gap.
+  const contributorReports = cells.filter((c) => roleById.get(c.created_by) === "field_officer").length;
   const psychSafetyGap = clamp(100 - Math.round((contributorReports / total) * 100), 0, 100);
 
   const values: Record<string, number> = {
@@ -181,7 +181,7 @@ export function deriveVelaInsights(
 ): VelaInsight[] {
   const vertBySite = new Map(sites.map((s) => [s.id, s.vertical]));
   const confirmedCells = new Set<string>();
-  for (const f of findings) if (f.review_status === "accepted") confirmedCells.add(f.cell_id);
+  for (const f of findings) if (f.review_status === "accepted" && f.cell_id) confirmedCells.add(f.cell_id);
   for (const e of edges) if (e.review_status === "accepted") { confirmedCells.add(e.source_cell_id); confirmedCells.add(e.target_cell_id); }
 
   const byGap = new Map<string, { verticals: Set<string>; count: number; confirmed: boolean }>();
@@ -205,10 +205,11 @@ export function deriveVelaInsights(
     out.push({
       id: `vela_live_${gap}`,
       pattern: `'${gap}' control failures recur across verticals`,
-      origin_vertical: origin,
+      origin_sector: origin,
       applies_to: verticals.filter((v) => v !== origin),
       confidence,
       summary: `Observed ${g.count} times across ${g.verticals.size} verticals (${verticals.join(", ")}). ${g.confirmed ? "Human-confirmed in review — promoted to a cross-vertical pre-emption." : "Emerging signal — not yet confirmed by review."}`,
+      regulatory_refs: [],
       created_at: now,
     });
   }

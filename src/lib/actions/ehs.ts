@@ -97,6 +97,7 @@ export async function addIncident(_prev: unknown, formData: FormData) {
       lost_time_days: null,
       medical_treatment_required: false,
       regulatory_reportable: false,
+      regulatory_report_date: null,
       created_at: now,
       updated_at: now,
     });
@@ -144,6 +145,10 @@ export async function addChemical(_prev: unknown, formData: FormData) {
       is_scheduled: false,
       schedule_ref: null,
       supplier: (formData.get("supplier") as string) || null,
+      date_received: null,
+      status: "active" as const,
+      owner_id: null,
+      created_by: DEMO_SARAH_ID,
       created_at: now,
       updated_at: now,
     });
@@ -195,36 +200,51 @@ export async function updateIncident(id: string, formData: FormData) {
 
 export async function updateCapa(id: string, formData: FormData) {
   const now = new Date().toISOString();
+  const newStatus = (formData.get("status") as CapaStatus) || "open";
+  const isClosing = newStatus === "closed";
+  const closureNote = (formData.get("closure_note") as string) || null;
+  const closedWithEvidence = formData.get("closed_with_evidence") === "true";
+  const ownerId = (formData.get("owner_id") as string) || null;
+
   if (!MOCK_MODE) {
     const client = createServerSupabase();
     if (client) {
       await client.from("capa_records").update({
-        title:       (formData.get("title") as string) || "Untitled CAPA",
-        description: (formData.get("description") as string) || "",
-        kind:        (formData.get("kind") as string) || "corrective",
-        severity:    (formData.get("severity") as string) || "medium",
-        status:      (formData.get("status") as string) || "open",
-        due_date:    (formData.get("due_date") as string) || null,
-        root_cause:  (formData.get("root_cause") as string) || null,
+        title:               (formData.get("title") as string) || "Untitled CAPA",
+        description:         (formData.get("description") as string) || "",
+        kind:                (formData.get("kind") as string) || "corrective",
+        severity:            (formData.get("severity") as string) || "medium",
+        status:              newStatus,
+        owner_id:            ownerId,
+        due_date:            (formData.get("due_date") as string) || null,
+        root_cause:          (formData.get("root_cause") as string) || null,
         verification_method: (formData.get("verification_method") as string) || null,
-        updated_at:  now,
+        closure_note:        closureNote,
+        closed_with_evidence: closedWithEvidence,
+        closed_at:           isClosing ? now : null,
+        updated_at:          now,
       }).eq("id", id).eq("tenant_id", DEMO_TENANT_ID);
     }
   } else {
     const store = getStore();
     const idx = store.capaActions.findIndex((c) => c.id === id);
     if (idx !== -1) {
+      const existing = store.capaActions[idx];
       store.capaActions[idx] = {
-        ...store.capaActions[idx],
-        title:       (formData.get("title") as string) || store.capaActions[idx].title,
-        description: (formData.get("description") as string) || "",
-        kind:        (formData.get("kind") as "corrective" | "preventive") ?? store.capaActions[idx].kind,
-        severity:    (formData.get("severity") as Severity) ?? store.capaActions[idx].severity,
-        status:      (formData.get("status") as CapaStatus) ?? store.capaActions[idx].status,
-        due_date:    (formData.get("due_date") as string) || null,
-        root_cause:  (formData.get("root_cause") as string) || null,
+        ...existing,
+        title:               (formData.get("title") as string) || existing.title,
+        description:         (formData.get("description") as string) || "",
+        kind:                (formData.get("kind") as "corrective" | "preventive") ?? existing.kind,
+        severity:            (formData.get("severity") as Severity) ?? existing.severity,
+        status:              newStatus,
+        owner_id:            ownerId,
+        due_date:            (formData.get("due_date") as string) || null,
+        root_cause:          (formData.get("root_cause") as string) || null,
         verification_method: (formData.get("verification_method") as string) || null,
-        updated_at:  now,
+        closure_note:        closureNote,
+        closed_with_evidence: closedWithEvidence,
+        closed_at:           isClosing ? now : (existing.closed_at ?? null),
+        updated_at:          now,
       };
     }
   }
@@ -260,6 +280,54 @@ export async function updateAudit(id: string, formData: FormData) {
         status:         (formData.get("status") as AuditStatus) ?? store.audits[idx].status,
         scope:          (formData.get("scope") as string) || null,
         notes:          (formData.get("notes") as string) || null,
+        updated_at:     now,
+      };
+    }
+  }
+  revalidatePath("/audits");
+  revalidatePath(`/audits/${id}`);
+  return { ok: true };
+}
+
+export async function submitAuditConduct(
+  id: string,
+  data: {
+    conductorName: string;
+    conductDate: string;
+    score: number | null;
+    notes: string;
+    itemSummary: string; // JSON string
+  },
+) {
+  const now = new Date().toISOString();
+  const notesJson = JSON.stringify({
+    conductedBy: data.conductorName,
+    conductedDate: data.conductDate,
+    score: data.score,
+    overallNotes: data.notes,
+    items: JSON.parse(data.itemSummary || "[]"),
+    submittedAt: now,
+  });
+
+  if (!MOCK_MODE) {
+    const client = createServerSupabase();
+    if (client) {
+      await client.from("audits").update({
+        status:         "completed",
+        completed_date: data.conductDate || now.slice(0, 10),
+        notes:          notesJson,
+        updated_at:     now,
+      }).eq("id", id).eq("tenant_id", DEMO_TENANT_ID);
+    }
+  } else {
+    const store = getStore();
+    const idx = store.audits.findIndex((a) => a.id === id);
+    if (idx !== -1) {
+      store.audits[idx] = {
+        ...store.audits[idx],
+        status:         "completed" as AuditStatus,
+        completed_date: data.conductDate || now.slice(0, 10),
+        notes:          notesJson,
         updated_at:     now,
       };
     }
@@ -707,6 +775,7 @@ export async function updateLegalRequirement(id: string, formData: FormData) {
         next_review_date: (formData.get("next_review_date") as string) || null,
         status:           (formData.get("status") as string) || "not_assessed",
         compliance_notes: (formData.get("compliance_notes") as string) || null,
+        evidence_url:     (formData.get("evidence_url") as string) || null,
         updated_at:       now,
       }).eq("id", id).eq("tenant_id", DEMO_TENANT_ID);
     }
@@ -724,6 +793,7 @@ export async function updateLegalRequirement(id: string, formData: FormData) {
         next_review_date: (formData.get("next_review_date") as string) || store.legalRequirements[idx].next_review_date,
         status:           ((formData.get("status") as string) || "not_assessed") as LegalRequirement["status"],
         compliance_notes: (formData.get("compliance_notes") as string) || null,
+        evidence_url:     (formData.get("evidence_url") as string) || null,
         updated_at:       now,
       };
     }
@@ -905,6 +975,7 @@ export async function updateDocument(id: string, formData: FormData) {
 // ── Workspace Tasks ───────────────────────────────────────────────────────────
 
 export async function addWorkspaceTask(_prev: unknown, formData: FormData) {
+  const now = new Date().toISOString();
   const profileId = (formData.get("profile_id") as string) || DEMO_SARAH_ID;
   if (!MOCK_MODE) {
     const client = createServerSupabase();
@@ -919,6 +990,24 @@ export async function addWorkspaceTask(_prev: unknown, formData: FormData) {
         status:     "pending",
       });
     }
+  } else {
+    const store = getStore();
+    store.workspaceTasks.push({
+      id:               nextId("task"),
+      tenant_id:        MOCK_TENANT_ID,
+      profile_id:       profileId,
+      title:            (formData.get("title") as string) || "Untitled Task",
+      type:             (formData.get("type") as string) || "General",
+      due_date:         (formData.get("due_date") as string) || null,
+      priority:         ((formData.get("priority") as string) || "medium") as "high" | "medium" | "low",
+      status:           "pending",
+      assigned_by:      null,
+      completed_by:     null,
+      completed_at:     null,
+      completion_notes: null,
+      created_at:       now,
+      updated_at:       now,
+    });
   }
   revalidatePath("/workspace");
   return { ok: true };
@@ -929,6 +1018,7 @@ export async function completeWorkspaceTask(
   completedBy: string,
   completionNotes: string,
 ) {
+  const now = new Date().toISOString();
   if (!MOCK_MODE) {
     const client = createServerSupabase();
     if (client) {
@@ -936,12 +1026,25 @@ export async function completeWorkspaceTask(
         .update({
           status:           "done",
           completed_by:     completedBy,
-          completed_at:     new Date().toISOString(),
+          completed_at:     now,
           completion_notes: completionNotes.trim() || null,
-          updated_at:       new Date().toISOString(),
+          updated_at:       now,
         })
         .eq("id", id)
         .eq("tenant_id", DEMO_TENANT_ID);
+    }
+  } else {
+    const store = getStore();
+    const idx = store.workspaceTasks.findIndex((t) => t.id === id);
+    if (idx !== -1) {
+      store.workspaceTasks[idx] = {
+        ...store.workspaceTasks[idx],
+        status:           "done",
+        completed_by:     completedBy,
+        completed_at:     now,
+        completion_notes: completionNotes.trim() || null,
+        updated_at:       now,
+      };
     }
   }
   revalidatePath("/workspace");
@@ -949,31 +1052,265 @@ export async function completeWorkspaceTask(
 }
 
 export async function updateSdsUrl(chemicalId: string, sdsUrl: string, sdsExpiry: string | null) {
+  const now = new Date().toISOString();
   if (!MOCK_MODE) {
     const client = createServerSupabase();
     if (client) {
       await client
         .from("chemical_inventory")
-        .update({ sds_url: sdsUrl.trim() || null, sds_expiry: sdsExpiry || null, updated_at: new Date().toISOString() })
+        .update({ sds_url: sdsUrl.trim() || null, sds_expiry: sdsExpiry || null, updated_at: now })
         .eq("id", chemicalId)
         .eq("tenant_id", DEMO_TENANT_ID);
     }
+  } else {
+    const store = getStore();
+    const idx = store.chemicals.findIndex((c) => c.id === chemicalId);
+    if (idx !== -1) {
+      store.chemicals[idx] = {
+        ...store.chemicals[idx],
+        sds_url:    sdsUrl.trim() || null,
+        sds_expiry: sdsExpiry || null,
+        updated_at: now,
+      };
+    }
   }
   revalidatePath("/chemicals");
+  revalidatePath(`/chemicals/${chemicalId}`);
   return { ok: true };
 }
 
 export async function updateLegalEvidence(requirementId: string, evidenceUrl: string) {
+  const now = new Date().toISOString();
   if (!MOCK_MODE) {
     const client = createServerSupabase();
     if (client) {
       await client
         .from("legal_requirements")
-        .update({ evidence_url: evidenceUrl.trim() || null, updated_at: new Date().toISOString() })
+        .update({ evidence_url: evidenceUrl.trim() || null, updated_at: now })
         .eq("id", requirementId)
         .eq("tenant_id", DEMO_TENANT_ID);
     }
+  } else {
+    const store = getStore();
+    const idx = store.legalRequirements.findIndex((l) => l.id === requirementId);
+    if (idx !== -1) {
+      store.legalRequirements[idx] = {
+        ...store.legalRequirements[idx],
+        evidence_url: evidenceUrl.trim() || null,
+        updated_at:   now,
+      };
+    }
   }
   revalidatePath("/legal");
+  revalidatePath(`/legal/${requirementId}`);
+  return { ok: true };
+}
+
+export async function addCapaFromIncident(incidentId: string, formData: FormData) {
+  const now = new Date().toISOString();
+  if (!MOCK_MODE) {
+    const client = createServerSupabase();
+    if (client) {
+      await client.from("capa_records").insert({
+        tenant_id:   DEMO_TENANT_ID,
+        site_id:     DEMO_SITE_ID,
+        title:       (formData.get("title") as string) || "Untitled CAPA",
+        description: (formData.get("description") as string) || "",
+        kind:        (formData.get("kind") as string) || "corrective",
+        source_type: "incident",
+        source_id:   incidentId,
+        severity:    (formData.get("severity") as string) || "medium",
+        status:      "open",
+        due_date:    (formData.get("due_date") as string) || null,
+        owner_id:    null,
+      });
+      await client.from("incidents")
+        .update({ status: "capa_open", updated_at: now })
+        .eq("id", incidentId)
+        .eq("tenant_id", DEMO_TENANT_ID);
+    }
+  } else {
+    const store = getStore();
+    store.capaActions.push({
+      id: nextId("capa"),
+      tenant_id:   MOCK_TENANT_ID,
+      site_id:     MOCK_SITE_ID,
+      title:       (formData.get("title") as string) || "Untitled CAPA",
+      description: (formData.get("description") as string) || "",
+      kind:        (formData.get("kind") as "corrective" | "preventive") ?? "corrective",
+      source_type: "incident" as CapaSourceType,
+      source_id:   incidentId,
+      root_cause:  null,
+      severity:    (formData.get("severity") as Severity) ?? "medium",
+      owner_id:    null,
+      due_date:    (formData.get("due_date") as string) || null,
+      status:      "open",
+      verification_method: null,
+      closed_at:   null,
+      closure_note: null,
+      closed_with_evidence: false,
+      created_at:  now,
+      updated_at:  now,
+    });
+    const idx = store.incidents.findIndex((i) => i.id === incidentId);
+    if (idx !== -1) {
+      store.incidents[idx] = { ...store.incidents[idx], status: "capa_open", updated_at: now };
+    }
+  }
+  revalidatePath("/capa");
+  revalidatePath("/incidents");
+  revalidatePath(`/incidents/${incidentId}`);
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function addCapaFromFinding(findingTitle: string, findingDescription: string, formData: FormData) {
+  const now = new Date().toISOString();
+  const title       = (formData.get("title") as string) || findingTitle || "Untitled CAPA";
+  const description = (formData.get("description") as string) || findingDescription || "";
+  const severity    = (formData.get("severity") as Severity) ?? "medium";
+  const root_cause  = (formData.get("root_cause") as string) || null;
+  const source_id   = (formData.get("source_id") as string) || null;
+  const verification_method = (formData.get("verification_method") as string) || null;
+  const due_date    = (formData.get("due_date") as string) || null;
+
+  if (!MOCK_MODE) {
+    const client = createServerSupabase();
+    if (client) {
+      await client.from("capa_records").insert({
+        tenant_id:   DEMO_TENANT_ID,
+        site_id:     DEMO_SITE_ID,
+        title, description, kind: "corrective",
+        source_type: "audit_finding",
+        source_id, severity, root_cause, status: "open",
+        due_date, owner_id: null, verification_method,
+      });
+    }
+  } else {
+    const store = getStore();
+    store.capaActions.push({
+      id: nextId("capa"),
+      tenant_id:   MOCK_TENANT_ID,
+      site_id:     MOCK_SITE_ID,
+      title, description,
+      kind:        "corrective",
+      source_type: "audit_finding" as CapaSourceType,
+      source_id,
+      root_cause,
+      severity,
+      owner_id:    null,
+      due_date,
+      status:      "open",
+      verification_method,
+      closed_at:   null,
+      closure_note: null,
+      closed_with_evidence: false,
+      created_at:  now,
+      updated_at:  now,
+    });
+  }
+  revalidatePath("/capa");
+  revalidatePath("/audits");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function acknowledgeDocument(documentId: string, profileId: string) {
+  const now = new Date().toISOString();
+  if (!MOCK_MODE) {
+    const client = createServerSupabase();
+    if (client) {
+      await client.from("document_acknowledgments").insert({
+        tenant_id:       DEMO_TENANT_ID,
+        document_id:     documentId,
+        profile_id:      profileId,
+        acknowledged_at: now,
+      });
+    }
+  } else {
+    const store = getStore();
+    store.documentAcknowledgments.push({
+      id:              nextId("dack"),
+      tenant_id:       MOCK_TENANT_ID,
+      document_id:     documentId,
+      profile_id:      profileId,
+      acknowledged_at: now,
+      created_at:      now,
+    });
+  }
+  revalidatePath("/workspace");
+  return { ok: true };
+}
+
+export async function createBiosafetyLab(_prev: unknown, formData: FormData) {
+  const now       = new Date().toISOString();
+  const name      = (formData.get("name") as string)?.trim() || "Unnamed Lab";
+  const bslLevel  = (formData.get("bsl_level") as string) || "BSL-1";
+  const personnel = parseInt(formData.get("personnel_count") as string) || 0;
+  const nextInsp  = (formData.get("next_inspection") as string) || null;
+
+  if (!MOCK_MODE) {
+    const client = createServerSupabase();
+    if (client) {
+      await client.from("biosafety_labs").insert({
+        tenant_id: DEMO_TENANT_ID, name, bsl_level: bslLevel,
+        personnel_count: personnel, next_inspection: nextInsp, status: "compliant", open_findings: 0,
+      });
+    }
+  } else {
+    const store = getStore();
+    const labNum = store.biosafetyLabs.length + 1;
+    store.biosafetyLabs.push({
+      id: nextId("lab"), tenant_id: MOCK_TENANT_ID,
+      lab_code: `LAB-${String(labNum).padStart(3, "0")}`,
+      name, bsl_level: bslLevel, personnel_count: personnel,
+      last_inspection: null, next_inspection: nextInsp,
+      status: "compliant", open_findings: 0, notes: null,
+      created_at: now, updated_at: now,
+    });
+  }
+  revalidatePath("/biosafety");
+  return { ok: true };
+}
+
+export async function createBiohazardAgent(_prev: unknown, formData: FormData) {
+  const now        = new Date().toISOString();
+  const agentName  = (formData.get("agent_name") as string)?.trim() || "Unnamed Agent";
+  const riskClass  = (formData.get("risk_class") as string) || "Risk Group 1";
+  const storageLoc = (formData.get("storage_location") as string)?.trim() || "To be assigned";
+  const quantity   = (formData.get("quantity") as string)?.trim() || "0 units";
+
+  if (!MOCK_MODE) {
+    const client = createServerSupabase();
+    if (client) {
+      await client.from("biohazard_agents").insert({
+        tenant_id: DEMO_TENANT_ID, agent_name: agentName,
+        risk_class: riskClass, storage_location: storageLoc, quantity, status: "registered",
+      });
+    }
+  } else {
+    const store = getStore();
+    const agentNum = store.biohazardAgents.length + 1;
+    store.biohazardAgents.push({
+      id: nextId("agent"), tenant_id: MOCK_TENANT_ID,
+      agent_code: `AGT-${String(agentNum).padStart(3, "0")}`,
+      agent_name: agentName, risk_class: riskClass,
+      storage_location: storageLoc, quantity, status: "registered",
+      notes: null, created_at: now, updated_at: now,
+    });
+  }
+  revalidatePath("/biosafety");
+  return { ok: true };
+}
+
+// ── OSHA Recordkeeping ────────────────────────────────────────────────────────
+
+export async function addOshaCaseToStore(_prev: unknown, fd: FormData) {
+  if (!MOCK_MODE) return { ok: false };
+  const raw = fd.get("case");
+  if (!raw) return { ok: false };
+  const c = JSON.parse(raw as string);
+  getStore().oshaStore.push(c);
+  revalidatePath("/osha");
   return { ok: true };
 }

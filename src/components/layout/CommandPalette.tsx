@@ -3,36 +3,47 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, CornerDownLeft } from "lucide-react";
+import { useDemoUser } from "@/lib/context/demo-user";
 
 interface Cmd { label: string; href: string; group: string; keywords?: string }
 
-const COMMANDS: Cmd[] = [
-  { label: "New Safety Cell", href: "/cells/new", group: "Actions", keywords: "create add report" },
-  { label: "EXP Intake — AI capture", href: "/intake", group: "Actions", keywords: "interview describe convert" },
-  { label: "Map", href: "/map", group: "Operate" },
-  { label: "Safety Cells", href: "/cells", group: "Operate", keywords: "list" },
-  { label: "Control Proof Ledger", href: "/proof", group: "Operate" },
-  { label: "Review Queue", href: "/review", group: "Operate", keywords: "approve accept pending ai" },
-  { label: "Activity", href: "/activity", group: "Operate", keywords: "audit history feed" },
-  { label: "Causality Map", href: "/causality", group: "Operate" },
-  { label: "Prevention Web", href: "/prevention", group: "Operate" },
-  { label: "Cell Web", href: "/web", group: "Operate", keywords: "linkage graph" },
-  { label: "Cell Web 3D", href: "/web3d", group: "Operate", keywords: "immersive three" },
-  { label: "Risk Framework", href: "/framework", group: "Operate", keywords: "six objects precursor control failure behavior event learning intelligence" },
-  { label: "Risk Dashboard", href: "/dashboard", group: "Operate" },
-  { label: "Trends", href: "/trends", group: "Operate", keywords: "analytics charts" },
-  { label: "Reports", href: "/reports", group: "Operate", keywords: "export pdf csv" },
-  { label: "Data Space", href: "/data", group: "Operate", keywords: "anatomy integrity database" },
-  { label: "Gateway Health", href: "/gateway", group: "Operate", keywords: "status links health" },
-  { label: "Risk Forecast", href: "/forecast", group: "ARC", keywords: "predict anticipate forecast leading indicator likely fail next pclss" },
-  { label: "ARC Method", href: "/arc", group: "ARC" },
-  { label: "Human Signal Layer", href: "/arc/hsl", group: "ARC", keywords: "hsl human" },
-  { label: "P-CLSS · EXP · VELA", href: "/arc/intelligence", group: "ARC", keywords: "engine vela exp" },
-  { label: "GUS Verticals", href: "/arc/verticals", group: "ARC" },
+const NAV_COMMANDS: Cmd[] = [
+  { label: "Dashboard",               href: "/dashboard",  group: "Navigate", keywords: "home overview command center" },
+  { label: "My Workspace",            href: "/workspace",  group: "Navigate", keywords: "tasks assignments my" },
+  { label: "Incident Reporting",      href: "/incidents",  group: "Navigate", keywords: "report accident near miss injury" },
+  { label: "CAPA Management",         href: "/capa",       group: "Navigate", keywords: "corrective preventive action" },
+  { label: "Audits & Assessments",    href: "/audits",     group: "Navigate", keywords: "inspection findings audit" },
+  { label: "Legal Register",          href: "/legal",      group: "Navigate", keywords: "regulation compliance requirement law" },
+  { label: "Risk Intelligence",       href: "/risk",       group: "Navigate", keywords: "risk assessment hazard" },
+  { label: "Training & Competency",   href: "/training",   group: "Navigate", keywords: "course certificate competency" },
+  { label: "Documents & Programs",    href: "/documents",  group: "Navigate", keywords: "document policy procedure SOP" },
+  { label: "Chemical Management",     href: "/chemicals",  group: "Navigate", keywords: "chemical SDS hazmat inventory" },
+  { label: "Biosafety & Lab Safety",  href: "/biosafety",  group: "Navigate", keywords: "lab biosafety containment" },
+  { label: "Waste Management",        href: "/waste",      group: "Navigate", keywords: "waste disposal hazardous" },
+  { label: "Monitoring & Equipment",  href: "/monitoring", group: "Navigate", keywords: "equipment calibration inspection" },
+  { label: "OSHA Logs",               href: "/osha",       group: "Navigate", keywords: "300 301 osha recordable log" },
+  { label: "Reports & Analytics",     href: "/reports",    group: "Navigate", keywords: "report export csv analytics" },
+  { label: "AI Assistant",            href: "/ai",         group: "Navigate", keywords: "ai findings predictive intelligence" },
+  { label: "Settings",                href: "/settings",   group: "Navigate", keywords: "account preferences tenant config" },
+];
+
+const SA_COMMANDS: Cmd[] = [
+  { label: "Companies & Tenants",     href: "/sa/companies",  group: "SA Admin", keywords: "tenant client onboard" },
+  { label: "AI Gateway & Validation", href: "/sa/gateway",    group: "SA Admin", keywords: "gateway validation health reject" },
+  { label: "Predictive Model",        href: "/sa/predictive", group: "SA Admin", keywords: "predict model ml" },
+  { label: "Global Legal Register",   href: "/sa/globallegal",group: "SA Admin", keywords: "global regulation law template" },
+  { label: "Analytics & Insights",    href: "/sa/analytics",  group: "SA Admin", keywords: "analytics platform insights" },
+  { label: "Implementation Tracker",  href: "/sa/impl",       group: "SA Admin", keywords: "kanban deploy rollout" },
+  { label: "Support & QA",            href: "/sa/support",    group: "SA Admin", keywords: "support ticket qa" },
+  { label: "Billing & Subscriptions", href: "/sa/billing",    group: "SA Admin", keywords: "billing mrr subscription revenue" },
+  { label: "Security & Audit Log",    href: "/sa/security",   group: "SA Admin", keywords: "security audit log access" },
+  { label: "Data Imports",            href: "/sa/imports",    group: "SA Admin", keywords: "import csv upload migrate" },
+  { label: "Platform History",        href: "/sa/history",    group: "SA Admin", keywords: "changelog build release version" },
 ];
 
 export function CommandPalette() {
-  const router = useRouter();
+  const router       = useRouter();
+  const { user }     = useDemoUser();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
@@ -47,8 +58,13 @@ export function CommandPalette() {
         setOpen(false);
       }
     };
+    const onOpen = () => setOpen(true);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("open-command-palette", onOpen);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("open-command-palette", onOpen);
+    };
   }, []);
 
   useEffect(() => {
@@ -59,11 +75,16 @@ export function CommandPalette() {
     }
   }, [open]);
 
+  const COMMANDS = useMemo(
+    () => [...NAV_COMMANDS, ...(user.is_reliance ? SA_COMMANDS : [])],
+    [user.is_reliance],
+  );
+
   const results = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return COMMANDS;
     return COMMANDS.filter((c) => `${c.label} ${c.group} ${c.keywords ?? ""}`.toLowerCase().includes(t));
-  }, [q]);
+  }, [q, COMMANDS]);
 
   function go(i: number) {
     const c = results[i];
@@ -88,19 +109,19 @@ export function CommandPalette() {
               else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
               else if (e.key === "Enter") { e.preventDefault(); go(active); }
             }}
-            placeholder="Search AMAYA… (pages, actions)"
+            placeholder="Search SafetyIQ… (pages, modules)"
             className="w-full py-3 text-sm outline-none placeholder:text-slate-400"
           />
           <kbd className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-400">esc</kbd>
         </div>
-        <div className="amaya-scroll max-h-80 overflow-y-auto py-1">
+        <div className="iq-scroll max-h-80 overflow-y-auto py-1">
           {results.length === 0 && <p className="px-4 py-6 text-center text-sm text-slate-400">No matches.</p>}
           {results.map((c, i) => (
             <button
               key={c.href}
               onMouseEnter={() => setActive(i)}
               onClick={() => go(i)}
-              className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm ${i === active ? "bg-[var(--color-pclss)]/10" : ""}`}
+              className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition ${i === active ? "bg-blue-50" : "hover:bg-slate-50"}`}
             >
               <span className="text-slate-700">{c.label}</span>
               <span className="flex items-center gap-2">

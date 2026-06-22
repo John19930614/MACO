@@ -4,6 +4,8 @@ import { ArrowLeft } from "lucide-react";
 import { getDocumentById, getProfiles } from "@/lib/data/ehsRepo";
 import { PageHeader, Pill } from "@/components/ui/primitives";
 import { EditDocumentForm } from "./EditDocumentForm";
+import { getServerTenantId } from "@/lib/auth/session";
+import { MOCK_TENANT_ID } from "@/lib/data/mock";
 
 const CATEGORY_LABEL: Record<string, string> = {
   sop: "SOP", policy: "Policy", procedure: "Procedure",
@@ -25,7 +27,8 @@ function fmt(s: string) {
 
 export default async function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [doc, profiles] = await Promise.all([getDocumentById(id), getProfiles()]);
+  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const [doc, profiles] = await Promise.all([getDocumentById(id), getProfiles(tenantId)]);
   if (!doc) notFound();
 
   const profileMap = Object.fromEntries(profiles.map((p) => [p.id, p.display_name]));

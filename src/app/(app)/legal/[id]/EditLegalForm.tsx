@@ -76,6 +76,14 @@ export function EditLegalForm({ req }: { req: LegalRequirement }) {
         <Textarea name="compliance_notes" defaultValue={req.compliance_notes ?? ""} />
       </Field>
 
+      <Field label="Evidence / Document Reference">
+        <Input
+          name="evidence_url"
+          defaultValue={req.evidence_url ?? ""}
+          placeholder="URL, SharePoint path, or document reference (e.g. SOP-CHEM-01-v3)"
+        />
+      </Field>
+
       <div className="flex items-center justify-between border-t border-slate-100 pt-4">
         <p className="text-xs text-slate-400">
           ID: {req.id.slice(0, 8)}… · Last updated {new Date(req.updated_at).toLocaleDateString()}

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { generateStructuredJson } from "@/lib/ai/provider";
 import { ANALYSIS_JSON_SCHEMA, SYSTEM_PROMPT, buildUserPrompt } from "@/lib/ai/prompt";
-import { aiAnalysisOutputSchema } from "@/lib/schemas";
+import { aiCellAnalysisOutputSchema } from "@/lib/schemas";
 import { estimateCost } from "@/lib/analytics/ai";
 import { aiProvider } from "@/lib/env";
 import type { SafetyCell } from "@/lib/types";
@@ -39,14 +39,14 @@ const GOLDEN: SafetyCell = {
 };
 
 suite(`LIVE: ${aiProvider()} produces a schema-valid causality analysis`, () => {
-  it("returns structured output that passes the AiAnalysisOutput contract", async () => {
+  it("returns structured output that passes the CausalityOutput contract", async () => {
     const { data, model, usage } = await generateStructuredJson({
       system: SYSTEM_PROMPT,
       user: buildUserPrompt(GOLDEN, []),
       schema: ANALYSIS_JSON_SCHEMA,
       maxTokens: 1200,
     });
-    const parsed = aiAnalysisOutputSchema.safeParse(data);
+    const parsed = aiCellAnalysisOutputSchema.safeParse(data);
     expect(parsed.success, JSON.stringify(parsed.success ? {} : parsed.error.flatten())).toBe(true);
     if (parsed.success) {
       expect(parsed.data.plain_language_summary.length).toBeGreaterThan(10);

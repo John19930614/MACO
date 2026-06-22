@@ -171,7 +171,7 @@ describe("PATCH /api/proof", () => {
     expect(res.status).toBe(400);
   });
   it("updates a real proof", async () => {
-    const res = await proofPATCH(req("/api/proof", { method: "PATCH", body: { id: "pf_003", status: "proven" } }));
+    const res = await proofPATCH(req("/api/proof", { method: "PATCH", body: { id: "proof_003", status: "proven" } }));
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.proof.status).toBe("proven");

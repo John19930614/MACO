@@ -2,8 +2,12 @@ import Link from "next/link";
 import {
   getChemicals, getCapaActions, getAiFindings, getTrainingRecords,
   getEquipment, getComplianceScores, getAudits, getIncidents,
-  overallComplianceScore, latestPredictabilityRun,
+  getOshaCases, overallComplianceScore, latestPredictabilityRun,
 } from "@/lib/data/ehsRepo";
+import { getServerTenantId } from "@/lib/auth/session";
+import { MOCK_TENANT_ID, MOCK_TENANTS_ALL } from "@/lib/data/mock";
+import { MOCK_MODE } from "@/lib/env";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PageHeader, Stat, Card, CardHeader } from "@/components/ui/primitives";
 import { CapaStatusBadge, ReviewStatusBadge } from "@/components/ui/badges";
 import type { AiAnalysisOutput } from "@/lib/types";
@@ -14,14 +18,31 @@ import {
 } from "lucide-react";
 
 export default async function DashboardPage() {
-  const [chemicals, capas, aiFindings, trainingRecords, equipment, complianceScores, audits, incidents] =
+  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantName = MOCK_TENANTS_ALL.find((t) => t.id === tenantId)?.name ?? "Your Company";
+
+  // Check onboarding status (live mode only)
+  let onboardingComplete = true;
+  if (!MOCK_MODE) {
+    const supabase = await createSupabaseServerClient();
+    if (supabase) {
+      const { data: tenant } = await supabase
+        .from("tenants")
+        .select("onboarding_completed_at")
+        .eq("id", tenantId)
+        .single();
+      onboardingComplete = !!tenant?.onboarding_completed_at;
+    }
+  }
+
+  const [chemicals, capas, aiFindings, trainingRecords, equipment, complianceScores, audits, incidents, oshaCases] =
     await Promise.all([
-      getChemicals(), getCapaActions(), getAiFindings(), getTrainingRecords(),
-      getEquipment(), getComplianceScores(), getAudits(), getIncidents(),
+      getChemicals(tenantId), getCapaActions(tenantId), getAiFindings(tenantId), getTrainingRecords(tenantId),
+      getEquipment(tenantId), getComplianceScores(tenantId), getAudits(tenantId), getIncidents(tenantId), getOshaCases(tenantId),
     ]);
 
-  const overall = await overallComplianceScore();
-  const latestRun = await latestPredictabilityRun();
+  const overall = await overallComplianceScore(tenantId);
+  const latestRun = await latestPredictabilityRun(tenantId);
 
   // Derived counts
   const openCapas       = capas.filter((c) => c.status !== "closed" && c.status !== "rejected");
@@ -51,6 +72,18 @@ export default async function DashboardPage() {
     (i.severity === "critical" || i.severity === "high") && i.status !== "closed",
   ).length;
 
+  // OSHA safety rates — calculated from confirmed OSHA 300 log entries
+  const HOURS_WORKED = 295360; // 142 employees × 40h × 52w
+  const oshaCasesYtd = oshaCases.filter((c) => c.date.startsWith("2026"));
+  const trir = oshaCasesYtd.length > 0
+    ? ((oshaCasesYtd.length / HOURS_WORKED) * 200000).toFixed(2)
+    : "0.00";
+  const dartCases = oshaCasesYtd.filter((c) => c.classification === "days_away" || c.classification === "restricted");
+  const dart = dartCases.length > 0
+    ? ((dartCases.length / HOURS_WORKED) * 200000).toFixed(2)
+    : "0.00";
+  const severeOsha = oshaCasesYtd.filter((c) => c.isSevereInjury || c.classification === "fatality").length;
+
   // Compliance by module sorted by score ascending (lowest = most at risk)
   const moduleScores = [...complianceScores].sort((a, b) => a.percentage - b.percentage);
 
@@ -61,6 +94,34 @@ export default async function DashboardPage() {
   const trendColor = latestRun?.forecast_data?.compliance_trend === "improving"
     ? "text-emerald-600" : latestRun?.forecast_data?.compliance_trend === "declining"
     ? "text-red-600" : "text-slate-400";
+
+  const MODULE_LABEL: Record<string, string> = {
+    chemical:  "Chemical Management",
+    legal:     "Legal Register",
+    audits:    "Audits & Assessments",
+    capa:      "Corrective Actions",
+    training:  "Training & Competency",
+    documents: "Documents & Programs",
+    waste:     "Waste Management",
+    equipment: "Monitoring & Equipment",
+    risk:        "Risk Intelligence",
+    incidents:   "Incident Reporting",
+    ergonomics:  "Ergonomics & MSD",
+  };
+
+  const MODULE_HREF: Record<string, string> = {
+    chemical:    "/chemicals",
+    legal:       "/legal",
+    audits:      "/audits",
+    capa:        "/capa",
+    training:    "/training",
+    documents:   "/documents",
+    waste:       "/waste",
+    equipment:   "/monitoring",
+    risk:        "/risk",
+    incidents:   "/incidents",
+    ergonomics:  "/ergonomics",
+  };
 
   return (
     <>
@@ -78,44 +139,70 @@ export default async function DashboardPage() {
       />
 
       <div className="iq-scroll flex-1 overflow-auto p-6">
+        {/* ── Onboarding Banner ──────────────────────────────────── */}
+        {!onboardingComplete && (
+          <div className="mb-5 flex items-center justify-between gap-4 rounded-xl border border-blue-700/50 bg-blue-900/20 px-5 py-4">
+            <div>
+              <div className="text-sm font-semibold text-blue-200">Complete your company onboarding</div>
+              <div className="mt-0.5 text-xs text-blue-400/80">
+                Set up your company profile, industry scope, safety history, and team to unlock the full SafetyIQ platform.
+              </div>
+            </div>
+            <Link
+              href="/onboarding"
+              className="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 transition"
+            >
+              Start Onboarding &rarr;
+            </Link>
+          </div>
+        )}
+
         {/* ── KPI Row ─────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Stat
-            label="Overall Compliance Score"
-            value={`${overall}%`}
-            accent="#2563eb"
-            hint="Avg across all EHS modules"
-            icon="🛡"
-            strip="linear-gradient(90deg,#2563eb,#60a5fa)"
-            trend={{ label: "AI-powered score", direction: overall >= 80 ? "up" : overall >= 60 ? "flat" : "down" }}
-          />
-          <Stat
-            label="Critical Risk Alerts"
-            value={criticalAlerts}
-            accent="#ef4444"
-            hint={criticalAlerts > 0 ? "High/critical severity open" : "No critical alerts"}
-            icon="⚠"
-            strip="linear-gradient(90deg,#ef4444,#f87171)"
-            trend={{ label: criticalAlerts > 0 ? "Requires immediate action" : "All clear", direction: criticalAlerts > 0 ? "down" : "flat" }}
-          />
-          <Stat
-            label="Open CAPA Actions"
-            value={openCapas.length}
-            accent="#f97316"
-            hint={overdueCapas.length > 0 ? `${overdueCapas.length} overdue` : "All on schedule"}
-            icon="⚙"
-            strip="linear-gradient(90deg,#f97316,#fb923c)"
-            trend={{ label: overdueCapas.length > 0 ? `${overdueCapas.length} overdue` : "All on schedule", direction: overdueCapas.length > 0 ? "down" : "flat" }}
-          />
-          <Stat
-            label="Training Gaps (30d)"
-            value={expiringTraining.length}
-            accent="#f59e0b"
-            hint="Certifications expiring soon"
-            icon="🎓"
-            strip="linear-gradient(90deg,#f59e0b,#fcd34d)"
-            trend={{ label: "Within 30 days", direction: expiringTraining.length > 0 ? "down" : "flat" }}
-          />
+          <Link href="/legal" className="block">
+            <Stat
+              label="Overall Compliance Score"
+              value={`${overall}%`}
+              accent="#2563eb"
+              hint="Avg across all EHS modules"
+              icon="🛡"
+              strip="linear-gradient(90deg,#2563eb,#60a5fa)"
+              trend={{ label: "AI-powered score", direction: overall >= 80 ? "up" : overall >= 60 ? "flat" : "down" }}
+            />
+          </Link>
+          <Link href="/incidents" className="block">
+            <Stat
+              label="Critical Risk Alerts"
+              value={criticalAlerts}
+              accent="#ef4444"
+              hint={criticalAlerts > 0 ? "High/critical severity open" : "No critical alerts"}
+              icon="⚠"
+              strip="linear-gradient(90deg,#ef4444,#f87171)"
+              trend={{ label: criticalAlerts > 0 ? "Requires immediate action" : "All clear", direction: criticalAlerts > 0 ? "down" : "flat" }}
+            />
+          </Link>
+          <Link href="/capa" className="block">
+            <Stat
+              label="Open CAPA Actions"
+              value={openCapas.length}
+              accent="#f97316"
+              hint={overdueCapas.length > 0 ? `${overdueCapas.length} overdue` : "All on schedule"}
+              icon="⚙"
+              strip="linear-gradient(90deg,#f97316,#fb923c)"
+              trend={{ label: overdueCapas.length > 0 ? `${overdueCapas.length} overdue` : "All on schedule", direction: overdueCapas.length > 0 ? "down" : "flat" }}
+            />
+          </Link>
+          <Link href="/training" className="block">
+            <Stat
+              label="Training Gaps (30d)"
+              value={expiringTraining.length}
+              accent="#f59e0b"
+              hint="Certifications expiring soon"
+              icon="🎓"
+              strip="linear-gradient(90deg,#f59e0b,#fcd34d)"
+              trend={{ label: "Within 30 days", direction: expiringTraining.length > 0 ? "down" : "flat" }}
+            />
+          </Link>
         </div>
 
         {/* ── P-Engine Status + Compliance by Module ──────────────── */}
@@ -177,38 +264,45 @@ export default async function DashboardPage() {
           <Card className="lg:col-span-2">
             <CardHeader title="Compliance by EHS Module" subtitle="Lowest scores = highest priority" />
             <div className="divide-y divide-slate-100">
-              {moduleScores.map((s) => (
-                <div key={s.id} className="flex items-center gap-3 px-4 py-2.5">
-                  <div className="w-28 shrink-0 text-xs font-medium capitalize text-slate-600">
-                    {s.module.replace(/_/g, " ")}
-                  </div>
-                  <div className="flex-1">
-                    <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${s.percentage}%`,
-                          background:
-                            s.percentage >= 80 ? "var(--color-safe)"
-                            : s.percentage >= 60 ? "var(--color-warning)"
-                            : "var(--color-hazard)",
-                        }}
-                      />
+              {moduleScores.map((s) => {
+                const href = MODULE_HREF[s.module];
+                const label = MODULE_LABEL[s.module] ?? s.module.replace(/_/g, " ");
+                const row = (
+                  <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50">
+                    <div className="w-36 shrink-0 text-xs font-medium text-slate-600">
+                      {label}
+                    </div>
+                    <div className="flex-1">
+                      <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${s.percentage}%`,
+                            background:
+                              s.percentage >= 80 ? "var(--color-safe)"
+                              : s.percentage >= 60 ? "var(--color-warning)"
+                              : "var(--color-hazard)",
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div
+                      className="w-10 text-right text-sm font-bold"
+                      style={{
+                        color:
+                          s.percentage >= 80 ? "var(--color-safe)"
+                          : s.percentage >= 60 ? "var(--color-warning)"
+                          : "var(--color-hazard)",
+                      }}
+                    >
+                      {s.percentage}%
                     </div>
                   </div>
-                  <div
-                    className="w-10 text-right text-sm font-bold"
-                    style={{
-                      color:
-                        s.percentage >= 80 ? "var(--color-safe)"
-                        : s.percentage >= 60 ? "var(--color-warning)"
-                        : "var(--color-hazard)",
-                    }}
-                  >
-                    {s.percentage}%
-                  </div>
-                </div>
-              ))}
+                );
+                return href
+                  ? <Link key={s.id} href={href} className="block">{row}</Link>
+                  : <div key={s.id}>{row}</div>;
+              })}
               {moduleScores.length === 0 && <Empty>No compliance scores yet.</Empty>}
             </div>
           </Card>
@@ -220,7 +314,7 @@ export default async function DashboardPage() {
             {highRiskChems.map((c) => (
               <Link
                 key={c.id}
-                href="/chemicals"
+                href={`/chemicals/${c.id}`}
                 className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
               >
                 <FlaskConical className="h-3.5 w-3.5" />
@@ -230,7 +324,7 @@ export default async function DashboardPage() {
             {overdueEquipment.map((e) => (
               <Link
                 key={e.id}
-                href="/monitoring"
+                href={`/monitoring/${e.id}`}
                 className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
               >
                 <Clock className="h-3.5 w-3.5" />
@@ -255,13 +349,13 @@ export default async function DashboardPage() {
             />
             <div className="divide-y divide-slate-100">
               {openCapas.slice(0, 5).map((c) => (
-                <div key={c.id} className="flex items-center gap-3 px-4 py-2.5">
+                <Link key={c.id} href={`/capa/${c.id}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors">
                   <CapaStatusBadge status={c.status} />
                   <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{c.title}</span>
                   <span className="shrink-0 text-xs text-slate-400">
                     {c.due_date ? formatDate(c.due_date) : "No due date"}
                   </span>
-                </div>
+                </Link>
               ))}
               {openCapas.length === 0 && <Empty>All CAPAs closed.</Empty>}
             </div>
@@ -318,7 +412,7 @@ export default async function DashboardPage() {
             />
             <div className="divide-y divide-slate-100">
               {upcomingAudits.map((a) => (
-                <div key={a.id} className="flex items-center gap-3 px-4 py-2.5">
+                <Link key={a.id} href={`/audits/${a.id}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors">
                   <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
                     {a.type.replace(/_/g, " ").toUpperCase()}
                   </span>
@@ -326,9 +420,84 @@ export default async function DashboardPage() {
                   <span className="shrink-0 text-xs text-slate-400">
                     {formatDate(a.scheduled_date)}
                   </span>
-                </div>
+                </Link>
               ))}
               {upcomingAudits.length === 0 && <Empty>No upcoming audits scheduled.</Empty>}
+            </div>
+          </Card>
+
+          {/* OSHA Safety Rates */}
+          <Card>
+            <CardHeader
+              title="OSHA Safety Rates"
+              subtitle="From OSHA 300 Log — confirmed recordable cases YTD"
+              right={
+                <Link href="/osha" className="text-xs font-medium text-blue-600 hover:underline">
+                  OSHA Logs →
+                </Link>
+              }
+            />
+            <div className="divide-y divide-slate-100">
+              {[
+                { label: "TRIR", value: trir, sub: "Total Recordable Incident Rate · per 100 FTE", warn: parseFloat(trir) > 3.0 },
+                { label: "DART Rate", value: dart, sub: "Days Away/Restricted/Transfer · per 100 FTE", warn: parseFloat(dart) > 1.8 },
+                { label: "Recordable Cases YTD", value: String(oshaCasesYtd.length), sub: `${dartCases.length} days-away or restricted`, warn: false },
+                { label: "Severe Injuries (24-hr reportable)", value: String(severeOsha), sub: "Hospitalizations, fatalities", warn: severeOsha > 0 },
+              ].map((row) => (
+                <div key={row.label} className="flex items-center gap-3 px-4 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-slate-700">{row.label}</div>
+                    <div className="text-[10.5px] text-slate-400 leading-snug">{row.sub}</div>
+                  </div>
+                  <div className={`shrink-0 text-lg font-extrabold tabular-nums ${row.warn ? "text-red-600" : "text-slate-800"}`}>
+                    {row.value}
+                    {row.warn && <span className="ml-1 text-xs font-normal text-red-400">⚠</span>}
+                  </div>
+                </div>
+              ))}
+              {/* DART benchmark comparison */}
+              <div className="px-4 py-3 bg-slate-50/60">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-2.5">DART vs. Industry (R&amp;D Biotech avg 1.8)</div>
+                {[
+                  { label: tenantName.split(" ")[0], val: parseFloat(dart), color: parseFloat(dart) <= 1.8 ? "bg-emerald-500" : "bg-red-500" },
+                  { label: "Industry", val: 1.8, color: "bg-slate-400" },
+                ].map((row) => (
+                  <div key={row.label} className="flex items-center gap-2 mb-1.5">
+                    <div className="w-14 text-[10.5px] text-slate-600">{row.label}</div>
+                    <div className="flex-1 h-3 bg-slate-200 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${row.color} transition-all`} style={{ width: `${Math.min((row.val / 4) * 100, 100)}%` }} />
+                    </div>
+                    <div className="w-7 text-xs font-bold text-right text-slate-700">{row.val.toFixed(2)}</div>
+                  </div>
+                ))}
+                <div className="text-[9px] text-slate-400 mt-1">
+                  {parseFloat(dart) <= 1.8 ? "✓ Below industry average — favorable" : "⚠ Above industry average — monitor"}
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Team Action Backlog */}
+          <Card>
+            <CardHeader title="Team Action Backlog" subtitle="Pending items across all modules" />
+            <div className="divide-y divide-slate-100">
+              {[
+                { label: "Open CAPAs",           count: openCapas.length,       warn: overdueCapas.length > 0, sub: overdueCapas.length > 0 ? `${overdueCapas.length} overdue` : "On track", href: "/capa" },
+                { label: "Open Incidents",        count: openIncidents.length,   warn: openIncidents.length > 3, sub: openIncidents.filter(i=>i.status==="under_investigation").length + " under investigation", href: "/incidents" },
+                { label: "AI Findings to Review", count: pendingFindings.length, warn: pendingFindings.length > 5, sub: "Awaiting human acceptance", href: "/ai" },
+                { label: "Overdue Equipment",     count: overdueEquipment.length, warn: overdueEquipment.length > 0, sub: "Calibration or inspection due", href: "/monitoring" },
+                { label: "Training Expiring (30d)", count: expiringTraining.length, warn: expiringTraining.length > 0, sub: "Certifications expiring soon", href: "/training" },
+              ].map((item) => (
+                <Link key={item.label} href={item.href} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-slate-700">{item.label}</div>
+                    <div className="text-[10.5px] text-slate-400">{item.sub}</div>
+                  </div>
+                  <div className={`shrink-0 text-lg font-extrabold tabular-nums ${item.warn ? "text-red-600" : item.count === 0 ? "text-emerald-600" : "text-slate-800"}`}>
+                    {item.count}
+                  </div>
+                </Link>
+              ))}
             </div>
           </Card>
 
@@ -345,7 +514,7 @@ export default async function DashboardPage() {
             />
             <div className="divide-y divide-slate-100">
               {openIncidents.map((i) => (
-                <div key={i.id} className="flex items-center gap-3 px-4 py-2.5">
+                <Link key={i.id} href={`/incidents/${i.id}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors">
                   <AlertTriangle
                     className="h-4 w-4 shrink-0"
                     style={{
@@ -356,7 +525,7 @@ export default async function DashboardPage() {
                   />
                   <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{i.title}</span>
                   <span className="shrink-0 text-xs text-slate-400">{relativeTime(i.occurred_at)}</span>
-                </div>
+                </Link>
               ))}
               {openIncidents.length === 0 && <Empty>No open incidents.</Empty>}
             </div>
@@ -379,6 +548,8 @@ export default async function DashboardPage() {
               { href: "/waste",      label: "Waste Management",       icon: "♻" },
               { href: "/monitoring", label: "Monitoring & Equipment", icon: "📡" },
               { href: "/incidents",  label: "Incident Reporting",     icon: "⚠" },
+              { href: "/osha",       label: "OSHA Logs",              icon: "📋" },
+              { href: "/ai",         label: "AI Assistant",           icon: "🧠" },
               { href: "/reports",    label: "Reports & Analytics",    icon: "📊" },
             ].map(({ href, label, icon }) => (
               <Link

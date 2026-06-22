@@ -837,7 +837,7 @@ export async function getRiskGraph(siteId?: string): Promise<RiskGraph> {
     proofs: proofs.filter((p) => cellIds.has(p.cell_id)),
     events,
     behaviors,
-    findings: findings.filter((f) => cellIds.has(f.cell_id)),
+    findings: findings.filter((f) => f.cell_id !== null && cellIds.has(f.cell_id)),
     vela,
   });
 }
@@ -942,7 +942,7 @@ export async function getVelaInsights(): Promise<VelaInsight[]> {
   if (MOCK_MODE) {
     const derived = deriveVelaInsights(store.cells, store.sites, store.findings, store.edges, new Date().toISOString());
     const seen = new Set(derived.map((d) => d.pattern));
-    return [...derived, ...store.vela.filter((v) => !seen.has(v.pattern))];
+    return [...derived, ...store.velaInsights.filter((v) => !seen.has(v.pattern))];
   }
   const c = await sb();
   const { data } = await c!.from("vela_insights").select("*");

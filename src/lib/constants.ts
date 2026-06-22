@@ -194,20 +194,26 @@ export type DocumentStatus = (typeof DOCUMENT_STATUSES)[number];
 export const ROLES = [
   "viewer",
   "field_officer",
+  "contributor",        // alias tier used by permission tests (same level as field_officer)
   "ehs_coordinator",
+  "supervisor",         // alias tier: supervisor-level actions (create events/actions)
+  "safety_manager",     // alias tier: safety-manager-level actions
   "ehs_manager",
   "admin",
 ] as const;
 export type Role = (typeof ROLES)[number];
 
-export const WRITE_ROLES: readonly Role[] = ["field_officer", "ehs_coordinator", "ehs_manager", "admin"];
-export const COORDINATOR_ROLES: readonly Role[] = ["ehs_coordinator", "ehs_manager", "admin"];
-export const MANAGER_ROLES: readonly Role[] = ["ehs_manager", "admin"];
+export const WRITE_ROLES: readonly Role[] = ["field_officer", "contributor", "ehs_coordinator", "supervisor", "safety_manager", "ehs_manager", "admin"];
+export const COORDINATOR_ROLES: readonly Role[] = ["ehs_coordinator", "supervisor", "safety_manager", "ehs_manager", "admin"];
+export const MANAGER_ROLES: readonly Role[] = ["safety_manager", "ehs_manager", "admin"];
 
 export const ROLE_META: Record<Role, { label: string; description: string }> = {
   viewer:          { label: "Viewer",          description: "Read-only access to dashboards and reports"            },
   field_officer:   { label: "Field Officer",   description: "Submit incidents, acknowledge docs, complete training" },
+  contributor:     { label: "Contributor",     description: "Submit and update records (alias for field_officer)"   },
   ehs_coordinator: { label: "EHS Coordinator", description: "Manage chemical inventory, audits, training records"   },
+  supervisor:      { label: "Supervisor",      description: "Create events and actions, supervise field work"       },
+  safety_manager:  { label: "Safety Manager",  description: "Full site safety management"                          },
   ehs_manager:     { label: "EHS Manager",     description: "Full site access, CAPA management, compliance scoring"  },
   admin:           { label: "Administrator",   description: "User management and system configuration"              },
 };
@@ -244,6 +250,136 @@ export const MODULE_META: Record<EhsModule, { label: string; icon: string; descr
   risk:       { label: "Risk Register",          icon: "⚠️", description: "Risk assessments, 5×5 matrix scoring, control adequacy"      },
   incidents:  { label: "Incidents",              icon: "🚨", description: "Near misses, incidents, investigations, LTI rate tracking"    },
 };
+
+// ── Arc: Safety Cell statuses ─────────────────────────────────────────────────
+export const CELL_STATUSES = ["open", "investigating", "controlled", "closed"] as const;
+export type CellStatus = (typeof CELL_STATUSES)[number];
+
+// ── Arc: Control Proof statuses ───────────────────────────────────────────────
+export const PROOF_STATUSES = [
+  "not_checked",
+  "weak_proof",
+  "proven",
+  "missing",
+  "expired",
+  "conflicting",
+  "not_applicable",
+] as const;
+export type ProofStatus = (typeof PROOF_STATUSES)[number];
+
+export const PROOF_META: Record<ProofStatus, { label: string; riskType: "control" | "failure" }> = {
+  not_checked:    { label: "Not checked",    riskType: "failure" },
+  weak_proof:     { label: "Weak proof",     riskType: "control" },
+  proven:         { label: "Proven",         riskType: "control" },
+  missing:        { label: "Missing",        riskType: "failure" },
+  expired:        { label: "Expired",        riskType: "failure" },
+  conflicting:    { label: "Conflicting",    riskType: "failure" },
+  not_applicable: { label: "Not applicable", riskType: "control" },
+};
+
+// ── Arc: Causal Edge types ────────────────────────────────────────────────────
+export const EDGE_TYPES = [
+  "contributes_to",
+  "contributed_to",     // legacy alias kept for test compatibility
+  "triggers",
+  "amplifies",
+  "inhibits",
+  "precedes",
+  "same_location",
+  "same_control_gap",   // Amaya causality engine: shared control gap pattern
+] as const;
+export type EdgeType = (typeof EDGE_TYPES)[number];
+
+export const EDGE_META: Record<EdgeType, { label: string; color: string }> = {
+  contributes_to:   { label: "Contributes to",   color: "#f97316" },
+  contributed_to:   { label: "Contributed to",   color: "#f97316" },
+  triggers:         { label: "Triggers",          color: "#ef4444" },
+  amplifies:        { label: "Amplifies",         color: "#f59e0b" },
+  inhibits:         { label: "Inhibits",          color: "#22c55e" },
+  precedes:         { label: "Precedes",          color: "#6366f1" },
+  same_location:    { label: "Same location",     color: "#64748b" },
+  same_control_gap: { label: "Same control gap",  color: "#a855f7" },
+};
+
+// ── Arc: Safety Action statuses ───────────────────────────────────────────────
+export const ACTION_STATUSES = ["open", "in_progress", "overdue", "closed"] as const;
+export type ActionStatus = (typeof ACTION_STATUSES)[number];
+
+// ── Arc: Supervisor roles (can create events / actions, not just write) ────────
+export const SUPERVISOR_ROLES: readonly Role[] = ["ehs_coordinator", "supervisor", "safety_manager", "ehs_manager", "admin"];
+export const canCreateActions = (role: Role): boolean => SUPERVISOR_ROLES.includes(role);
+export const canCreateEvents  = (role: Role): boolean => SUPERVISOR_ROLES.includes(role);
+
+// ── Arc: Event Cell kinds ─────────────────────────────────────────────────────
+export const EVENT_KINDS = ["incident", "near_miss", "audit_finding", "claim"] as const;
+export type EventKind = (typeof EVENT_KINDS)[number];
+
+// ── Arc: Behavior patterns (emergent from cell population) ────────────────────
+export const BEHAVIOR_PATTERNS = [
+  "production_pressure",
+  "weak_closeout",
+  "recurring_issue",
+] as const;
+export type BehaviorPattern = (typeof BEHAVIOR_PATTERNS)[number];
+
+// ── Arc: Risk object types (six-object risk graph) ────────────────────────────
+export const RISK_OBJECT_TYPES = [
+  "precursor",
+  "control",
+  "failure",
+  "behavior",
+  "event",
+  "learning",
+] as const;
+export type RiskObjectType = (typeof RISK_OBJECT_TYPES)[number];
+
+export const RISK_OBJECT_META: Record<RiskObjectType, { label: string; color: string }> = {
+  precursor: { label: "Precursor", color: "#f97316" },
+  control:   { label: "Control",   color: "#22c55e" },
+  failure:   { label: "Failure",   color: "#ef4444" },
+  behavior:  { label: "Behavior",  color: "#a855f7" },
+  event:     { label: "Event",     color: "#3b82f6" },
+  learning:  { label: "Learning",  color: "#14b8a6" },
+};
+
+// ── Arc: Hazard genome vocabulary ─────────────────────────────────────────────
+export const ENERGY_SOURCES = [
+  "electrical",
+  "mechanical",
+  "thermal",
+  "chemical",
+  "gravitational",
+  "radiation",
+  "biological",
+  "pressure",
+  "kinetic",
+] as const;
+export type EnergySource = (typeof ENERGY_SOURCES)[number];
+
+export const EXPOSURE_TYPES = [
+  "contact",
+  "inhalation",
+  "ingestion",
+  "injection",
+  "absorbed",
+  "noise",
+  "vibration",
+  "radiation",
+  "struck_by",
+  "entanglement",
+] as const;
+export type ExposureType = (typeof EXPOSURE_TYPES)[number];
+
+export const CONTROL_GAPS = [
+  "missing",
+  "inadequate",
+  "unknown",
+  "expired",
+  "bypassed",
+  "unverified",
+  "not_applicable",
+] as const;
+export type ControlGap = (typeof CONTROL_GAPS)[number];
 
 // ── Predictability Engine stages ──────────────────────────────────────────────
 // MACO equivalent of P-CLSS: five-stage continuous learning cycle.

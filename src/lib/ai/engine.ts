@@ -18,10 +18,12 @@ import "server-only";
 import { MOCK_MODE, hasLiveAi, aiProvider, PROMPT_VERSION } from "@/lib/env";
 import { generateStructuredJson } from "./provider";
 import { recordAiCall } from "./telemetry";
+import { SYSTEM_PROMPT, buildUserPrompt, ANALYSIS_JSON_SCHEMA as ARC_CAUSALITY_SCHEMA } from "./prompt";
+import { aiCellAnalysisOutputSchema } from "@/lib/schemas";
 import { nextId } from "@/lib/data/store";
-import type { Chemical, LegalRequirement, AiFinding, AiAnalysisOutput, PredictabilityForecast } from "@/lib/types";
+import type { Chemical, LegalRequirement, AiFinding, AiAnalysisOutput, CausalityOutput, PredictabilityForecast, SafetyCell } from "@/lib/types";
 import { riskLevelFromScore, COMPLIANCE_STATUS_META } from "@/lib/constants";
-import type { Severity, RiskLevel } from "@/lib/constants";
+import type { RiskLevel, EdgeType } from "@/lib/constants";
 
 const MODEL_TIMEOUT_MS = 30_000;
 
@@ -364,12 +366,176 @@ async function runAnalysis(p: RunParams): Promise<AiFinding> {
     id: nextId("ai"),
     tenant_id: p.tenant_id,
     site_id: p.site_id,
+    cell_id: null,
     job: p.job,
     source_type: p.source_type,
     source_id: p.source_id,
     model,
     prompt_version: PROMPT_VERSION,
     input_summary: p.input_summary,
+    output,
+    confidence,
+    review_status: "pending",
+    human_review_required: output.human_review_required,
+    created_at: new Date().toISOString(),
+  };
+}
+
+// ── Arc Safety Cell analysis (AMAYA Causality Engine) ────────────────────────
+
+/**
+ * Derive a confidence score from the SHAPE of the causality analysis output.
+ * Grounded analyses name multiple causal factors, propose prevention, and back
+ * edges with confidence. A long missing_data list lowers confidence because it
+ * signals the model was uncertain. Returns 0.3–0.95.
+ */
+function deriveCellConfidence(o: CausalityOutput): number {
+  let s = 0.45;
+  if (o.causal_factors.length >= 2)           s += 0.12;
+  if (o.prevention.length >= 1)               s += 0.13;
+  if (o.plain_language_summary.length >= 40)  s += 0.05;
+  if (o.suggested_edges.length > 0) {
+    const avg = o.suggested_edges.reduce((n, e) => n + e.confidence, 0) / o.suggested_edges.length;
+    s += avg * 0.15;
+  }
+  s -= Math.min(0.18, o.missing_data.length * 0.06);
+  return Math.max(0.3, Math.min(0.95, Math.round(s * 100) / 100));
+}
+
+/**
+ * Deterministic heuristic for when the live LLM is unavailable. Produces the
+ * same shape as the model: hazard_genome, causal_factors, suggested_edges, and
+ * counterfactual prevention steps — all derived directly from the cell's genome.
+ */
+function cellHeuristicAnalysis(cell: SafetyCell, candidates: SafetyCell[]): CausalityOutput {
+  const g = cell.hazard_genome;
+  const highRisk = cell.severity === "high" || cell.severity === "critical";
+
+  const suggested_edges = candidates
+    .map((c): CausalityOutput["suggested_edges"][number] | null => {
+      let type: EdgeType | null = null;
+      let confidence = 0;
+      if (c.location_id === cell.location_id) {
+        type = "same_location";
+        confidence = 0.75;
+      } else if (c.hazard_genome.controlGap === g.controlGap && c.hazard_genome.exposureType === g.exposureType) {
+        type = "same_control_gap";
+        confidence = 0.66;
+      } else if (c.hazard_genome.trigger === g.trigger) {
+        type = "contributed_to";
+        confidence = 0.55;
+      }
+      return type
+        ? { target_cell_id: c.id, type, confidence, rationale: `Shared ${type.replace(/_/g, " ")} with "${c.title}".` }
+        : null;
+    })
+    .filter((e): e is CausalityOutput["suggested_edges"][number] => e !== null)
+    .slice(0, 3);
+
+  const gapPhrase: Record<string, string> = {
+    missing:    "the required control was absent",
+    weak:       "the control was present but not robust",
+    expired:    "the control's verification had lapsed",
+    bypassed:   "the control was deliberately defeated",
+    unverified: "the control was claimed but never proven",
+  };
+
+  return {
+    risk_score: cell.risk_score,
+    hazard_genome: { ...g, environment: g.environment ?? "" },
+    missing_data: [
+      g.controlGap === "unverified"
+        ? "Direct proof the control was in place for this task"
+        : "Time-of-day and crew load at observation",
+      "Whether a similar event was previously reported at this location",
+    ],
+    causal_factors: [
+      `${g.energySource} energy with ${g.exposureType.replace(/_/g, " ")} exposure`,
+      `Trigger: ${g.trigger}`,
+      `Control gap: ${gapPhrase[g.controlGap] ?? g.controlGap}`,
+    ],
+    suggested_edges,
+    prevention: [
+      {
+        action: `Require proof of the ${g.controlGap === "unverified" ? "claimed" : "missing"} control before this task proceeds`,
+        counterfactual: `If the control had been ${g.controlGap === "missing" ? "in place" : "verified"}, the ${g.exposureType.replace(/_/g, " ")} exposure would not have been open.`,
+        rationale: "Converts a paper/assumed control into a proven control at the point of work.",
+      },
+      ...(suggested_edges.some((e) => e.type === "same_location")
+        ? [{
+            action: "Harden the location: physical barrier or geofence alert at this point",
+            counterfactual: "A fixed control removes the recurring conflict that the cluster shows at this location.",
+            rationale: "Repeat events at the same location indicate the behavioral control is not holding.",
+          }]
+        : []),
+    ],
+    plain_language_summary: `${cell.title}. The driving factor is that ${gapPhrase[g.controlGap] ?? g.controlGap}, triggered by ${g.trigger}. Make the control provable at the point of work${suggested_edges.some((e) => e.type === "same_location") ? " and harden this location, which keeps recurring" : ""}.`,
+    human_review_required: highRisk,
+  };
+}
+
+/**
+ * Analyse a single Safety Cell using the AMAYA Causality Engine and propose
+ * causal links to nearby cells. In live mode this calls the LLM via the Arc
+ * causality schema; in mock/fallback mode a deterministic heuristic runs.
+ * The result is always stored as PENDING for human review.
+ */
+export async function analyzeCell(cell: SafetyCell, candidates: SafetyCell[]): Promise<AiFinding> {
+  let output: CausalityOutput;
+  let model: string;
+  let confidence: number;
+
+  if (!MOCK_MODE && hasLiveAi()) {
+    try {
+      const { data, model: m } = await generateStructuredJson({
+        system: SYSTEM_PROMPT,
+        user: buildUserPrompt(cell, candidates.slice(0, 5)),
+        schema: ARC_CAUSALITY_SCHEMA,
+        maxTokens: 1400,
+        timeoutMs: MODEL_TIMEOUT_MS,
+      });
+
+      const parsed = aiCellAnalysisOutputSchema.safeParse(data);
+      if (!parsed.success) {
+        console.error("[safetyiq-arc] causality analysis failed schema validation", {
+          cell_id: cell.id,
+          issues: parsed.error.flatten(),
+          raw: data,
+        });
+        throw new Error("model output failed causality schema validation");
+      }
+      output = parsed.data as CausalityOutput;
+      model = m;
+      confidence = deriveCellConfidence(output);
+    } catch (err) {
+      console.error("[safetyiq-arc] causality analysis fell back to heuristic", { cell_id: cell.id, error: String(err) });
+      recordAiCall({ provider: aiProvider(), model: "safetyiq-heuristic-fallback", ms: 0, inputTokens: 0, outputTokens: 0, ok: false });
+      output = cellHeuristicAnalysis(cell, candidates);
+      model = "safetyiq-heuristic-fallback";
+      confidence = Math.min(0.8, deriveCellConfidence(output));
+    }
+  } else {
+    output = cellHeuristicAnalysis(cell, candidates);
+    model = "safetyiq-heuristic-mock";
+    confidence = Math.min(0.8, deriveCellConfidence(output));
+  }
+
+  // Safety governance: force human review for high/critical severity regardless of model output.
+  if (cell.severity === "critical" || cell.severity === "high") {
+    output.human_review_required = true;
+  }
+
+  return {
+    id: nextId("ai"),
+    tenant_id: cell.tenant_id,
+    site_id: cell.site_id,
+    cell_id: cell.id,
+    job: "analyze_cell",
+    source_type: "safety_cell",
+    source_id: cell.id,
+    model,
+    prompt_version: PROMPT_VERSION,
+    input_summary: `Cell: ${cell.title} | ${cell.hazard_genome.energySource}/${cell.hazard_genome.exposureType} | gap: ${cell.hazard_genome.controlGap}`,
     output,
     confidence,
     review_status: "pending",

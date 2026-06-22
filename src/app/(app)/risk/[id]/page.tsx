@@ -18,7 +18,7 @@ export default async function RiskDetailPage({ params }: { params: Promise<{ id:
         title={risk.title}
         subtitle={`Risk · ${risk.category} · Score ${risk.risk_score}/25`}
         actions={
-          <Link href="/risk" className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+          <Link href="/risk" className="print:hidden flex items-center gap-1.5 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
             <ArrowLeft className="h-4 w-4" /> Back to Risk Register
           </Link>
         }

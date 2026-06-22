@@ -20,7 +20,9 @@ describe("AI Gateway pipeline", () => {
   });
 
   it("passes every gateway on the healthy fixture dataset (nothing in the reject queue)", async () => {
-    const r = await runGatewayPipeline();
+    const dataset = await loadGatewayDataset();
+    const r = evaluateGateways(dataset, NOW);
+    console.log("REJECTS:", JSON.stringify(r.rejectQueue));
     expect(r.counts.fail).toBe(0);
     expect(["pass", "warn"]).toContain(r.overall);
     expect(r.gateways.every((g) => g.status !== "fail")).toBe(true);

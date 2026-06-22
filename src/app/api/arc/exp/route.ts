@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
 
 const schema = z.object({
   site_id: z.string().min(1),
-  source: z.enum(["ai_interview", "walk_floor", "debrief"]),
+  source: z.enum(["interview", "walk_floor", "incident_debrief", "manual"]),
   subject: z.string().min(1),
   summary: z.string().min(1),
   hazard_memory: z

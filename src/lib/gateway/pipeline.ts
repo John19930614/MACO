@@ -18,11 +18,12 @@ import {
   getIncidents, getCapaActions, getRiskAssessments, getAudits,
   getChemicals, getWasteStreams, getEquipment,
 } from "@/lib/data/ehsRepo";
+import { getCells } from "@/lib/data/repo";
 import {
   SEVERITIES, CAPA_STATUSES, AUDIT_STATUSES, INCIDENT_TYPES,
   EQUIPMENT_STATUSES, RISK_LEVELS, riskLevelFromScore,
 } from "@/lib/constants";
-import type { Incident, CapaAction, RiskAssessment, Audit, Chemical, WasteStream, Equipment } from "@/lib/types";
+import type { Incident, CapaAction, RiskAssessment, Audit, Chemical, WasteStream, Equipment, SafetyCell } from "@/lib/types";
 
 export type CheckStatus = "pass" | "warn" | "fail";
 
@@ -64,6 +65,11 @@ export interface EhsDatabaseStats {
   activeAudits: number;
   chemicals: number;
   equipment: number;
+  cells: number;
+  platforms: number;
+  riskObjects: number;
+  bridges: number;
+  inchpins: number;
 }
 
 export interface GatewayReport {
@@ -87,6 +93,7 @@ export interface EhsDataset {
   chemicals: Chemical[];
   wasteStreams: WasteStream[];
   equipment: Equipment[];
+  cells: SafetyCell[];
 }
 
 const worst = (statuses: CheckStatus[]): CheckStatus =>
@@ -104,7 +111,7 @@ const verdict = (
     : { status: sev, detail: badMsg(bad) };
 
 export function evaluateGateways(d: EhsDataset, now: number): GatewayReport {
-  const { incidents, capas, risks, audits, chemicals, wasteStreams, equipment } = d;
+  const { incidents, capas, risks, audits, chemicals, wasteStreams, equipment, cells } = d;
   const reject: RejectEntry[] = [];
   const rejected = new Set<string>();
   const block = (id: string, kind: string, category: string, reason: string, resolvable = false) => {
@@ -129,8 +136,11 @@ export function evaluateGateways(d: EhsDataset, now: number): GatewayReport {
   const chemRequiredBad = chemicals.filter((c) => !c.name || c.quantity == null || !c.unit || !c.storage_location);
   for (const c of chemRequiredBad) block(c.id, "Chemical", "Gateway 1 · Required Fields", "Missing name, quantity, unit, or storage location");
 
-  const totalRecords = incidents.length + capas.length + risks.length + audits.length + chemicals.length;
-  const totalRequired = incRequiredBad.length + capaRequiredBad.length + riskRequiredBad.length + auditRequiredBad.length + chemRequiredBad.length;
+  const cellSchemaBad = cells.filter((c) => !c.title || !c.task || !c.hazard_genome.energySource || !c.hazard_genome.exposureType || !c.severity || !c.status);
+  for (const c of cellSchemaBad) block(c.id, "Safety Cell", "Gateway 1 · Required Fields", "Missing title, task, hazard genome fields, severity, or status");
+
+  const totalRecords = incidents.length + capas.length + risks.length + audits.length + chemicals.length + cells.length;
+  const totalRequired = incRequiredBad.length + capaRequiredBad.length + riskRequiredBad.length + auditRequiredBad.length + chemRequiredBad.length + cellSchemaBad.length;
 
   const enumBadInc = incidents.filter((i) => !SEVERITIES.includes(i.severity) || !INCIDENT_TYPES.includes(i.incident_type));
   const enumBadCapa = capas.filter((c) => !SEVERITIES.includes(c.severity) || !CAPA_STATUSES.includes(c.status));
@@ -158,6 +168,8 @@ export function evaluateGateways(d: EhsDataset, now: number): GatewayReport {
   g1.status = worst(g1.checks.map((c) => c.status));
 
   // ── Gateway 2 — Business Rule Validation ───────────────────────────────────
+  const cellRangeBad = cells.filter((c) => c.likelihood < 1 || c.likelihood > 5 || c.risk_score < 0 || c.risk_score > 100);
+
   const riskScoreBad = risks.filter((r) => Math.abs(r.risk_score - r.likelihood_score * r.consequence_score) > 1);
   for (const r of riskScoreBad) block(r.id, "Risk Assessment", "Gateway 2 · Score", `risk_score ${r.risk_score} ≠ ${r.likelihood_score}×${r.consequence_score}`);
 
@@ -189,7 +201,7 @@ export function evaluateGateways(d: EhsDataset, now: number): GatewayReport {
       { id: "g2_risklevel", label: "Risk level classification", ...verdict(riskLevelBad.length, risks.length, "warn", "risk levels match score ranges", (n) => `${n} assessment(s) with misclassified risk level`) },
       { id: "g2_capadue",   label: "CAPA due-date rule",        ...verdict(capaOpenNoDue.length, capas.length, "warn", "all open CAPAs have a due date", (n) => `${n} open CAPA(s) missing a due date`) },
       { id: "g2_duplicate", label: "Duplicate detection",       ...verdict(nearDupes, totalRecords, "warn", "no near-duplicate records found", (n) => `${n} near-duplicate record(s) flagged`) },
-      { id: "g2_workflow",  label: "Workflow state validation",  ...verdict(totalEnumBad, totalRecords, "fail", "all workflow states are valid enum values", (n) => `${n} record(s) in an invalid workflow state`) },
+      { id: "g2_workflow",  label: "Workflow state & range validation", ...verdict(totalEnumBad + cellRangeBad.length, totalRecords, "fail", "all workflow states valid and cell ranges within bounds", (n) => `${n} record(s) with invalid workflow state or out-of-range values`) },
     ],
     status: "pass",
   };
@@ -202,7 +214,7 @@ export function evaluateGateways(d: EhsDataset, now: number): GatewayReport {
   for (const c of overdueCapas) block(c.id, "CAPA", "Gateway 3 · Overdue", `CAPA past due date ${c.due_date}`, true);
 
   const highRisks = risks.filter((r) => r.risk_level === "extreme" || r.risk_level === "high");
-  const riskCapaIds = new Set(capas.filter((c) => c.source_type === "risk" && c.source_id).map((c) => c.source_id!));
+  const riskCapaIds = new Set(capas.filter((c) => c.source_type === "risk_assessment" && c.source_id).map((c) => c.source_id!));
   const highRiskNoAction = highRisks.filter((r) => !riskCapaIds.has(r.id));
 
   const equipOverdue = equipment.filter(
@@ -257,6 +269,7 @@ export function evaluateGateways(d: EhsDataset, now: number): GatewayReport {
   const finalStatus = worst(finalReview.map((c) => c.status));
 
   // ── EHS Database stats ─────────────────────────────────────────────────────
+  const uniqueSiteIds = new Set(cells.map((c) => c.site_id));
   const stats: EhsDatabaseStats = {
     incidents: incidents.length,
     openCapas: openCapas.length,
@@ -264,6 +277,11 @@ export function evaluateGateways(d: EhsDataset, now: number): GatewayReport {
     activeAudits: audits.filter((a) => a.status === "scheduled" || a.status === "in_progress").length,
     chemicals: chemicals.length,
     equipment: equipment.length,
+    cells: cells.length,
+    platforms: uniqueSiteIds.size,
+    riskObjects: cells.filter((c) => c.severity === "high" || c.severity === "critical").length,
+    bridges: 0,
+    inchpins: 0,
   };
 
   const allChecks: CheckStatus[] = [...g1.checks, ...g2.checks, ...g3.checks, ...finalReview].map((c) => c.status);
@@ -285,7 +303,7 @@ export function evaluateGateways(d: EhsDataset, now: number): GatewayReport {
   };
 }
 
-export async function loadEhsDataset(): Promise<EhsDataset> {
+export async function loadEhsDataset(): Promise<Omit<EhsDataset, "cells">> {
   const [incidents, capas, risks, audits, chemicals, wasteStreams, equipment] = await Promise.all([
     getIncidents(),
     getCapaActions(),
@@ -298,7 +316,12 @@ export async function loadEhsDataset(): Promise<EhsDataset> {
   return { incidents, capas, risks, audits, chemicals, wasteStreams, equipment };
 }
 
+export async function loadGatewayDataset(): Promise<EhsDataset> {
+  const [ehs, cells] = await Promise.all([loadEhsDataset(), getCells()]);
+  return { ...ehs, cells };
+}
+
 export async function runGatewayPipeline(): Promise<GatewayReport> {
-  const dataset = await loadEhsDataset();
+  const dataset = await loadGatewayDataset();
   return evaluateGateways(dataset, Date.now());
 }

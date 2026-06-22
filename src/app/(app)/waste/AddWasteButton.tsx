@@ -1,9 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal, Field, Input, Select, Textarea, SubmitRow } from "@/components/modals/Modal";
 import { addWasteStream } from "@/lib/actions/ehs";
+import { playCreateSound } from "@/lib/sounds";
 
 export function AddWasteButton() {
   const [open, setOpen] = useState(false);
@@ -14,7 +15,7 @@ export function AddWasteButton() {
     e.preventDefault();
     setPending(true);
     const res = await addWasteStream(null, new FormData(e.currentTarget));
-    if (res.ok) { setOpen(false); router.refresh(); }
+    if (res.ok) { playCreateSound(); setOpen(false); router.refresh(); }
     setPending(false);
   }
 
@@ -84,3 +85,4 @@ export function AddWasteButton() {
     </>
   );
 }
+

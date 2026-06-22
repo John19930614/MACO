@@ -12,7 +12,8 @@ import {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-const siteIds   = new Set(fx.MOCK_SITES.map(s => s.id));
+const tenantIds  = new Set(fx.MOCK_TENANTS.map(t => t.id));
+const siteIds    = new Set(fx.MOCK_SITES.map(s => s.id));
 const profileIds = new Set(fx.MOCK_PROFILE_LIST.map(p => p.id));
 const chemIds   = new Set(fx.MOCK_CHEMICALS.map(c => c.id));
 const auditIds  = new Set(fx.MOCK_AUDITS.map(a => a.id));
@@ -25,24 +26,27 @@ const legalIds  = new Set(fx.MOCK_LEGAL_REQUIREMENTS.map(l => l.id));
 // ── Tenant ────────────────────────────────────────────────────────────────────
 
 describe("Tenant fixtures", () => {
-  it("has exactly one demo tenant", () => {
-    expect(fx.MOCK_TENANTS).toHaveLength(1);
+  it("BioStar demo tenant exists", () => {
+    expect(fx.MOCK_TENANTS.some(t => t.id === fx.MOCK_TENANT_ID)).toBe(true);
   });
 
   it("demo tenant ID matches the exported constant", () => {
-    expect(fx.MOCK_TENANTS[0].id).toBe(fx.MOCK_TENANT_ID);
+    expect(fx.MOCK_TENANTS.find(t => t.id === fx.MOCK_TENANT_ID)?.id).toBe(fx.MOCK_TENANT_ID);
   });
 
   it("demo tenant is active", () => {
-    expect(fx.MOCK_TENANTS[0].active).toBe(true);
+    expect(fx.MOCK_TENANTS.find(t => t.id === fx.MOCK_TENANT_ID)?.active).toBe(true);
   });
 });
 
 // ── Profiles ──────────────────────────────────────────────────────────────────
 
 describe("Profile fixtures", () => {
-  it("has 5 profiles (4 tenant + 1 global operator)", () => {
-    expect(fx.MOCK_PROFILE_LIST).toHaveLength(5);
+  it("has 5 BioStar profiles (4 tenant-scoped + 1 global operator)", () => {
+    const biostarAndGlobal = fx.MOCK_PROFILE_LIST.filter(
+      p => p.tenant_id === fx.MOCK_TENANT_ID || p.tenant_id === null,
+    );
+    expect(biostarAndGlobal).toHaveLength(5);
   });
 
   it("all profiles have valid roles", () => {
@@ -57,9 +61,9 @@ describe("Profile fixtures", () => {
     expect(globals[0].id).toBe(fx.MOCK_PROFILES.reliance);
   });
 
-  it("all tenant-scoped profiles belong to the demo tenant", () => {
+  it("all tenant-scoped profiles reference a real tenant", () => {
     for (const p of fx.MOCK_PROFILE_LIST.filter(p => p.tenant_id !== null)) {
-      expect(p.tenant_id).toBe(fx.MOCK_TENANT_ID);
+      expect(tenantIds.has(p.tenant_id!)).toBe(true);
     }
   });
 
@@ -83,9 +87,9 @@ describe("Site fixtures", () => {
     expect(siteIds.has(fx.MOCK_SITE_ID)).toBe(true);
   });
 
-  it("all sites belong to the demo tenant", () => {
+  it("all sites reference a real tenant", () => {
     for (const s of fx.MOCK_SITES) {
-      expect(s.tenant_id).toBe(fx.MOCK_TENANT_ID);
+      expect(tenantIds.has(s.tenant_id)).toBe(true);
     }
   });
 });
@@ -93,9 +97,9 @@ describe("Site fixtures", () => {
 // ── Chemicals ─────────────────────────────────────────────────────────────────
 
 describe("Chemical fixtures", () => {
-  it("all chemicals reference the demo tenant and a real site", () => {
+  it("all chemicals reference a real tenant and a real site", () => {
     for (const c of fx.MOCK_CHEMICALS) {
-      expect(c.tenant_id).toBe(fx.MOCK_TENANT_ID);
+      expect(tenantIds.has(c.tenant_id)).toBe(true);
       expect(siteIds.has(c.site_id)).toBe(true);
     }
   });
@@ -136,9 +140,9 @@ describe("Chemical fixtures", () => {
 // ── Legal Requirements ────────────────────────────────────────────────────────
 
 describe("Legal requirement fixtures", () => {
-  it("all belong to the demo tenant", () => {
+  it("all belong to a real tenant", () => {
     for (const lr of fx.MOCK_LEGAL_REQUIREMENTS) {
-      expect(lr.tenant_id).toBe(fx.MOCK_TENANT_ID);
+      expect(tenantIds.has(lr.tenant_id)).toBe(true);
     }
   });
 
@@ -164,9 +168,9 @@ describe("Legal requirement fixtures", () => {
 // ── Audits ────────────────────────────────────────────────────────────────────
 
 describe("Audit fixtures", () => {
-  it("all belong to the demo tenant and a real site", () => {
+  it("all belong to a real tenant and a real site", () => {
     for (const a of fx.MOCK_AUDITS) {
-      expect(a.tenant_id).toBe(fx.MOCK_TENANT_ID);
+      expect(tenantIds.has(a.tenant_id)).toBe(true);
       expect(siteIds.has(a.site_id)).toBe(true);
     }
   });
@@ -224,9 +228,9 @@ describe("Audit finding fixtures", () => {
 // ── CAPA Actions ──────────────────────────────────────────────────────────────
 
 describe("CAPA action fixtures", () => {
-  it("all belong to the demo tenant and a real site", () => {
+  it("all belong to a real tenant and a real site", () => {
     for (const c of fx.MOCK_CAPA_ACTIONS) {
-      expect(c.tenant_id).toBe(fx.MOCK_TENANT_ID);
+      expect(tenantIds.has(c.tenant_id)).toBe(true);
       expect(siteIds.has(c.site_id)).toBe(true);
     }
   });
@@ -322,9 +326,9 @@ describe("Training record fixtures", () => {
 // ── Documents ─────────────────────────────────────────────────────────────────
 
 describe("Document fixtures", () => {
-  it("all belong to the demo tenant", () => {
+  it("all belong to a real tenant", () => {
     for (const d of fx.MOCK_DOCUMENTS) {
-      expect(d.tenant_id).toBe(fx.MOCK_TENANT_ID);
+      expect(tenantIds.has(d.tenant_id)).toBe(true);
     }
   });
 
@@ -339,9 +343,9 @@ describe("Document fixtures", () => {
 // ── Waste Streams ─────────────────────────────────────────────────────────────
 
 describe("Waste stream fixtures", () => {
-  it("all reference the demo tenant and a real site", () => {
+  it("all reference a real tenant and a real site", () => {
     for (const w of fx.MOCK_WASTE_STREAMS) {
-      expect(w.tenant_id).toBe(fx.MOCK_TENANT_ID);
+      expect(tenantIds.has(w.tenant_id)).toBe(true);
       expect(siteIds.has(w.site_id)).toBe(true);
     }
   });
@@ -357,9 +361,9 @@ describe("Waste stream fixtures", () => {
 // ── Equipment ─────────────────────────────────────────────────────────────────
 
 describe("Equipment fixtures", () => {
-  it("all reference the demo tenant and a real site", () => {
+  it("all reference a real tenant and a real site", () => {
     for (const e of fx.MOCK_EQUIPMENT) {
-      expect(e.tenant_id).toBe(fx.MOCK_TENANT_ID);
+      expect(tenantIds.has(e.tenant_id)).toBe(true);
       expect(siteIds.has(e.site_id)).toBe(true);
     }
   });
@@ -376,9 +380,9 @@ describe("Equipment fixtures", () => {
 // ── Risk Assessments ──────────────────────────────────────────────────────────
 
 describe("Risk assessment fixtures", () => {
-  it("all reference the demo tenant and a real site", () => {
+  it("all reference a real tenant and a real site", () => {
     for (const r of fx.MOCK_RISK_ASSESSMENTS) {
-      expect(r.tenant_id).toBe(fx.MOCK_TENANT_ID);
+      expect(tenantIds.has(r.tenant_id)).toBe(true);
       expect(siteIds.has(r.site_id)).toBe(true);
     }
   });
@@ -407,9 +411,9 @@ describe("Risk assessment fixtures", () => {
 // ── Incidents ─────────────────────────────────────────────────────────────────
 
 describe("Incident fixtures", () => {
-  it("all reference the demo tenant and a real site", () => {
+  it("all reference a real tenant and a real site", () => {
     for (const i of fx.MOCK_INCIDENTS) {
-      expect(i.tenant_id).toBe(fx.MOCK_TENANT_ID);
+      expect(tenantIds.has(i.tenant_id)).toBe(true);
       expect(siteIds.has(i.site_id)).toBe(true);
     }
   });

@@ -48,7 +48,7 @@ export function checkReferentialIntegrity(d: IntegrityInput): IntegrityReport {
   }
 
   // child → parent cell existence + tenant match
-  const childChecks: [string, { cell_id: string; tenant_id: string; id: string }[]][] = [
+  const childChecks: [string, { cell_id: string | null; tenant_id: string; id: string }[]][] = [
     ["control_proofs", d.proofs],
     ["evidence_files", d.evidence],
     ["ai_findings", d.findings],
@@ -56,6 +56,7 @@ export function checkReferentialIntegrity(d: IntegrityInput): IntegrityReport {
   ];
   for (const [table, rows] of childChecks) {
     for (const r of rows) {
+      if (r.cell_id === null) continue; // module-level findings have no cell anchor
       const parent = cellById.get(r.cell_id);
       if (!parent) issues.push(`${table} ${r.id} → orphaned (no cell ${r.cell_id})`);
       else if (r.tenant_id !== parent.tenant_id) issues.push(`${table} ${r.id} → tenant mismatch with its cell`);

@@ -36,7 +36,7 @@ create table if not exists profiles (
   id              uuid primary key references auth.users(id) on delete cascade,
   display_name    text not null default 'New user',
   role            text not null default 'viewer'
-                    check (role in ('viewer','field_officer','ehs_coordinator','ehs_manager','admin')),
+                    check (role in ('viewer','field_officer','contributor','ehs_coordinator','supervisor','safety_manager','ehs_manager','admin')),
   tenant_id       uuid references tenants(id),
   default_site_id uuid,
   job_title       text,
@@ -522,3 +522,222 @@ create index if not exists idx_equipment_calibration  on equipment(next_calibrat
 create index if not exists idx_chemicals_sds_expiry   on chemicals(sds_expiry);
 create index if not exists idx_incidents_type         on incidents(incident_type, occurred_at);
 create index if not exists idx_audits_scheduled       on audits(scheduled_date, status);
+
+-- ════════════════════════════════════════════════════════════════════════
+-- Arc — Safety Cell domain (Adaptive Risk Continuum)
+-- CHECK constraint values MUST stay in sync with src/lib/constants.ts.
+-- Tested by test/schema-consistency.test.ts.
+-- ════════════════════════════════════════════════════════════════════════
+
+create table if not exists safety_locations (
+  id          uuid primary key default gen_random_uuid(),
+  tenant_id   uuid not null references tenants(id) on delete cascade,
+  site_id     uuid not null references sites(id) on delete cascade,
+  label       text not null,
+  description text,
+  floor       text,
+  zone        text,
+  created_at  timestamptz not null default now()
+);
+
+create table if not exists safety_cells (
+  id            uuid primary key default gen_random_uuid(),
+  tenant_id     uuid not null references tenants(id) on delete cascade,
+  site_id       uuid not null references sites(id) on delete cascade,
+  location_id   uuid references safety_locations(id),
+  title         text not null,
+  description   text not null default '',
+  task          text not null default '',
+  crew          text,
+  company       text,
+  permit_ref    text,
+  hazard_genome jsonb not null default '{}'::jsonb,
+  severity      text not null default 'medium'
+                  check (severity in ('low','medium','high','critical')),
+  likelihood    int not null default 3 check (likelihood between 1 and 5),
+  risk_score    int not null default 0,
+  status        text not null default 'open'
+                  check (status in ('open','investigating','controlled','closed')),
+  owner_id      uuid references profiles(id),
+  created_by    uuid not null references profiles(id),
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+create trigger trg_safety_cells_updated before update on safety_cells
+  for each row execute function set_updated_at();
+
+create table if not exists control_proofs (
+  id               uuid primary key default gen_random_uuid(),
+  tenant_id        uuid not null references tenants(id) on delete cascade,
+  cell_id          uuid not null references safety_cells(id) on delete cascade,
+  control          text not null,
+  status           text not null default 'not_checked'
+                     check (status in ('not_checked','weak_proof','proven','missing','expired','conflicting','not_applicable')),
+  verifier_id      uuid references profiles(id),
+  verified_at      timestamptz,
+  evidence_summary text,
+  expires_at       timestamptz,
+  created_at       timestamptz not null default now()
+);
+
+create table if not exists causal_edges (
+  id             uuid primary key default gen_random_uuid(),
+  tenant_id      uuid not null references tenants(id) on delete cascade,
+  source_cell_id uuid not null references safety_cells(id),
+  target_cell_id uuid not null references safety_cells(id),
+  type           text not null
+                   check (type in ('contributes_to','contributed_to','triggers','amplifies','inhibits','precedes','same_location','same_control_gap')),
+  confidence     real not null default 0.8,
+  rationale      text not null default '',
+  review_status  text not null default 'pending'
+                   check (review_status in ('pending','accepted','edited','rejected','archived')),
+  ai_generated   boolean not null default false,
+  created_at     timestamptz not null default now()
+);
+
+create table if not exists evidence_files (
+  id           uuid primary key default gen_random_uuid(),
+  tenant_id    uuid not null references tenants(id) on delete cascade,
+  cell_id      uuid not null references safety_cells(id) on delete cascade,
+  kind         text not null check (kind in ('photo','video','document','note')),
+  name         text not null,
+  storage_path text not null,
+  summary      text,
+  uploaded_by  uuid references profiles(id),
+  created_at   timestamptz not null default now()
+);
+
+create table if not exists actions (
+  id                uuid primary key default gen_random_uuid(),
+  tenant_id         uuid not null references tenants(id) on delete cascade,
+  cell_id           uuid not null references safety_cells(id) on delete cascade,
+  title             text not null,
+  kind              text not null default 'corrective'
+                      check (kind in ('corrective','preventive')),
+  owner_id          uuid references profiles(id),
+  due_date          date,
+  status            text not null default 'open'
+                      check (status in ('open','in_progress','overdue','closed')),
+  closed_with_proof boolean not null default false,
+  closure_note      text,
+  created_at        timestamptz not null default now()
+);
+
+create table if not exists event_cells (
+  id          uuid primary key default gen_random_uuid(),
+  tenant_id   uuid not null references tenants(id) on delete cascade,
+  site_id     uuid not null references sites(id) on delete cascade,
+  cell_id     uuid references safety_cells(id),
+  kind        text not null
+                check (kind in ('incident','near_miss','audit_finding','claim')),
+  title       text not null,
+  description text not null default '',
+  severity    text not null default 'medium'
+                check (severity in ('low','medium','high','critical')),
+  occurred_at timestamptz,
+  created_at  timestamptz not null default now()
+);
+
+create table if not exists hsl_signals (
+  id          uuid primary key default gen_random_uuid(),
+  tenant_id   uuid not null references tenants(id) on delete cascade,
+  site_id     uuid not null references sites(id) on delete cascade,
+  dimension   text not null
+                check (dimension in ('psych_safety_gap','cultural_drift_index','cognitive_load_monitor','invisible_workforce','knowledge_ghost','crew_trauma_score')),
+  value       int not null check (value between 0 and 100),
+  recorded_at timestamptz not null default now(),
+  created_at  timestamptz not null default now()
+);
+
+create table if not exists exp_captures (
+  id            uuid primary key default gen_random_uuid(),
+  tenant_id     uuid not null references tenants(id) on delete cascade,
+  site_id       uuid not null references sites(id) on delete cascade,
+  source        text not null check (source in ('interview','walk_floor','incident_debrief','manual')),
+  subject       text not null default '',
+  summary       text not null default '',
+  hazard_memory text,
+  embedded      boolean not null default false,
+  created_at    timestamptz not null default now()
+);
+
+create table if not exists pclss_runs (
+  id               uuid primary key default gen_random_uuid(),
+  tenant_id        uuid not null references tenants(id) on delete cascade,
+  site_id          uuid not null references sites(id) on delete cascade,
+  stage            text not null
+                     check (stage in ('anticipate','hunt','forecast','preempt','evolve')),
+  summary          text not null default '',
+  signals_found    int not null default 0,
+  actions_proposed int not null default 0,
+  created_at       timestamptz not null default now()
+);
+
+create table if not exists vela_insights (
+  id                 uuid primary key default gen_random_uuid(),
+  pattern            text not null,
+  origin_sector      text not null,
+  applies_to_sectors text[] not null default '{}',
+  confidence         real not null default 0,
+  summary            text not null default '',
+  regulatory_refs    text[] not null default '{}',
+  created_at         timestamptz not null default now()
+);
+
+create table if not exists cell_comments (
+  id         uuid primary key default gen_random_uuid(),
+  tenant_id  uuid not null references tenants(id) on delete cascade,
+  cell_id    uuid not null references safety_cells(id) on delete cascade,
+  author_id  uuid not null references profiles(id),
+  body       text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists gateway_rejects (
+  id         uuid primary key default gen_random_uuid(),
+  tenant_id  uuid not null references tenants(id) on delete cascade,
+  kind       text not null check (kind in ('safety_cell','event_cell')),
+  summary    text not null default '',
+  category   text,
+  reason     text,
+  status     text not null default 'blocked' check (status in ('blocked','resolved')),
+  payload    jsonb not null default '{}'::jsonb,
+  actor_id   uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists staged_records (
+  id           uuid primary key default gen_random_uuid(),
+  tenant_id    uuid not null references tenants(id) on delete cascade,
+  kind         text not null,
+  title        text not null,
+  submitted_by uuid not null references profiles(id),
+  submitted_at timestamptz not null default now(),
+  payload      jsonb not null default '{}'::jsonb,
+  evidence     jsonb
+);
+
+-- ── tenant_id backfill (idempotent — schema-consistency test verifies these) ──
+
+alter table safety_cells   add column if not exists tenant_id uuid references tenants(id);
+alter table control_proofs add column if not exists tenant_id uuid references tenants(id);
+alter table causal_edges   add column if not exists tenant_id uuid references tenants(id);
+alter table ai_findings    add column if not exists tenant_id uuid references tenants(id);
+alter table actions        add column if not exists tenant_id uuid references tenants(id);
+alter table hsl_signals    add column if not exists tenant_id uuid references tenants(id);
+alter table exp_captures   add column if not exists tenant_id uuid references tenants(id);
+alter table pclss_runs     add column if not exists tenant_id uuid references tenants(id);
+
+-- ── Arc indexes ───────────────────────────────────────────────────────────────
+
+create index if not exists idx_safety_cells_tenant   on safety_cells(tenant_id);
+create index if not exists idx_safety_cells_site     on safety_cells(site_id);
+create index if not exists idx_safety_cells_location on safety_cells(location_id);
+create index if not exists idx_safety_cells_status   on safety_cells(status);
+create index if not exists idx_control_proofs_cell   on control_proofs(cell_id);
+create index if not exists idx_causal_edges_source   on causal_edges(source_cell_id);
+create index if not exists idx_causal_edges_target   on causal_edges(target_cell_id);
+create index if not exists idx_actions_cell          on actions(cell_id);
+create index if not exists idx_hsl_signals_tenant    on hsl_signals(tenant_id, site_id);
+create index if not exists idx_exp_captures_tenant   on exp_captures(tenant_id, site_id);
+create index if not exists idx_pclss_runs_tenant     on pclss_runs(tenant_id, site_id);

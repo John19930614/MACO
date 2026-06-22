@@ -1,11 +1,13 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal, Field, Input, Select, Textarea, SubmitRow } from "@/components/modals/Modal";
 import { addCapa } from "@/lib/actions/ehs";
+import type { Profile } from "@/lib/types";
+import { playCreateSound } from "@/lib/sounds";
 
-export function AddCapaButton() {
+export function AddCapaButton({ profiles = [] }: { profiles?: Profile[] }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const router = useRouter();
@@ -14,7 +16,7 @@ export function AddCapaButton() {
     e.preventDefault();
     setPending(true);
     const res = await addCapa(null, new FormData(e.currentTarget));
-    if (res.ok) { setOpen(false); router.refresh(); }
+    if (res.ok) { playCreateSound(); setOpen(false); router.refresh(); }
     setPending(false);
   }
 
@@ -55,9 +57,19 @@ export function AddCapaButton() {
               </Field>
             </div>
 
-            <Field label="Due Date">
-              <Input name="due_date" type="date" />
-            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Assigned Owner">
+                <Select name="owner_id">
+                  <option value="">Unassigned</option>
+                  {profiles.map((p) => (
+                    <option key={p.id} value={p.id}>{p.display_name}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Due Date">
+                <Input name="due_date" type="date" />
+              </Field>
+            </div>
           </div>
           <SubmitRow onClose={() => setOpen(false)} submitting={pending} />
         </form>
@@ -65,3 +77,4 @@ export function AddCapaButton() {
     </>
   );
 }
+

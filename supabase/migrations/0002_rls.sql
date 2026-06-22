@@ -179,3 +179,39 @@ create policy audit_log_read on audit_log
 
 create policy reliance_insights_read on reliance_insights
   for select using (auth.role() = 'authenticated');
+
+-- ── Arc Safety Cell domain ────────────────────────────────────────────────────
+
+alter table safety_cells   enable row level security;
+alter table control_proofs enable row level security;
+alter table causal_edges   enable row level security;
+alter table actions        enable row level security;
+
+-- Safety Cells: any tenant member reads; field_officer+ may create; coordinator+ may update
+create policy cells_read   on safety_cells for select using (in_tenant(tenant_id));
+create policy cells_insert on safety_cells
+  for insert with check (in_tenant(tenant_id) and current_ehs_role() in ('field_officer','ehs_coordinator','ehs_manager','admin'));
+create policy cells_update on safety_cells
+  for update using (in_tenant(tenant_id) and current_ehs_role() in ('ehs_coordinator','ehs_manager','admin'));
+
+-- Control Proofs
+create policy proofs_read  on control_proofs for select using (in_tenant(tenant_id));
+create policy proofs_write on control_proofs
+  for all using   (in_tenant(tenant_id) and current_ehs_role() in ('ehs_coordinator','ehs_manager','admin'))
+  with check (in_tenant(tenant_id) and current_ehs_role() in ('ehs_coordinator','ehs_manager','admin'));
+
+-- Causal Edges
+create policy edges_read  on causal_edges for select using (in_tenant(tenant_id));
+create policy edges_write on causal_edges
+  for all using   (in_tenant(tenant_id) and current_ehs_role() in ('ehs_coordinator','ehs_manager','admin'))
+  with check (in_tenant(tenant_id) and current_ehs_role() in ('ehs_coordinator','ehs_manager','admin'));
+
+-- Actions: supervisors create/update; all tenant members read
+create policy actions_read  on actions for select using (in_tenant(tenant_id));
+create policy actions_write on actions
+  for all using   (in_tenant(tenant_id) and current_ehs_role() in ('ehs_coordinator','ehs_manager','admin'))
+  with check (in_tenant(tenant_id) and current_ehs_role() in ('ehs_coordinator','ehs_manager','admin'));
+
+-- VELA Insights: cross-tenant — any authenticated user may read
+create policy read_vela on vela_insights
+  for select using (auth.role() = 'authenticated');

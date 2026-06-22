@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Field, Input, Select, Textarea } from "@/components/modals/Modal";
 import { updateTrainingRecord } from "@/lib/actions/ehs";
 import type { TrainingRecord, TrainingCourse, Profile } from "@/lib/types";
+import { playCompleteSound, playAdvanceSound } from "@/lib/sounds";
 
 export function EditTrainingForm({ record, courses, profiles }: {
   record: TrainingRecord;
@@ -19,8 +20,13 @@ export function EditTrainingForm({ record, courses, profiles }: {
     e.preventDefault();
     setPending(true);
     setSaved(false);
-    const res = await updateTrainingRecord(record.id, new FormData(e.currentTarget));
-    if (res.ok) { setSaved(true); router.refresh(); }
+    const fd = new FormData(e.currentTarget);
+    const res = await updateTrainingRecord(record.id, fd);
+    if (res.ok) {
+      fd.get("passed") === "true" ? playCompleteSound() : playAdvanceSound();
+      setSaved(true);
+      router.refresh();
+    }
     setPending(false);
   }
 

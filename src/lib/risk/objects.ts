@@ -154,7 +154,7 @@ export function buildRiskGraph(input: RiskGraphInput): RiskGraph {
       subtitle: `${f.job.replace(/_/g, " ")} · ${f.review_status}`,
       cellId: f.cell_id,
     });
-    if (cellIds.has(f.cell_id)) links.push({ source: id, target: precursorId(f.cell_id), kind: "learning_of" });
+    if (f.cell_id !== null && cellIds.has(f.cell_id)) links.push({ source: id, target: precursorId(f.cell_id), kind: "learning_of" });
   }
   for (const v of input.vela) {
     objects.push({

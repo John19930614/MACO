@@ -1,11 +1,9 @@
 /**
  * ARC — Adaptive Risk Continuum
  * ─────────────────────────────
- * ARC is the methodology AMAYA implements. Where the build manual describes the
- * Safety Cell product, ARC describes the intelligence loop that gives those
- * cells compounding value. This module is the canonical, typed description of
- * every ARC layer so the UI (the /arc method page) and the engine stay in sync
- * with the published method diagram (arc_method_fixed_legend.svg).
+ * ARC is the methodology SafetyIQ implements. This module is the canonical,
+ * typed description of every ARC layer so the UI pages and the engine stay
+ * in sync with the Reliance Risk Intelligence Framework.
  *
  * Layer stack (top → bottom of the diagram):
  *   EXP     Experience Intelligence Protocol     — Elicit · Convert · Embed
@@ -14,7 +12,6 @@
  *   Curve   Continuous learning curve             — the compounding moat
  *   GUS     Per-vertical AI engine                — 19 verticals
  *   VELA    Master intelligence                   — cross-vertical
- * The ARC continuous loop feeds every outcome back to Anticipate.
  */
 
 export const ARC_TAGLINE = "Adaptive Risk Continuum — Reliance Predictive Safety Technologies";
@@ -34,7 +31,7 @@ export interface ArcLayer {
   color: string; // matches globals.css --color-* token
   summary: string;
   stages: ArcStage[];
-  /** How AMAYA's Safety-Cell product realizes this layer. */
+  /** How SafetyIQ's Safety-Cell product realizes this layer. */
   amayaMapping: string;
 }
 
@@ -128,7 +125,7 @@ export const HSL_DIMENSIONS: HslDimension[] = [
     blurb: "30-day elevated watch",
     worseWhen: "high",
     detail:
-      "After a serious event, the affected crew carries elevated risk. AMAYA holds a 30-day elevated-watch window on those teams.",
+      "After a serious event, the affected crew carries elevated risk. SafetyIQ holds a 30-day elevated-watch window on those teams.",
   },
 ];
 
@@ -138,9 +135,9 @@ export const HSL: ArcLayer = {
   title: "Human Signal Layer",
   color: "hsl",
   summary:
-    "The six human dimensions that conventional safety systems ignore. AMAYA treats each as a continuous, live measurement — not an annual survey.",
+    "The six human dimensions that conventional safety systems ignore. SafetyIQ treats each as a continuous, live measurement — not an annual survey.",
   amayaMapping:
-    "Each dimension is stored as a periodic hsl_signals reading per site and feeds the dashboard, the risk score, and the P-CLSS Anticipate stage.",
+    "Each dimension is stored as a periodic reading per site and feeds the dashboard, the risk score, and the P-CLSS Anticipate stage.",
   stages: HSL_DIMENSIONS.map(({ key, name, blurb }) => ({ key, name, blurb })),
 };
 

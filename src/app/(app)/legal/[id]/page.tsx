@@ -5,6 +5,8 @@ import { getLegalById, getProfiles } from "@/lib/data/ehsRepo";
 import { PageHeader, Pill } from "@/components/ui/primitives";
 import { ComplianceStatusBadge } from "@/components/ui/badges";
 import { EditLegalForm } from "./EditLegalForm";
+import { getServerTenantId } from "@/lib/auth/session";
+import { MOCK_TENANT_ID } from "@/lib/data/mock";
 
 const CATEGORY_LABEL: Record<string, string> = {
   chemical: "Chemical", training: "Training", emergency: "Emergency",
@@ -17,7 +19,8 @@ function fmt(s: string) {
 
 export default async function LegalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [req, profiles] = await Promise.all([getLegalById(id), getProfiles()]);
+  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const [req, profiles] = await Promise.all([getLegalById(id), getProfiles(tenantId)]);
   if (!req) notFound();
 
   const profileMap = Object.fromEntries(profiles.map((p) => [p.id, p.display_name]));

@@ -10,7 +10,7 @@
  * group risk by the control failure mode, see how cells reinforce each other,
  * and trace each to the action that would have changed the outcome.
  */
-import type { SafetyCell, SafetyAction, AiFinding, AiAnalysisOutput } from "@/lib/types";
+import type { SafetyCell, SafetyAction, AiFinding, CausalityOutput } from "@/lib/types";
 
 export interface GapCluster {
   gap: string;
@@ -55,10 +55,11 @@ export function buildPreventionWeb(cells: SafetyCell[], actions: SafetyAction[],
 
   // AI counterfactual recommendations from findings.
   for (const f of findings) {
-    if (!cellIds.has(f.cell_id)) continue;
-    const out = f.output as Partial<AiAnalysisOutput>;
+    if (f.cell_id === null || !cellIds.has(f.cell_id)) continue;
+    const cellId = f.cell_id;
+    const out = f.output as Partial<CausalityOutput>;
     (out.prevention ?? []).forEach((p, i) =>
-      preventions.push({ id: `r_${f.id}_${i}`, cell_id: f.cell_id, kind: "recommendation", label: p.action, status: f.review_status, counterfactual: p.counterfactual }),
+      preventions.push({ id: `r_${f.id}_${i}`, cell_id: cellId, kind: "recommendation", label: p.action, status: f.review_status, counterfactual: p.counterfactual }),
     );
   }
 

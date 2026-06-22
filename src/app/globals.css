@@ -41,8 +41,15 @@
   --color-sev-critical: #dc2626;
 }
 
+/* Class-based dark mode — toggle .dark on <html> */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
 }
 
 :focus-visible {
@@ -57,7 +64,7 @@ body {
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
 }
 
 /* Thin scrollbar utility used throughout the app shell */
@@ -78,7 +85,25 @@ body {
 }
 
 @media print {
-  .iq-scroll { overflow: visible !important; height: auto !important; }
-  .rounded-xl, .rounded-lg { break-inside: avoid; }
+  /* Force all height-clipping containers to expand */
+  html, body                                 { height: auto !important; overflow: visible !important; }
+  .h-screen, .h-full                         { height: auto !important; }
+  .overflow-hidden, .overflow-y-auto         { overflow: visible !important; }
+  .flex-1                                    { flex: none !important; }
+  .iq-scroll                                 { overflow: visible !important; height: auto !important; }
+
+  /* Typography and color fidelity */
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* Keep cards from breaking across pages */
+  .rounded-xl, .rounded-lg, tr             { break-inside: avoid; }
+
+  /* Page breaks */
+  .print-break-before                       { break-before: page; }
+
+  /* Show print-only elements */
+  .print-only                               { display: block !important; }
 }
+
+/* Hide print-only elements on screen */
+.print-only { display: none; }

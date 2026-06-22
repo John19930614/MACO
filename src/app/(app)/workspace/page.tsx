@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   Calendar, Clock, Bell, AlertTriangle, CheckSquare,
   GraduationCap, ArrowRight, User, FileText, Wrench, BookOpen,
@@ -8,9 +9,11 @@ import {
   getAudits, getEquipment, getProfiles, getDocuments, getTrainingCourses,
   getDocumentAcknowledgments,
 } from "@/lib/data/ehsRepo";
-import { DEMO_SARAH_ID } from "@/lib/supabase/server";
+import { getServerTenantId, getServerProfileId } from "@/lib/auth/session";
+import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { AddTaskButton } from "./AddTaskButton";
 import { CompleteTaskButton } from "./CompleteTaskButton";
+import { AcknowledgeDocButton } from "./AcknowledgeDocButton";
 
 const PRIORITY_COLOR: Record<string, string> = {
   high:   "bg-red-100 text-red-700",
@@ -32,17 +35,44 @@ const TYPE_COLOR: Record<string, string> = {
 };
 
 const CAPA_STATUS_COLOR: Record<string, string> = {
-  open:        "bg-red-100 text-red-700",
-  in_progress: "bg-amber-100 text-amber-700",
-  closed:      "bg-emerald-100 text-emerald-700",
-  verified:    "bg-blue-100 text-blue-700",
+  open:                 "bg-red-100 text-red-700",
+  in_progress:          "bg-amber-100 text-amber-700",
+  pending_verification: "bg-blue-100 text-blue-700",
+  overdue:              "bg-red-200 text-red-800",
+  closed:               "bg-emerald-100 text-emerald-700",
+  rejected:             "bg-slate-100 text-slate-600",
 };
 
 const AUDIT_STATUS_COLOR: Record<string, string> = {
-  planned:     "bg-blue-100 text-blue-700",
+  scheduled:   "bg-blue-100 text-blue-700",
   in_progress: "bg-amber-100 text-amber-700",
   completed:   "bg-emerald-100 text-emerald-700",
   cancelled:   "bg-slate-100 text-slate-500",
+};
+
+const AUDIT_TYPE_LABEL: Record<string, string> = {
+  internal:   "Internal",
+  external:   "External",
+  regulatory: "Regulatory",
+  supplier:   "Supplier",
+  system:     "System",
+  process:    "Process",
+};
+
+const AUDIT_TYPE_COLOR: Record<string, string> = {
+  internal:   "bg-blue-100 text-blue-700",
+  external:   "bg-violet-100 text-violet-700",
+  regulatory: "bg-red-100 text-red-700",
+  supplier:   "bg-amber-100 text-amber-700",
+  system:     "bg-teal-100 text-teal-700",
+  process:    "bg-orange-100 text-orange-700",
+};
+
+const SEVERITY_COLOR: Record<string, string> = {
+  low:      "bg-slate-100 text-slate-600",
+  medium:   "bg-amber-100 text-amber-700",
+  high:     "bg-red-100 text-red-700",
+  critical: "bg-red-200 text-red-800",
 };
 
 function fmt(s: string | null) {
@@ -89,32 +119,33 @@ const TRAINING_STATUS_LABEL = {
 };
 
 export default async function WorkspacePage() {
-  const currentProfileId = DEMO_SARAH_ID;
+  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const currentProfileId = await getServerProfileId();
 
   const [
     allTasks, capas, incidents, trainingRecords, audits, equipment,
     profiles, documents, courses, docAcks,
   ] = await Promise.all([
-    getWorkspaceTasks(currentProfileId),
-    getCapaActions(),
-    getIncidents(),
-    getTrainingRecords(),
-    getAudits(),
-    getEquipment(),
-    getProfiles(),
-    getDocuments(),
-    getTrainingCourses(),
-    getDocumentAcknowledgments(currentProfileId),
+    getWorkspaceTasks(currentProfileId, tenantId),
+    getCapaActions(tenantId),
+    getIncidents(tenantId),
+    getTrainingRecords(tenantId),
+    getAudits(tenantId),
+    getEquipment(tenantId),
+    getProfiles(tenantId),
+    getDocuments(tenantId),
+    getTrainingCourses(tenantId),
+    getDocumentAcknowledgments(currentProfileId, tenantId),
   ]);
 
   const currentUser     = profiles.find((p) => p.id === currentProfileId);
-  const currentUserName = currentUser?.display_name ?? "Sarah Chen";
+  const currentUserName = currentUser?.display_name ?? "EHS Manager";
 
   const pendingTasks   = allTasks.filter((t) => t.status !== "done");
   const completedTasks = allTasks.filter((t) => t.status === "done");
 
   // ── Items 2-5: my data filtered for current user ──────────────────────────
-  const myCAPAs   = capas.filter((c) => c.owner_id === currentProfileId && c.status !== "closed" && c.status !== "verified");
+  const myCAPAs   = capas.filter((c) => c.owner_id === currentProfileId && c.status !== "closed" && c.status !== "pending_verification");
   const myAudits  = audits.filter((a) => a.lead_auditor_id === currentProfileId);
   const myTraining = trainingRecords.filter((r) => r.profile_id === currentProfileId);
   const ackedDocIds = new Set(docAcks.map((a) => a.document_id));
@@ -124,7 +155,7 @@ export default async function WorkspacePage() {
 
   // ── Derived alerts ─────────────────────────────────────────────────────────
   const openIncidents    = incidents.filter((i) => i.status === "reported" || i.status === "under_investigation");
-  const overdueCAPAs     = capas.filter((c) => c.due_date && isDue(c.due_date) && c.status !== "closed" && c.status !== "verified");
+  const overdueCAPAs     = capas.filter((c) => c.due_date && isDue(c.due_date) && c.status !== "closed" && c.status !== "pending_verification");
   const expiringTraining = trainingRecords.filter((r) => {
     if (!r.expiry_date) return false;
     const d = new Date(r.expiry_date);
@@ -200,9 +231,9 @@ export default async function WorkspacePage() {
                 subtitle={`${pendingTasks.length} task${pendingTasks.length !== 1 ? "s" : ""} assigned to you`}
                 right={<ArrowRight className="h-3 w-3 text-blue-600" />}
               />
-              <div className="divide-y divide-slate-50">
+              <div className="divide-y divide-slate-50 dark:divide-slate-700">
                 {pendingTasks.map((task) => (
-                  <div key={task.id} className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50/60">
+                  <div key={task.id} className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50/60 dark:hover:bg-slate-800/60">
                     <CompleteTaskButton
                       taskId={task.id}
                       taskTitle={task.title}
@@ -210,7 +241,7 @@ export default async function WorkspacePage() {
                       completedByName={currentUserName}
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-slate-800 leading-snug">{task.title}</div>
+                      <div className="text-sm font-medium text-slate-800 dark:text-slate-100 leading-snug">{task.title}</div>
                       <div className="mt-1 flex items-center gap-2 flex-wrap">
                         <Pill className={TYPE_COLOR[task.type] ?? "bg-slate-100 text-slate-600"}>{task.type}</Pill>
                         <Pill className={PRIORITY_COLOR[task.priority]}>{task.priority} priority</Pill>
@@ -239,25 +270,26 @@ export default async function WorkspacePage() {
                   subtitle={`${myCAPAs.length} open action${myCAPAs.length !== 1 ? "s" : ""} assigned to you`}
                   right={<Wrench className="h-3.5 w-3.5 text-orange-500" />}
                 />
-                <div className="divide-y divide-slate-50">
+                <div className="divide-y divide-slate-50 dark:divide-slate-700">
                   {myCAPAs.slice(0, 5).map((c) => (
-                    <div key={c.id} className="px-3 py-2.5 hover:bg-slate-50/60">
-                      <div className="flex items-start gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[12.5px] font-medium text-slate-800 leading-snug line-clamp-2">{c.title}</div>
-                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                            <Pill className={CAPA_STATUS_COLOR[c.status] ?? "bg-slate-100 text-slate-600"}>
-                              {c.status.replace(/_/g, " ")}
-                            </Pill>
-                            {c.due_date && (
-                              <span className={`text-[10.5px] ${isDue(c.due_date) ? "font-semibold text-red-600" : "text-slate-400"}`}>
-                                Due {fmt(c.due_date)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                    <Link key={c.id} href={`/capa/${c.id}`} className="block px-3 py-2.5 hover:bg-slate-50/60 dark:hover:bg-slate-800/60">
+                      <div className="text-[12.5px] font-medium text-slate-800 dark:text-slate-100 leading-snug line-clamp-2">{c.title}</div>
+                      <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                        <Pill className={CAPA_STATUS_COLOR[c.status] ?? "bg-slate-100 text-slate-600"}>
+                          {c.status.replace(/_/g, " ")}
+                        </Pill>
+                        {c.severity && (
+                          <Pill className={SEVERITY_COLOR[c.severity] ?? "bg-slate-100 text-slate-600"}>
+                            {c.severity}
+                          </Pill>
+                        )}
+                        {c.due_date && (
+                          <span className={`text-[10.5px] ${isDue(c.due_date) ? "font-semibold text-red-600" : "text-slate-400"}`}>
+                            Due {fmt(c.due_date)}
+                          </span>
+                        )}
                       </div>
-                    </div>
+                    </Link>
                   ))}
                   {myCAPAs.length === 0 && (
                     <div className="px-3 py-6 text-center text-xs text-slate-400">No open CAPA actions</div>
@@ -272,22 +304,24 @@ export default async function WorkspacePage() {
                   subtitle={`${myAudits.length} audit${myAudits.length !== 1 ? "s" : ""} assigned as lead auditor`}
                   right={<CheckSquare className="h-3.5 w-3.5 text-teal-500" />}
                 />
-                <div className="divide-y divide-slate-50">
+                <div className="divide-y divide-slate-50 dark:divide-slate-700">
                   {myAudits.slice(0, 5).map((a) => (
-                    <div key={a.id} className="px-3 py-2.5 hover:bg-slate-50/60">
-                      <div className="text-[12.5px] font-medium text-slate-800 leading-snug line-clamp-2">{a.title}</div>
+                    <Link key={a.id} href={`/audits/${a.id}`} className="block px-3 py-2.5 hover:bg-slate-50/60 dark:hover:bg-slate-800/60">
+                      <div className="text-[12.5px] font-medium text-slate-800 dark:text-slate-100 leading-snug line-clamp-2">{a.title}</div>
                       <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                         <Pill className={AUDIT_STATUS_COLOR[a.status] ?? "bg-slate-100 text-slate-600"}>
                           {a.status.replace(/_/g, " ")}
+                        </Pill>
+                        <Pill className={AUDIT_TYPE_COLOR[a.type] ?? "bg-teal-100 text-teal-700"}>
+                          {AUDIT_TYPE_LABEL[a.type] ?? a.type}
                         </Pill>
                         {a.scheduled_date && (
                           <span className="text-[10.5px] text-slate-400">
                             {fmt(a.scheduled_date)}
                           </span>
                         )}
-                        <Pill className="bg-teal-50 text-teal-600">{a.type}</Pill>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                   {myAudits.length === 0 && (
                     <div className="px-3 py-6 text-center text-xs text-slate-400">No audit assignments</div>
@@ -305,12 +339,12 @@ export default async function WorkspacePage() {
                   subtitle={`${myTraining.length} training record${myTraining.length !== 1 ? "s" : ""} on file`}
                   right={<GraduationCap className="h-3.5 w-3.5 text-blue-500" />}
                 />
-                <div className="divide-y divide-slate-50">
+                <div className="divide-y divide-slate-50 dark:divide-slate-700">
                   {myTraining.slice(0, 5).map((r) => {
                     const tStatus = trainingStatus(r.expiry_date);
                     return (
-                      <div key={r.id} className="px-3 py-2.5 hover:bg-slate-50/60">
-                        <div className="text-[12.5px] font-medium text-slate-800 leading-snug line-clamp-1">
+                      <div key={r.id} className="px-3 py-2.5 hover:bg-slate-50/60 dark:hover:bg-slate-800/60">
+                        <div className="text-[12.5px] font-medium text-slate-800 dark:text-slate-100 leading-snug line-clamp-1">
                           {courseMap[r.course_id] ?? "Training Course"}
                         </div>
                         <div className="mt-1 flex items-center gap-1.5 flex-wrap">
@@ -340,16 +374,20 @@ export default async function WorkspacePage() {
                   subtitle={`${myDocAcks.length} document${myDocAcks.length !== 1 ? "s" : ""} require${myDocAcks.length === 1 ? "s" : ""} your acknowledgment`}
                   right={<BookOpen className="h-3.5 w-3.5 text-purple-500" />}
                 />
-                <div className="divide-y divide-slate-50">
+                <div className="divide-y divide-slate-50 dark:divide-slate-700">
                   {myDocAcks.slice(0, 5).map((d) => (
-                    <div key={d.id} className="px-3 py-2.5 hover:bg-slate-50/60">
-                      <div className="text-[12.5px] font-medium text-slate-800 leading-snug line-clamp-1">{d.title}</div>
-                      <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                    <div key={d.id} className="px-3 py-2.5 hover:bg-slate-50/60 dark:hover:bg-slate-800/60">
+                      <div className="text-[12.5px] font-medium text-slate-800 dark:text-slate-100 leading-snug line-clamp-1">{d.title}</div>
+                      <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                         <Pill className="bg-purple-100 text-purple-700">{d.category}</Pill>
-                        <Pill className="bg-amber-100 text-amber-700">Pending ack</Pill>
                         {d.review_date && (
                           <span className="text-[10.5px] text-slate-400">Review {fmt(d.review_date)}</span>
                         )}
+                        <AcknowledgeDocButton
+                          documentId={d.id}
+                          documentTitle={d.title}
+                          profileId={currentProfileId}
+                        />
                       </div>
                     </div>
                   ))}
@@ -373,11 +411,11 @@ export default async function WorkspacePage() {
                     </Pill>
                   }
                 />
-                <div className="divide-y divide-slate-50">
+                <div className="divide-y divide-slate-50 dark:divide-slate-700">
                   {completedTasks.map((task) => {
                     const completedByProfile = profiles.find((p) => p.id === task.completed_by);
                     return (
-                      <div key={task.id} className="px-4 py-3 hover:bg-slate-50/40">
+                      <div key={task.id} className="px-4 py-3 hover:bg-slate-50/40 dark:hover:bg-slate-800/40">
                         <div className="flex items-start gap-3">
                           <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
                             <CheckSquare className="h-3 w-3" />
@@ -416,7 +454,7 @@ export default async function WorkspacePage() {
             {/* Alerts */}
             <Card>
               <CardHeader title="My Alerts" subtitle="Derived from live module data" />
-              <div className="divide-y divide-slate-50">
+              <div className="divide-y divide-slate-50 dark:divide-slate-700">
                 {alerts.map((alert) => {
                   const Icon = alert.Icon;
                   return (
@@ -439,7 +477,7 @@ export default async function WorkspacePage() {
             {/* Upcoming */}
             <Card>
               <CardHeader title="Upcoming" subtitle="Next 60 days — CAPAs, audits, calibrations" right={<Calendar className="h-4 w-4 text-slate-400" />} />
-              <div className="divide-y divide-slate-50">
+              <div className="divide-y divide-slate-50 dark:divide-slate-700">
                 {upcoming.slice(0, 6).map((item, i) => (
                   <div key={i} className="flex items-center gap-3 px-3 py-2.5">
                     <div className="flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-lg bg-blue-50 text-center">

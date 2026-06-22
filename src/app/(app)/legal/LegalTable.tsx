@@ -6,6 +6,85 @@ import type { LegalRequirement, Profile } from "@/lib/types";
 import { Pill } from "@/components/ui/primitives";
 import { ComplianceStatusBadge } from "@/components/ui/badges";
 import type { ComplianceStatus } from "@/lib/constants";
+import { updateLegalEvidence } from "@/lib/actions/ehs";
+import { Paperclip, Check } from "lucide-react";
+
+function EvidenceCell({ requirementId, evidenceUrl }: { requirementId: string; evidenceUrl: string | null }) {
+  const [editing, setEditing] = useState(false);
+  const [url, setUrl]         = useState(evidenceUrl ?? "");
+  const [saved, setSaved]     = useState(false);
+  const [pending, setPending] = useState(false);
+
+  async function handleSave() {
+    setPending(true);
+    await updateLegalEvidence(requirementId, url);
+    setSaved(true);
+    setEditing(false);
+    setPending(false);
+    setTimeout(() => setSaved(false), 3000);
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1">
+        <input
+          autoFocus
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://…"
+          className="h-7 w-36 rounded border border-slate-200 px-2 text-xs focus:border-blue-400 focus:outline-none"
+        />
+        <button
+          onClick={handleSave}
+          disabled={pending}
+          className="flex items-center gap-0.5 rounded bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+        >
+          <Check className="h-2.5 w-2.5" />
+          {pending ? "…" : "Save"}
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          className="rounded bg-slate-100 px-2 py-1 text-[10px] text-slate-500 hover:bg-slate-200"
+        >
+          ✕
+        </button>
+      </div>
+    );
+  }
+
+  if (saved || evidenceUrl) {
+    return (
+      <div className="flex items-center gap-1.5">
+        {evidenceUrl && (
+          <a
+            href={evidenceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
+          >
+            View ↗
+          </a>
+        )}
+        <button
+          onClick={() => setEditing(true)}
+          className="text-[10px] text-slate-400 hover:text-slate-600 underline"
+        >
+          {saved ? "Saved ✓" : "Edit"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setEditing(true)}
+      className="flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+    >
+      <Paperclip className="h-3 w-3" />
+      Link Evidence
+    </button>
+  );
+}
 
 const CATEGORY_LABEL: Record<string, string> = {
   chemical:   "Chemical",
@@ -138,18 +217,7 @@ export function LegalTable({
                     <ComplianceStatusBadge status={r.status} />
                   </td>
                   <td className="px-4 py-3">
-                    {r.evidence_url ? (
-                      <a
-                        href={r.evidence_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
-                      >
-                        View ↗
-                      </a>
-                    ) : (
-                      <span className="text-xs text-slate-300">No evidence</span>
-                    )}
+                    <EvidenceCell requirementId={r.id} evidenceUrl={r.evidence_url} />
                   </td>
                 </tr>
               );

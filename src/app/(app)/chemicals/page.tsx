@@ -1,13 +1,12 @@
-import { getChemicals, getTrainingCourses } from "@/lib/data/ehsRepo";
-import { PageHeader, Stat, Card, CardHeader, Pill } from "@/components/ui/primitives";
-import { BrainCircuit, GraduationCap, Zap } from "lucide-react";
-import { ChemicalsTable } from "./ChemicalsTable";
+﻿import { getChemicals, getTrainingCourses } from "@/lib/data/ehsRepo";
+import { getServerTenantId } from "@/lib/auth/session";
+import { MOCK_TENANT_ID } from "@/lib/data/mock";
+import { PageHeader, Card, CardHeader } from "@/components/ui/primitives";
 import { AddChemicalButton } from "./AddChemicalButton";
-import type { Chemical, TrainingCourse } from "@/lib/types";
+import { ChemicalExportButton } from "./ChemicalExportButton";
+import { ChemicalsDashboard } from "./ChemicalsDashboard";
 
-const HIGH_HAZARD_H = ["H350", "H351", "H300", "H310", "H311", "H330", "H331"];
-
-function sdsStatus(c: { sds_url: string | null; sds_expiry: string | null }) {
+function sdsStatus(c: { sds_url: string | null; sds_expiry: string | null }): "on_file" | "expiring" | "expired" | "missing" {
   if (!c.sds_url) return "missing";
   if (!c.sds_expiry) return "on_file";
   const exp = new Date(c.sds_expiry);
@@ -17,179 +16,170 @@ function sdsStatus(c: { sds_url: string | null; sds_expiry: string | null }) {
   return "on_file";
 }
 
-// ── GHS H-code → required training course_type mapping ───────────────────────
-// Each rule: which H-code prefix triggers which course types
-const H_TRAINING_RULES: { test: (h: string) => boolean; types: string[]; hazardLabel: string }[] = [
-  { test: (h) => /^H2[0-6]/.test(h),          types: ["fire_safety"],        hazardLabel: "Flammable / Explosive" },
-  { test: (h) => /^H27/.test(h),              types: ["fire_safety"],        hazardLabel: "Oxidizing" },
-  { test: (h) => /^H(30[0-2]|31[0-2]|33[0-2])/.test(h), types: ["chemical", "ppe"], hazardLabel: "Acute Toxicity" },
-  { test: (h) => /^H(314|315|317|318|319)/.test(h),      types: ["chemical", "ppe"], hazardLabel: "Corrosive / Irritant" },
-  { test: (h) => /^H(334|335)/.test(h),       types: ["chemical"],           hazardLabel: "Respiratory Sensitizer" },
-  { test: (h) => /^H(340|341)/.test(h),       types: ["chemical"],           hazardLabel: "Mutagen" },
-  { test: (h) => /^H(350|351)/.test(h),       types: ["chemical"],           hazardLabel: "Carcinogen" },
-  { test: (h) => /^H(360|361)/.test(h),       types: ["chemical"],           hazardLabel: "Reproductive Hazard" },
-  { test: (h) => /^H(370|371|372|373)/.test(h), types: ["chemical"],         hazardLabel: "Target Organ Toxin" },
-  { test: (h) => /^H4/.test(h),               types: ["chemical"],           hazardLabel: "Aquatic / Environmental" },
-];
-
-interface TriggeredCourse {
-  course: TrainingCourse;
-  triggeringHazards: string[];   // human-readable hazard labels
-  triggeringChemicals: string[]; // chemical names
+// GHS hazard class grouping from H-statement codes
+function hazardClassLabel(h: string): string | null {
+  if (/^H2[2-6]/.test(h)) return "Flammable";
+  if (/^H271/.test(h) || /^H272/.test(h)) return "Oxidizing";
+  if (/^H(300|301|310|311|330|331)/.test(h)) return "Acute Toxic";
+  if (/^H(302|312|332)/.test(h)) return "Harmful";
+  if (/^H314/.test(h)) return "Corrosive";
+  if (/^H(315|317|318|319)/.test(h)) return "Irritant";
+  if (/^H(334|335)/.test(h)) return "Resp. Sensitizer";
+  if (/^H(340|341)/.test(h)) return "Mutagen";
+  if (/^H(350|351)/.test(h)) return "Carcinogen";
+  if (/^H(360|361)/.test(h)) return "Repro. Hazard";
+  if (/^H(370|371|372|373)/.test(h)) return "Organ Toxin";
+  if (/^H(280|281)/.test(h)) return "Cryogenic / Gas";
+  if (/^H290/.test(h)) return "Water Reactive";
+  if (/^H4/.test(h)) return "Environmental";
+  return null;
 }
 
-function buildTriggeredCourses(chemicals: Chemical[], courses: TrainingCourse[]): TriggeredCourse[] {
-  // For each course type, find which H-codes trigger it and which chemicals carry those codes
-  const courseTypeMap = new Map<string, { hazards: Set<string>; chemicals: Set<string> }>();
+export default async function ChemicalsPage() {
+  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const [chemicals, courses] = await Promise.all([
+    getChemicals(tenantId),
+    getTrainingCourses(tenantId),
+  ]);
 
-  for (const chem of chemicals) {
+  const active = chemicals.filter((c) => c.status === "active");
+
+  // â”€â”€ Analytics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  // Hazard class distribution across all hazard_statements
+  const hazardCounts: Record<string, number> = {};
+  for (const chem of active) {
+    const seen = new Set<string>();
     for (const h of chem.hazard_statements) {
-      for (const rule of H_TRAINING_RULES) {
-        if (rule.test(h)) {
-          for (const ct of rule.types) {
-            if (!courseTypeMap.has(ct)) courseTypeMap.set(ct, { hazards: new Set(), chemicals: new Set() });
-            courseTypeMap.get(ct)!.hazards.add(rule.hazardLabel);
-            courseTypeMap.get(ct)!.chemicals.add(chem.name);
-          }
-        }
+      const label = hazardClassLabel(h);
+      if (label && !seen.has(label)) {
+        seen.add(label);
+        hazardCounts[label] = (hazardCounts[label] ?? 0) + 1;
       }
     }
   }
+  const hazardRows = Object.entries(hazardCounts).sort((a, b) => b[1] - a[1]);
+  const maxHazard = Math.max(...hazardRows.map((r) => r[1]), 1);
 
-  // Match triggered course types to actual courses in the DB/store
-  const result: TriggeredCourse[] = [];
-  for (const course of courses) {
-    const match = courseTypeMap.get(course.course_type);
-    if (match) {
-      result.push({
-        course,
-        triggeringHazards:   Array.from(match.hazards),
-        triggeringChemicals: Array.from(match.chemicals).slice(0, 4),
-      });
-    }
+  // SDS coverage breakdown
+  const sdsBuckets = [
+    { label: "Missing",         count: active.filter((c) => sdsStatus(c) === "missing").length,  cls: "bg-red-500",     txt: "text-red-700" },
+    { label: "Expired",         count: active.filter((c) => sdsStatus(c) === "expired").length,  cls: "bg-orange-500",  txt: "text-orange-700" },
+    { label: "Expiring < 90d",  count: active.filter((c) => sdsStatus(c) === "expiring").length, cls: "bg-amber-400",   txt: "text-amber-700" },
+    { label: "Current",         count: active.filter((c) => sdsStatus(c) === "on_file").length,  cls: "bg-emerald-400", txt: "text-emerald-700" },
+  ];
+  const totalSds = active.length;
+  const sdsOk = sdsBuckets.find((b) => b.label === "Current")?.count ?? 0;
+  const sdsCovPct = totalSds > 0 ? Math.round((sdsOk / totalSds) * 100) : 0;
+
+  // Scheduled / controlled substances
+  const scheduled = active.filter((c) => c.is_scheduled);
+  const schedByRef: Record<string, number> = {};
+  for (const c of scheduled) {
+    const ref = c.schedule_ref ?? "Scheduled (unspecified)";
+    schedByRef[ref] = (schedByRef[ref] ?? 0) + 1;
   }
-  return result;
-}
-
-const COURSE_TYPE_COLOR: Record<string, string> = {
-  fire_safety: "bg-orange-100 text-orange-700",
-  chemical:    "bg-red-100 text-red-700",
-  ppe:         "bg-blue-100 text-blue-700",
-  emergency:   "bg-amber-100 text-amber-700",
-  equipment:   "bg-slate-100 text-slate-600",
-  compliance:  "bg-purple-100 text-purple-700",
-  induction:   "bg-teal-100 text-teal-700",
-};
-
-export default async function ChemicalsPage() {
-  const [chemicals, courses] = await Promise.all([getChemicals(), getTrainingCourses()]);
-
-  const highHazard = chemicals.filter(
-    (c) =>
-      c.is_scheduled ||
-      c.hazard_statements.some((h) => HIGH_HAZARD_H.some((hh) => h.startsWith(hh))),
-  );
-  const sdsOnFile  = chemicals.filter((c) => sdsStatus(c) === "on_file").length;
-  const sdsProblem = chemicals.filter((c) => {
-    const s = sdsStatus(c);
-    return s === "missing" || s === "expired";
-  }).length;
-
-  const triggeredCourses = buildTriggeredCourses(chemicals, courses);
+  const schedRows = Object.entries(schedByRef).sort((a, b) => b[1] - a[1]);
 
   return (
     <div className="flex h-full flex-col">
       <PageHeader
         title="Chemical Management"
-        subtitle="Inventory-driven AI hazard classification · SDS management · Training chain · Waste profiles"
-        actions={<AddChemicalButton />}
-      />
-
-      <div className="iq-scroll flex-1 overflow-y-auto p-6">
-        {/* KPIs */}
-        <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Stat label="Total Chemicals"     value={chemicals.length} hint="Active inventory" />
-          <Stat label="AI High-Hazard Flags" value={highHazard.length} hint="Immediate attention needed" accent="#dc2626" />
-          <Stat label="SDS on File"         value={sdsOnFile}  hint="Current & valid"   accent="#10b981" />
-          <Stat label="SDS Missing / Expired" value={sdsProblem} hint="Required by HazCom" accent={sdsProblem > 0 ? "#dc2626" : "#10b981"} />
-        </div>
-
-        {/* AI scan alert */}
-        {highHazard.length > 0 && (
-          <div className="mb-5 flex items-start gap-3 rounded-xl border-l-4 border-violet-500 bg-violet-50 p-4">
-            <BrainCircuit className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-violet-900">
-                AI Inventory Scan — {highHazard.length} High-Hazard Flag{highHazard.length > 1 ? "s" : ""} Raised
-              </div>
-              <div className="mt-0.5 text-xs text-violet-700">
-                {highHazard.map((c) => c.name).join(", ")}. Training triggers reviewed. Waste profiles auto-generated.
-              </div>
-            </div>
+        subtitle="Chemical inventory · SDS library · Hazard class mapping · Storage compatibility · AI high-hazard flags · PPE &amp; exposure controls"
+        actions={
+          <div className="flex gap-2">
+            <ChemicalExportButton chemicals={chemicals} />
+            <AddChemicalButton />
           </div>
-        )}
+        }
+      />
+      <div className="iq-scroll flex-1 overflow-y-auto p-6">
 
-        {/* ── Inventory-driven training chain ──────────────────────────────── */}
-        {triggeredCourses.length > 0 && (
-          <Card className="mb-5">
-            <CardHeader
-              title="Training Requirements Triggered by Inventory"
-              subtitle={`${triggeredCourses.length} course${triggeredCourses.length !== 1 ? "s" : ""} required — automatically identified from GHS hazard classes in your chemical inventory`}
-              right={
-                <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                  <Zap className="h-3 w-3" />
-                  Inventory-driven
-                </div>
-              }
-            />
-            <div className="divide-y divide-slate-50">
-              {triggeredCourses.map(({ course, triggeringHazards, triggeringChemicals }) => (
-                <div key={course.id} className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50/60">
-                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50">
-                    <GraduationCap className="h-4 w-4 text-blue-600" />
+        {/* Analytics strip */}
+        <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          {/* Hazard class breakdown */}
+          <Card>
+            <CardHeader title="Hazard Class Breakdown" subtitle={`${active.length} active chemicals · GHS classes`} />
+            <div className="space-y-2 px-4 pb-4">
+              {hazardRows.slice(0, 7).map(([label, count]) => (
+                <div key={label} className="flex items-center gap-2">
+                  <div className="w-28 shrink-0 truncate text-[10px] text-slate-500">{label}</div>
+                  <div className="flex-1 h-3.5 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-rose-400 transition-all"
+                      style={{ width: `${Math.max((count / maxHazard) * 100, 8)}%` }}
+                    />
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-slate-800">{course.title}</span>
-                      <Pill className={COURSE_TYPE_COLOR[course.course_type] ?? "bg-slate-100 text-slate-600"}>
-                        {course.course_type.replace(/_/g, " ")}
-                      </Pill>
-                      {course.validity_period_days && (
-                        <Pill className="bg-slate-100 text-slate-500">
-                          Valid {course.validity_period_days}d
-                        </Pill>
-                      )}
-                    </div>
-                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[11.5px] text-slate-500">
-                      <span>
-                        <span className="font-medium text-slate-600">Hazards: </span>
-                        {triggeringHazards.join(" · ")}
-                      </span>
-                      <span>
-                        <span className="font-medium text-slate-600">From: </span>
-                        {triggeringChemicals.join(", ")}
-                        {triggeringChemicals.length === 4 && " …"}
-                      </span>
-                    </div>
-                  </div>
-                  {course.regulatory_ref && (
-                    <div className="shrink-0 text-[10.5px] text-slate-400 font-mono">{course.regulatory_ref}</div>
-                  )}
+                  <div className="w-5 text-right text-xs font-bold text-slate-700">{count}</div>
                 </div>
               ))}
+              {hazardRows.length === 0 && <div className="text-xs text-slate-400">No hazard statements recorded.</div>}
             </div>
           </Card>
-        )}
 
-        {/* Inventory table */}
-        <Card>
-          <CardHeader
-            title="Chemical Inventory"
-            subtitle={`${chemicals.length} chemicals · ${highHazard.length} high-hazard · ${sdsProblem} SDS issues`}
-          />
-          <ChemicalsTable chemicals={chemicals} />
-        </Card>
+          {/* SDS coverage */}
+          <Card>
+            <CardHeader title="SDS Coverage" subtitle="Safety Data Sheet filing status" />
+            <div className="px-4 pb-4">
+              <div className="mb-3 text-center">
+                <span className={`text-3xl font-bold ${sdsCovPct >= 80 ? "text-emerald-600" : sdsCovPct >= 50 ? "text-amber-600" : "text-red-600"}`}>
+                  {sdsCovPct}%
+                </span>
+                <span className="ml-1 text-[10px] text-slate-400">current</span>
+              </div>
+              <div className="mb-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className={`h-full rounded-full ${sdsCovPct >= 80 ? "bg-emerald-400" : sdsCovPct >= 50 ? "bg-amber-400" : "bg-red-500"}`}
+                  style={{ width: `${sdsCovPct}%` }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                {sdsBuckets.filter((b) => b.count > 0).map((b) => (
+                  <div key={b.label} className="flex items-center gap-2">
+                    <div className={`h-2 w-2 shrink-0 rounded-full ${b.cls}`} />
+                    <div className="flex-1 text-xs text-slate-600">{b.label}</div>
+                    <div className={`text-xs font-bold ${b.txt}`}>{b.count}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+
+          {/* Scheduled / controlled substances */}
+          <Card>
+            <CardHeader
+              title="Scheduled Substances"
+              subtitle={scheduled.length > 0 ? `${scheduled.length} controlled chemical${scheduled.length !== 1 ? "s" : ""} in inventory` : "No scheduled substances"}
+            />
+            <div className="px-4 pb-4">
+              {scheduled.length > 0 ? (
+                <div className="space-y-2">
+                  {schedRows.slice(0, 5).map(([ref, count]) => (
+                    <div key={ref} className="flex items-start gap-2">
+                      <div className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-violet-500" />
+                      <div className="flex-1 text-[10px] text-slate-600 leading-tight">{ref}</div>
+                      <div className="text-xs font-bold text-violet-700">{count}</div>
+                    </div>
+                  ))}
+                  <div className="mt-2 rounded-lg bg-violet-50 px-3 py-2 text-[10px] text-violet-700">
+                    Regulated substances require enhanced controls, additional SDS, and regulatory reporting.
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-4 text-center">
+                  <div className="text-2xl font-bold text-emerald-600">0</div>
+                  <div className="text-[10px] text-slate-400">No scheduled substances in active inventory</div>
+                </div>
+              )}
+            </div>
+          </Card>
+
+        </div>
+
+        <ChemicalsDashboard chemicals={chemicals} courses={courses} />
       </div>
     </div>
   );
 }
+

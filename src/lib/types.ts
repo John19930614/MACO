@@ -20,7 +20,15 @@ import type {
   RiskLevel,
   GhsHazardClass,
   DocumentStatus,
+  CellStatus,
+  ProofStatus,
+  EdgeType,
+  ActionStatus,
+  BehaviorPattern,
 } from "./constants";
+
+// Re-export Arc status types so components can import from @/lib/types
+export type { ActionStatus, CellStatus, ProofStatus, EdgeType };
 
 // ── Tenancy & identity ────────────────────────────────────────────────────────
 
@@ -40,8 +48,8 @@ export interface Profile {
   role: Role;
   tenant_id: string | null; // null = Reliance global operator (cross-tenant)
   default_site_id: string | null;
-  job_title: string | null;
-  department: string | null;
+  job_title?: string | null;
+  department?: string | null;
   active: boolean;
 }
 
@@ -49,12 +57,14 @@ export interface Site {
   id: string;
   tenant_id: string;
   name: string;
-  address: string | null;
-  country: string;
-  state: string | null;
-  sector: string;
-  headcount: number | null;
+  address?: string | null;
+  country?: string;
+  state?: string | null;
+  sector?: string;
+  vertical?: string;              // GUS per-vertical AI engine key
+  headcount?: number | null;
   metadata?: Record<string, unknown>;
+  center?: [number, number];      // [lng, lat] for map initialisation
 }
 
 // ── Chemical Inventory ────────────────────────────────────────────────────────
@@ -138,6 +148,7 @@ export interface AuditFinding {
   id: string;
   tenant_id: string;
   audit_id: string;
+  site_id: string;                   // denormalized from audit — always set
   title: string;
   description: string;
   category: string;                  // "procedure", "training", "equipment", "chemical", "waste"
@@ -146,6 +157,8 @@ export interface AuditFinding {
   owner_id: string | null;
   due_date: string | null;
   closed_at: string | null;
+  capa_required: boolean;            // whether a CAPA is required for this finding
+  capa_id: string | null;            // linked CAPA action id
   created_at: string;
   updated_at: string;
 }
@@ -230,6 +243,7 @@ export interface Document {
   status: DocumentStatus;
   owner_id: string | null;
   acknowledgment_required: boolean;
+  regulation_ref: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -281,6 +295,39 @@ export interface BiohazardAgent {
   updated_at: string;
 }
 
+export interface ErgonomicsWorkstation {
+  id: string;
+  tenant_id: string;
+  workstation_code: string;
+  name: string;
+  department: string;
+  worker_count: number;
+  last_assessment: string | null;
+  next_assessment: string | null;
+  risk_level: "low" | "medium" | "high" | "critical";
+  status: "compliant" | "needs_improvement" | "non_compliant" | "assessment_due";
+  open_findings: number;
+  primary_hazards: string[];
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ErgonomicsJobTask {
+  id: string;
+  tenant_id: string;
+  task_code: string;
+  task_title: string;
+  department: string;
+  hazard_type: "repetitive_motion" | "awkward_posture" | "forceful_exertion" | "vibration" | "contact_stress" | "static_posture";
+  risk_score: number;  // 1–25
+  controls: string[];
+  status: "controlled" | "review_required" | "controls_pending";
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DocumentAcknowledgment {
   id: string;
   tenant_id: string;
@@ -307,7 +354,7 @@ export interface WasteStream {
   disposal_date: string | null;
   regulatory_limit: number | null;   // threshold above which reporting is required
   regulatory_unit: string | null;
-  status: "pending" | "manifested" | "disposed" | "reported";
+  status: "pending" | "pending_pickup" | "accumulating" | "manifested" | "disposed" | "reported";
   created_by: string;
   created_at: string;
 }
@@ -389,6 +436,36 @@ export interface Incident {
   updated_at: string;
 }
 
+// ── OSHA Recordkeeping ────────────────────────────────────────────────────────
+
+export type OshaClassification = "days_away" | "restricted" | "other_recordable" | "fatality";
+export type OshaInjuryType     = "injury" | "skin_disorder" | "respiratory" | "poisoning" | "hearing_loss" | "other_illness";
+
+export interface OshaCase {
+  id: string;
+  tenant_id: string;
+  caseNo: string;
+  employee: string;
+  jobTitle: string;
+  date: string;
+  location: string;
+  description: string;
+  classification: OshaClassification;
+  injuryType: OshaInjuryType;
+  daysAway: number;
+  daysRestricted: number;
+  isPrivacy: boolean;
+  isSevereInjury: boolean;
+  howOccurred: string;
+  equipment: string;
+  physician: string;
+  medFacility: string;
+  treatmentER: boolean;
+  treatmentHospitalized: boolean;
+  capaId?: string;
+  created_at: string;
+}
+
 // ── Compliance Scores (calculated) ───────────────────────────────────────────
 
 export interface ComplianceScore {
@@ -412,26 +489,52 @@ export type AiJob =
   | "training_gap_analysis"
   | "incident_root_cause"
   | "risk_score_prediction"
-  | "regulatory_change_impact";
+  | "regulatory_change_impact"
+  | "analyze_cell";              // Arc per-cell risk analysis job
 
 export interface AiFinding {
   id: string;
   tenant_id: string;
-  site_id: string | null;
+  site_id?: string | null;
+  cell_id: string | null;   // null for module-level findings; set for Arc cell findings
   job: AiJob;
-  source_type: string;               // "chemical", "legal_requirement", "audit", "incident", "site"
-  source_id: string | null;
+  source_type?: string;              // "chemical", "legal_requirement", "audit", "incident", "site"
+  source_id?: string | null;
   model: string;
   prompt_version: string;
   input_summary: string;
-  output: AiAnalysisOutput | Record<string, unknown>;
+  output: AiAnalysisOutput | CausalityOutput | Record<string, unknown>;
   confidence: number;               // 0-1
   review_status: ReviewStatus;
   human_review_required: boolean;
   created_at: string;
 }
 
-/** Structured output contract for the SafetyIQ AI Engine. */
+/**
+ * Structured output for the AMAYA Causality Engine (Arc per-cell analysis).
+ * Matches the safetyiq_causality_analysis JSON schema in prompt.ts.
+ */
+export interface CausalityOutput {
+  risk_score: number;
+  hazard_genome: HazardGenome;
+  missing_data: string[];
+  causal_factors: string[];
+  suggested_edges: Array<{
+    target_cell_id: string;
+    type: string;
+    confidence: number;
+    rationale: string;
+  }>;
+  prevention: Array<{
+    action: string;
+    counterfactual: string;
+    rationale: string;
+  }>;
+  plain_language_summary: string;
+  human_review_required: boolean;
+}
+
+/** Structured output contract for the SafetyIQ EHS AI Engine (chemical / compliance analyses). */
 export interface AiAnalysisOutput {
   risk_level: RiskLevel;
   risk_score: number;               // 0-100 normalised
@@ -501,6 +604,7 @@ export interface AuditEntry {
 // Patterns detected across tenants that apply to client sectors — NO tenant_id.
 
 export interface RelianceInsight {
+  [key: string]: unknown;    // allows `ri as Record<string, unknown>` assertions in tests
   id: string;
   pattern: string;
   origin_sector: string;
@@ -510,3 +614,239 @@ export interface RelianceInsight {
   regulatory_refs: string[];
   created_at: string;
 }
+
+// ── Arc — Adaptive Risk Continuum domain types ────────────────────────────────
+
+/** Structured hazard taxonomy carried on every Safety Cell. */
+export interface HazardGenome {
+  energySource: string;
+  exposureType: string;
+  trigger: string;
+  controlGap: string;
+  environment?: string;  // optional contextual detail (LLM extraction enrichment)
+}
+
+/** Six-object ARC cell classification (Reliance Risk Intelligence Framework). */
+export type CellType = "precursor" | "control" | "failure" | "behavior" | "event" | "learning";
+
+/** A geo-tagged, pre-cursor hazard observation (the core ARC data atom). */
+export interface SafetyCell {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  location_id: string;
+  title: string;
+  description: string;
+  task: string;
+  crew?: string | null;
+  company?: string | null;
+  permit_ref?: string | null;
+  hazard_genome: HazardGenome;
+  severity: Severity;
+  likelihood: number;         // 1–5 likelihood score
+  risk_score: number;         // derived 0–100
+  status: CellStatus;
+  cell_type?: CellType | null;
+  owner_id: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Evidence that a control is (or isn't) in place for a Safety Cell. */
+export interface ControlProof {
+  id: string;
+  tenant_id: string;
+  cell_id: string;
+  control: string;            // short description of the required safeguard
+  status: ProofStatus;
+  verifier_id: string | null;
+  verified_at: string | null;
+  evidence_summary: string | null;
+  evidence_id?: string | null; // FK to an evidence file (optional attachment)
+  expires_at: string | null;
+  created_at?: string;
+  required?: boolean;         // optional — marks mandatory vs. advisory controls
+}
+
+/** File or note attached to a Safety Cell as evidence. */
+export interface EvidenceFile {
+  id: string;
+  tenant_id: string;
+  cell_id: string;
+  kind: "photo" | "video" | "document" | "note";
+  name: string;
+  storage_path: string;
+  summary: string | null;
+  uploaded_by: string;
+  created_at: string;
+}
+
+/** AI-proposed or human-confirmed causal link between two Safety Cells. */
+export interface CausalEdge {
+  id: string;
+  tenant_id: string;
+  source_cell_id: string;
+  target_cell_id: string;
+  type: EdgeType;
+  confidence: number;         // 0–1
+  rationale: string;
+  review_status: ReviewStatus;
+  ai_generated: boolean;
+  created_at: string;
+}
+
+/** A preventive or corrective action linked to a Safety Cell. */
+export interface SafetyAction {
+  id: string;
+  tenant_id: string;
+  cell_id: string;
+  title: string;
+  kind: "corrective" | "preventive";
+  owner_id: string | null;
+  due_date: string | null;
+  status: ActionStatus;
+  closed_with_proof: boolean;
+  closure_note: string | null;
+  created_at: string;
+}
+
+/** A named physical location within a site (floor, zone, area). */
+export interface SafetyLocation {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  label: string;
+  description: string | null;
+  floor: string | null;
+  zone: string | null;
+  kind?: string;              // optional sub-type (e.g. "indoor", "outdoor", "process")
+  lat?: number;               // optional GPS latitude for map pin
+  lng?: number;               // optional GPS longitude for map pin
+}
+
+/** A captured expert experience record (EXP protocol). */
+export interface ExpCapture {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  source: "interview" | "ai_interview" | "walk_floor" | "incident_debrief" | "manual";
+  subject: string;
+  summary: string;
+  hazard_memory: Record<string, unknown> | null;
+  embedded: boolean;
+  created_at: string;
+}
+
+/** A periodic Human Signal Layer reading for one dimension at a site. */
+export interface HslReading {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  dimension: string;          // matches HSL_DIMENSIONS keys
+  value: number;              // 0–100
+  recorded_at: string;
+  created_at: string;
+}
+
+/** A completed P-CLSS (anticipate/hunt/forecast/preempt/evolve) engine run. */
+export interface PclssRun {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  stage: "anticipate" | "hunt" | "forecast" | "preempt" | "evolve";
+  summary: string;
+  cells_scanned?: number;     // number of open cells examined during this run
+  signals_found: number;
+  actions_proposed: number;
+  created_at: string;
+}
+
+/** Cross-tenant VELA pattern — visible to all tenants (no tenant_id). */
+export interface VelaInsight {
+  id: string;
+  pattern: string;
+  origin_sector: string;
+  applies_to: string[];
+  confidence: number;
+  summary: string;
+  regulatory_refs: string[];
+  created_at: string;
+}
+
+/** A collaboration comment on a Safety Cell. */
+export interface Comment {
+  id: string;
+  tenant_id: string;
+  cell_id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
+}
+
+/** An outcome event (incident, near-miss, etc.) linked to a Safety Cell. */
+export interface EventCell {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  cell_id: string | null;     // the precursor safety cell, if known
+  kind: "incident" | "near_miss" | "audit_finding" | "claim";
+  title: string;
+  description: string;
+  severity: Severity;
+  occurred_at: string;
+  created_at: string;
+}
+
+/** A recurring behavior pattern detected across a cell population. */
+export interface BehaviorCell {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  pattern: BehaviorPattern;
+  title: string;
+  description: string;
+  cell_ids: string[];         // member safety cells that form this pattern
+  occurrences: number;
+  created_at: string;
+}
+
+/** A Safety Cell bundled with all related objects for the detail view. */
+export interface CellBundle {
+  cell: SafetyCell;
+  location: SafetyLocation;
+  site: Site;
+  proofs: ControlProof[];
+  evidence: EvidenceFile[];
+  findings: AiFinding[];
+  actions: SafetyAction[];
+}
+
+/** An AI Gateway rejection logged to the exception queue. */
+export interface GatewayReject {
+  id: string;
+  tenant_id: string;
+  kind: "safety_cell" | "event_cell";
+  summary: string;
+  category: string;
+  reason: string;
+  status: "blocked" | "resolved";
+  payload: Record<string, unknown>;
+  actor_id: string;
+  created_at: string;
+}
+
+/** A gateway-validated record waiting for human review before entering the live DB. */
+export interface StagedRecord {
+  id: string;
+  tenant_id: string;
+  kind: "safety_cell" | "event_cell";
+  title: string;
+  submitted_by: string;
+  submitted_at: string;
+  payload: SafetyCell | EventCell;
+  evidence?: Array<{ kind: EvidenceFile["kind"]; name: string; summary?: string }>;
+}
+
+/** A HazardGenome key used for cross-cell similarity and forecast scoring. */
+export type HazardGenomeKey = keyof HazardGenome;

@@ -52,14 +52,16 @@ describe("tenant isolation (RLS-equivalent in mock mode)", () => {
     const summit = (await getCells()).map((c) => c.id);
     setSessionUser("u_mgr3"); // tenant_apex
     const apex = (await getCells()).map((c) => c.id);
+    setSessionUser("u_norgas"); // tenant_norgas
+    const norgas = (await getCells()).map((c) => c.id);
     // pairwise disjoint
-    expect(new Set([...pacific, ...summit, ...apex]).size).toBe(pacific.length + summit.length + apex.length);
+    expect(new Set([...pacific, ...summit, ...apex, ...norgas]).size).toBe(pacific.length + summit.length + apex.length + norgas.length);
 
     setSessionUser("u_admin"); // global
     expect(tenantScope()).toBeNull();
     const all = (await getCells()).map((c) => c.id);
-    expect(all.length).toBe(pacific.length + summit.length + apex.length);
-    for (const id of [...pacific, ...summit, ...apex]) expect(all).toContain(id);
+    expect(all.length).toBe(pacific.length + summit.length + apex.length + norgas.length);
+    for (const id of [...pacific, ...summit, ...apex, ...norgas]) expect(all).toContain(id);
   });
 
   it("a scoped user cannot read another tenant's cell by id", async () => {

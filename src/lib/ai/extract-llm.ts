@@ -45,7 +45,7 @@ async function modelExtract(text: string): Promise<ExtractResult> {
         exposureType: d.hazard_genome.exposureType,
         trigger: d.hazard_genome.trigger,
         controlGap: d.hazard_genome.controlGap,
-        environment: d.hazard_genome.environment,
+        environment: d.hazard_genome.environment ?? "",
       },
     },
     confidence: d.confidence,

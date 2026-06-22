@@ -1,4 +1,4 @@
-import { PageHeader, Card, CardHeader, Pill } from "@/components/ui/primitives";
+import { DarkPageHeader, DarkCard, DarkCardHeader, Pill } from "@/components/ui/primitives";
 import { History, GitBranch, Package, CheckCircle2, AlertCircle, Clock } from "lucide-react";
 
 const BUILD_LOG = [
@@ -21,15 +21,15 @@ const UPCOMING = [
 ];
 
 function typeColor(t: string) {
-  if (t === "major") return "bg-blue-100 text-blue-700";
-  if (t === "minor") return "bg-teal-100 text-teal-700";
-  return "bg-slate-100 text-slate-600";
+  if (t === "major") return "bg-blue-900/50 text-blue-300";
+  if (t === "minor") return "bg-emerald-900/50 text-emerald-300";
+  return "bg-slate-800 text-slate-400";
 }
 
 export default function BuildHistoryPage() {
   return (
-    <div className="flex flex-col overflow-hidden h-full">
-      <PageHeader
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <DarkPageHeader
         title="Build History"
         subtitle="Platform version log, deployment status, and upcoming release roadmap"
       />
@@ -38,80 +38,80 @@ export default function BuildHistoryPage() {
         {/* KPIs */}
         <div className="mb-5 grid grid-cols-4 gap-4">
           {[
-            { label: "Current Version", value: "v0.9.0", sub: "Deployed Jun 17",   color: "text-blue-700",    bg: "bg-blue-50 border-blue-100" },
-            { label: "Releases (2026)", value: "12",     sub: "All stable",         color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-100" },
-            { label: "Next Release",    value: "v1.0",   sub: "ETA Aug 15",         color: "text-purple-700",  bg: "bg-purple-50 border-purple-100" },
-            { label: "Launch Target",   value: "v1.0",   sub: "Aug 15, 2026",       color: "text-amber-700",   bg: "bg-amber-50 border-amber-100" },
+            { label: "Current Version", value: "v0.9.0", sub: "Deployed Jun 17",   color: "text-blue-400",    bg: "bg-blue-900/20 border-blue-800/50" },
+            { label: "Releases (2026)", value: "12",     sub: "All stable",         color: "text-emerald-400", bg: "bg-emerald-900/20 border-emerald-800/50" },
+            { label: "Next Release",    value: "v1.0",   sub: "ETA Aug 15",         color: "text-purple-300",  bg: "bg-purple-900/20 border-purple-800/50" },
+            { label: "Launch Target",   value: "v1.0",   sub: "Aug 15, 2026",       color: "text-amber-400",   bg: "bg-amber-900/20 border-amber-800/50" },
           ].map((s) => (
             <div key={s.label} className={`rounded-xl border p-3 ${s.bg}`}>
-              <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{s.label}</div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{s.label}</div>
               <div className={`mt-1 text-2xl font-extrabold ${s.color}`}>{s.value}</div>
-              <div className="mt-0.5 text-[10.5px] text-slate-400">{s.sub}</div>
+              <div className="mt-0.5 text-[11px] text-slate-400">{s.sub}</div>
             </div>
           ))}
         </div>
 
         <div className="grid grid-cols-3 gap-5">
           <div className="col-span-2">
-            <Card>
-              <CardHeader title="Build History" subtitle="All platform releases" right={<GitBranch className="h-4 w-4 text-slate-400" />} />
+            <DarkCard>
+              <DarkCardHeader title="Build History" subtitle="All platform releases" right={<GitBranch className="h-4 w-4 text-slate-400" />} />
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="border-b border-slate-100 bg-slate-50">
+                  <thead className="border-b border-white/5 bg-slate-800/40">
                     <tr>
                       {["Version", "Date", "Type", "Status", "Release Notes", "Author"].map((h) => (
                         <th key={h} className="px-4 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">{h}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-50">
+                  <tbody className="divide-y divide-white/5">
                     {BUILD_LOG.map((b) => (
-                      <tr key={b.version} className={`hover:bg-slate-50/60 ${b.version === "v0.9.0" ? "bg-blue-50/40" : ""}`}>
+                      <tr key={b.version} className={`hover:bg-white/4 ${b.version === "v0.9.0" ? "bg-blue-900/20" : ""}`}>
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-1.5">
                             <Package className="h-3.5 w-3.5 text-slate-400" />
-                            <span className="font-mono text-[12px] font-bold text-slate-800">{b.version}</span>
+                            <span className="font-mono text-[12px] font-bold text-white">{b.version}</span>
                             {b.version === "v0.9.0" && <Pill className="bg-blue-600 text-white" style={{ fontSize: "9px" }}>CURRENT</Pill>}
                           </div>
                         </td>
-                        <td className="px-4 py-2.5 text-xs text-slate-600">{b.date}</td>
+                        <td className="px-4 py-2.5 text-xs text-slate-300">{b.date}</td>
                         <td className="px-4 py-2.5"><Pill className={typeColor(b.type)}>{b.type}</Pill></td>
                         <td className="px-4 py-2.5">
                           {b.deployed
-                            ? <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" /> Deployed</span>
+                            ? <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" /> Deployed</span>
                             : <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-400"><Clock className="h-3.5 w-3.5" /> Not deployed</span>}
                         </td>
                         <td className="px-4 py-2.5 max-w-[220px]">
-                          <div className="truncate text-xs text-slate-700">{b.note}</div>
+                          <div className="truncate text-xs text-slate-200">{b.note}</div>
                         </td>
-                        <td className="px-4 py-2.5 text-xs text-slate-500">{b.author}</td>
+                        <td className="px-4 py-2.5 text-xs text-slate-400">{b.author}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </Card>
+            </DarkCard>
           </div>
 
           <div className="flex flex-col gap-5">
-            <Card>
-              <CardHeader title="Release Roadmap" subtitle="Upcoming builds" right={<History className="h-4 w-4 text-slate-400" />} />
-              <div className="divide-y divide-slate-50">
+            <DarkCard>
+              <DarkCardHeader title="Release Roadmap" subtitle="Upcoming builds" right={<History className="h-4 w-4 text-slate-400" />} />
+              <div className="divide-y divide-white/5">
                 {UPCOMING.map((u) => (
                   <div key={u.version} className="px-4 py-3">
                     <div className="flex items-center justify-between">
-                      <span className="font-mono text-sm font-bold text-slate-800">{u.version}</span>
-                      <span className="text-[10.5px] font-semibold text-blue-600">ETA {u.eta}</span>
+                      <span className="font-mono text-sm font-bold text-white">{u.version}</span>
+                      <span className="text-[11px] font-semibold text-blue-400">ETA {u.eta}</span>
                     </div>
-                    <div className="mt-1 text-xs text-slate-500 leading-relaxed">{u.scope}</div>
+                    <div className="mt-1 text-xs text-slate-400 leading-relaxed">{u.scope}</div>
                   </div>
                 ))}
               </div>
-            </Card>
+            </DarkCard>
 
-            <Card>
-              <CardHeader title="Build Status" subtitle="Current environment" />
-              <div className="divide-y divide-slate-50">
+            <DarkCard>
+              <DarkCardHeader title="Build Status" subtitle="Current environment" />
+              <div className="divide-y divide-white/5">
                 {[
                   { label: "Dev server", status: "Running", ok: true },
                   { label: "Live Supabase data", status: "Active", ok: true },
@@ -121,15 +121,15 @@ export default function BuildHistoryPage() {
                   { label: "Production deploy", status: "Target v1.0", ok: null },
                 ].map((item) => (
                   <div key={item.label} className="flex items-center gap-2 px-4 py-2.5">
-                    {item.ok === true  && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />}
-                    {item.ok === null  && <Clock className="h-4 w-4 shrink-0 text-amber-500" />}
-                    {item.ok === false && <AlertCircle className="h-4 w-4 shrink-0 text-red-500" />}
-                    <div className="flex-1 text-xs text-slate-700">{item.label}</div>
-                    <div className={`text-[11px] font-semibold ${item.ok === true ? "text-emerald-600" : "text-amber-500"}`}>{item.status}</div>
+                    {item.ok === true  && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />}
+                    {item.ok === null  && <Clock className="h-4 w-4 shrink-0 text-amber-400" />}
+                    {item.ok === false && <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />}
+                    <div className="flex-1 text-xs text-slate-200">{item.label}</div>
+                    <div className={`text-[11px] font-semibold ${item.ok === true ? "text-emerald-400" : "text-amber-400"}`}>{item.status}</div>
                   </div>
                 ))}
               </div>
-            </Card>
+            </DarkCard>
           </div>
         </div>
       </div>

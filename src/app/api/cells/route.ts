@@ -7,7 +7,7 @@ import { z } from "zod";
 // Carried photo/evidence metadata, validated so untrusted client input can't
 // flow into createEvidence on approval. Invalid evidence is simply dropped.
 const evidenceArraySchema = z.array(
-  z.object({ kind: z.enum(["photo", "document", "permit", "note", "sensor", "form"]), name: z.string().min(1), summary: z.string().optional() }),
+  z.object({ kind: z.enum(["photo", "video", "document", "note"]), name: z.string().min(1), summary: z.string().optional() }),
 );
 
 // GET /api/cells — list Safety Cells for map filters (manual Appendix A).

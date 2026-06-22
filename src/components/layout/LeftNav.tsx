@@ -1,17 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ChevronDown } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useDemoUser, DEMO_USERS, type DemoProfile } from "@/lib/context/demo-user";
-import { useState } from "react";
+import { useDemoUser, type DemoProfile } from "@/lib/context/demo-user";
 
 // ── Nav types ─────────────────────────────────────────────────────────────────
 
 type NavItem = {
   href: string;
   label: string;
+  description?: string;
   icon: string; // Unicode emoji or symbol
   badge?: string;
   badgeType?: "red" | "info" | "warn";
@@ -20,40 +20,42 @@ type NavSection = { group: string; items: NavItem[]; gold?: boolean };
 
 // ── Customer nav — matches index.html exactly ──────────────────────────────────
 
-const COMPANY_NAV: NavSection[] = [
+const BASE_COMPANY_NAV: NavSection[] = [
   {
     group: "Overview",
     items: [
-      { href: "/dashboard",  label: "Command Center",          icon: "⊞", badge: "!", badgeType: "warn" },
-      { href: "/workspace",  label: "My Workspace",            icon: "✓", badge: "7" },
+      { href: "/dashboard",  label: "Command Center",          description: "Live status & KPIs",             icon: "⊞" },
+      { href: "/workspace",  label: "My Workspace",            description: "Tasks & assigned items",         icon: "✓" },
     ],
   },
   {
     group: "Compliance",
     items: [
-      { href: "/legal",      label: "Legal Register",          icon: "⚖" },
-      { href: "/risk",       label: "Risk Intelligence",       icon: "▲", badge: "3" },
-      { href: "/audits",     label: "Audits & Assessments",    icon: "≡" },
-      { href: "/capa",       label: "Corrective Actions",      icon: "⚙", badge: "5" },
+      { href: "/legal",      label: "Legal Register",          description: "Regulations & obligations",      icon: "⚖" },
+      { href: "/risk",       label: "Risk Intelligence",       description: "Risk register & scores",         icon: "▲" },
+      { href: "/audits",     label: "Audits & Assessments",    description: "Scheduled audit programs",       icon: "≡" },
+      { href: "/capa",       label: "Corrective Actions",      description: "CAPA tracking & closure",        icon: "⚙" },
+      { href: "/osha",       label: "OSHA Logs",               description: "300/301 injury & illness logs",  icon: "📋" },
     ],
   },
   {
     group: "Operations",
     items: [
-      { href: "/training",   label: "Training & Competency",   icon: "🎓" },
-      { href: "/documents",  label: "Documents & Programs",    icon: "📄" },
-      { href: "/chemicals",  label: "Chemical Management",     icon: "⚗" },
-      { href: "/biosafety",  label: "Biosafety & Lab Safety",  icon: "🔬" },
-      { href: "/waste",      label: "Waste Management",        icon: "♻" },
-      { href: "/monitoring", label: "Monitoring & Equipment",  icon: "📡" },
-      { href: "/incidents",  label: "Incident Reporting",      icon: "⚠" },
+      { href: "/training",   label: "Training & Competency",   description: "Staff training records",         icon: "🎓" },
+      { href: "/documents",  label: "Documents & Programs",    description: "SOPs & safety programs",         icon: "📄" },
+      { href: "/chemicals",  label: "Chemical Management",     description: "SDS, inventory & exposure",      icon: "⚗" },
+      { href: "/biosafety",  label: "Biosafety & Lab Safety",  description: "BSL protocols & cabinets",       icon: "🔬" },
+      { href: "/waste",      label: "Waste Management",        description: "Hazardous waste streams",        icon: "♻" },
+      { href: "/ergonomics", label: "Ergonomics & MSD",         description: "Workstation & MSD risk controls",icon: "🪑" },
+      { href: "/monitoring", label: "Monitoring & Equipment",  description: "Calibration & inspections",      icon: "📡" },
+      { href: "/incidents",  label: "Incident Reporting",      description: "Near-miss & injury reports",     icon: "⚠" },
     ],
   },
   {
     group: "Insights",
     items: [
-      { href: "/ai",         label: "AI Findings",             icon: "🧠" },
-      { href: "/reports",    label: "Reports & Analytics",     icon: "📊" },
+      { href: "/ai",         label: "Amaya AI Assistant",      description: "Ask anything about your EHS",   icon: "🤖" },
+      { href: "/reports",    label: "Reports & Analytics",     description: "Dashboards & exports",           icon: "📊" },
     ],
   },
 ];
@@ -62,7 +64,7 @@ const COMPANY_ADMIN_EXTRA: NavSection[] = [
   {
     group: "Admin",
     items: [
-      { href: "/settings",   label: "Company Settings",        icon: "⚙" },
+      { href: "/settings",   label: "Company Settings",        description: "Users, roles & preferences",    icon: "⚙" },
     ],
   },
 ];
@@ -71,12 +73,13 @@ const FIELD_OFFICER_NAV: NavSection[] = [
   {
     group: "My Work",
     items: [
-      { href: "/dashboard",  label: "Command Center",          icon: "⊞" },
-      { href: "/workspace",  label: "My Workspace",            icon: "✓", badge: "7" },
-      { href: "/incidents",  label: "Incident Reporting",      icon: "⚠" },
-      { href: "/training",   label: "Training & Competency",   icon: "🎓" },
-      { href: "/documents",  label: "Documents & Programs",    icon: "📄" },
-      { href: "/monitoring", label: "Monitoring & Equipment",  icon: "📡" },
+      { href: "/dashboard",  label: "Command Center",          description: "Live status & KPIs",             icon: "⊞" },
+      { href: "/workspace",  label: "My Workspace",            description: "Tasks & assigned items",         icon: "✓" },
+      { href: "/incidents",  label: "Incident Reporting",      description: "Near-miss & injury reports",     icon: "⚠" },
+      { href: "/ergonomics", label: "Ergonomics & MSD",         description: "Level 1 self-screening",         icon: "🪑" },
+      { href: "/training",   label: "Training & Competency",   description: "Staff training records",         icon: "🎓" },
+      { href: "/documents",  label: "Documents & Programs",    description: "SOPs & safety programs",         icon: "📄" },
+      { href: "/monitoring", label: "Monitoring & Equipment",  description: "Calibration & inspections",      icon: "📡" },
     ],
   },
 ];
@@ -85,33 +88,66 @@ const VIEWER_NAV: NavSection[] = [
   {
     group: "Read-only Access",
     items: [
-      { href: "/dashboard",  label: "Command Center",          icon: "⊞" },
-      { href: "/workspace",  label: "My Workspace",            icon: "✓" },
-      { href: "/reports",    label: "Reports & Analytics",     icon: "📊" },
-      { href: "/documents",  label: "Documents & Programs",    icon: "📄" },
+      { href: "/dashboard",  label: "Command Center",          description: "Live status & KPIs",             icon: "⊞" },
+      { href: "/workspace",  label: "My Workspace",            description: "Tasks & assigned items",         icon: "✓" },
+      { href: "/reports",    label: "Reports & Analytics",     description: "Dashboards & exports",           icon: "📊" },
+      { href: "/documents",  label: "Documents & Programs",    description: "SOPs & safety programs",         icon: "📄" },
     ],
   },
 ];
 
-// ── Reliance Internal nav — single section, matches index.html ─────────────────
+// ── Reliance Internal nav ──────────────────────────────────────────────────────
 
 const SA_NAV: NavSection[] = [
   {
     group: "🔒 Reliance Internal",
     gold: true,
     items: [
-      { href: "/sa/companies",   label: "Companies & Tenants",     icon: "🏢", badge: "24", badgeType: "info" },
-      { href: "/sa/impl",        label: "Implementation Tracker",  icon: "🚀" },
-      { href: "/sa/globallegal", label: "Global Legal Register",   icon: "🌍" },
-      { href: "/sa/templates",   label: "Template Library",        icon: "📋" },
-      { href: "/sa/ai",          label: "AI Model Configuration",  icon: "🧠" },
-      { href: "/gateway",        label: "AI Gateway & Validation", icon: "🔒", badge: "live", badgeType: "info" },
-      { href: "/sa/imports",     label: "Data Imports",            icon: "📥" },
-      { href: "/sa/analytics",   label: "Analytics & Insights",    icon: "📊" },
-      { href: "/sa/support",     label: "Support & QA",            icon: "🛠", badge: "7" },
-      { href: "/sa/history",     label: "Build History",           icon: "📜" },
-      { href: "/sa/security",    label: "Security & System",       icon: "🔐" },
-      { href: "/sa/billing",     label: "Billing & Subscriptions", icon: "💳" },
+      { href: "/sa/modules",     label: "Module Control Panel",    description: "Enable / disable EHS modules",  icon: "🔌" },
+      { href: "/sa/companies",   label: "Companies & Tenants",     description: "Manage client accounts",        icon: "🏢" },
+      { href: "/sa/impl",        label: "Implementation Tracker",  description: "Onboarding progress",           icon: "🚀" },
+      { href: "/sa/globallegal", label: "Global Legal Register",   description: "Multi-jurisdiction library",    icon: "🌍" },
+      { href: "/sa/templates",   label: "Template Library",        description: "Shared content templates",      icon: "📋" },
+      { href: "/sa/ai",          label: "AI Model Configuration",  description: "Prompt & model tuning",         icon: "🧠" },
+      { href: "/sa/gateway",     label: "AI Gateway — EHS Validation", description: "3-gate EHS data validation + Nothing Missed", icon: "🔎" },
+      { href: "/sa/guardrails",  label: "Guardrails",              description: "AI autonomy & risk rules",      icon: "🛡" },
+      { href: "/sa/predictive",  label: "Predictive Model",        description: "Predictive engine settings",    icon: "📈" },
+      { href: "/sa/imports",     label: "Data Imports",            description: "Bulk data ingestion",           icon: "📥" },
+      { href: "/sa/analytics",   label: "Analytics & Insights",    description: "Platform-wide metrics",         icon: "📊" },
+      { href: "/sa/support",     label: "Support & QA",            description: "Tickets & QA checks",          icon: "🛠" },
+      { href: "/sa/history",     label: "Build History",           description: "Deployment & version log",      icon: "📜" },
+      { href: "/sa/security",    label: "Security & System",       description: "Audit log & access controls",   icon: "🔐" },
+      { href: "/sa/billing",     label: "Billing & Subscriptions", description: "Plans & invoicing",             icon: "💳" },
+    ],
+  },
+  {
+    group: "Operate",
+    items: [
+      { href: "/arc/map",        label: "Site Map",                description: "Facility & location hierarchy", icon: "🗺" },
+      { href: "/cells",          label: "Safety Cells",            description: "Cell network overview",         icon: "⬡" },
+      { href: "/arc/proof",      label: "Control Proof Ledger",    description: "Evidence & attestations",       icon: "🛡" },
+      { href: "/arc/review",     label: "Review Queue",            description: "Pending approvals",             icon: "📥" },
+      { href: "/arc/activity",   label: "Activity",                description: "Recent platform actions",       icon: "🕐" },
+      { href: "/arc/causality",  label: "Causality & Prevention",  description: "Causal chains & prevention paths", icon: "🕸" },
+      { href: "/arc/graph",      label: "Cell Web 3D",             description: "3D cell network graph",         icon: "◎" },
+      { href: "/arc/framework",  label: "Risk Framework",          description: "Framework configuration",       icon: "⬛" },
+      { href: "/arc/rdash",      label: "Risk Dashboard",          description: "Risk KPIs & trends",            icon: "📊" },
+      { href: "/arc/trends",     label: "Trends",                  description: "Historical trend analysis",     icon: "📈" },
+      { href: "/arc/reports",    label: "Reports",                 description: "ARC report generation",         icon: "📄" },
+      { href: "/arc/data",       label: "Data Space",              description: "Raw data exploration",          icon: "🗄" },
+      { href: "/arc/gateway",    label: "Gateway Health",          description: "Integration status",            icon: "⚡", badge: "live", badgeType: "info" },
+      { href: "/sa/wiring",     label: "Signal Wiring Board",     description: "Live system connection map",     icon: "⬡" },
+    ],
+  },
+  {
+    group: "ARC — Adaptive Risk Continuum",
+    items: [
+      { href: "/arc/forecast",      label: "Risk Forecast",        description: "Predictive risk outlook",       icon: "🎯" },
+      { href: "/arc/intake",        label: "EXP Intake",           description: "Experience capture form",       icon: "✨" },
+      { href: "/arc/method",        label: "ARC Method",           description: "Methodology reference",         icon: "🔀" },
+      { href: "/arc/hsl",           label: "Human Signal Layer",   description: "Behavioral & sentiment signals",icon: "💓" },
+      { href: "/arc/intelligence",  label: "P-CLSS · EXP · VELA", description: "Intelligence modules",          icon: "🧬" },
+      { href: "/arc/verticals",     label: "GUS Verticals",        description: "Industry vertical configs",     icon: "📦" },
     ],
   },
 ];
@@ -120,8 +156,8 @@ function getNav(user: DemoProfile): NavSection[] {
   if (user.is_reliance) return SA_NAV;
   if (user.role === "viewer") return VIEWER_NAV;
   if (user.role === "field_officer") return FIELD_OFFICER_NAV;
-  if (user.role === "admin") return [...COMPANY_NAV, ...COMPANY_ADMIN_EXTRA];
-  return COMPANY_NAV;
+  if (user.role === "admin") return [...BASE_COMPANY_NAV, ...COMPANY_ADMIN_EXTRA];
+  return BASE_COMPANY_NAV;
 }
 
 function getRoleBadge(user: DemoProfile): string {
@@ -150,62 +186,51 @@ function Badge({ text, type = "red" }: { text: string; type?: "red" | "info" | "
   );
 }
 
-// ── Demo user switcher ─────────────────────────────────────────────────────────
+// ── User panel (sign out only — no switching) ─────────────────────────────────
 
-function DemoSwitcher() {
-  const { user, setUser } = useDemoUser();
-  const [open, setOpen] = useState(false);
+function UserPanel() {
+  const { user } = useDemoUser();
+  const router   = useRouter();
   const initials = user.display_name.split(" ").map((n) => n[0]).join("").slice(0, 2);
 
+  function signOut() {
+    document.cookie = "maco-mock-tenant=; path=/; max-age=0; SameSite=Lax";
+    localStorage.removeItem("maco-logged-in");
+    localStorage.removeItem("maco-demo-user");
+    router.push("/login");
+  }
+
   return (
-    <div className="relative border-t border-white/[0.07] mt-2 px-3.5 py-3.5">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2.5 rounded-[9px] bg-white/[0.07] px-2.5 py-2 transition hover:bg-white/10"
-      >
+    <div className="border-t border-white/[0.07] mt-2 px-3.5 py-3.5">
+      <div className="flex items-center gap-2.5 rounded-[9px] bg-white/[0.07] px-2.5 py-2">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-[11px] font-extrabold text-white">
           {initials}
         </div>
-        <div className="min-w-0 flex-1 text-left">
+        <div className="min-w-0 flex-1">
           <div className="truncate text-[12px] font-bold text-white">{user.display_name}</div>
           <div className="text-[10px] text-white/40">{getRoleBadge(user)}</div>
         </div>
-        <ChevronDown className={cn("h-3 w-3 shrink-0 text-white/30 transition-transform", open && "rotate-180")} />
-      </button>
-
-      {open && (
-        <div className="absolute bottom-full left-3 right-3 mb-1 overflow-hidden rounded-xl border border-white/10 bg-[#0f1e2e] shadow-2xl">
-          <div className="px-3 py-2 text-[9px] font-bold uppercase tracking-widest text-white/25">
-            Demo — Switch User
-          </div>
-          {DEMO_USERS.map((u) => {
-            const ini = u.display_name.split(" ").map((n) => n[0]).join("").slice(0, 2);
-            return (
-              <button
-                key={u.id}
-                onClick={() => { setUser(u); setOpen(false); }}
-                className={cn(
-                  "flex w-full items-center gap-2.5 px-3 py-2 text-left transition hover:bg-white/8",
-                  u.id === user.id ? "bg-blue-600/25 text-white" : "text-white/60",
-                )}
-              >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/10 text-[10px] font-bold">
-                  {ini}
-                </span>
-                <span className="flex-1 truncate text-[12px]">{u.display_name}</span>
-                <span className="shrink-0 text-[9.5px] text-white/30">{getRoleBadge(u)}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+        <button
+          onClick={signOut}
+          title="Sign out"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-white/25 transition hover:text-red-400 hover:bg-red-400/10"
+        >
+          <LogOut className="h-3.5 w-3.5" />
+        </button>
+      </div>
     </div>
   );
 }
 
 // ── Main LeftNav ───────────────────────────────────────────────────────────────
 
-export function LeftNav() {
+interface LeftNavProps {
+  openCapas?: number;
+  openRisks?: number;
+  pendingTasks?: number;
+}
+
+export function LeftNav({ openCapas = 0, openRisks = 0, pendingTasks = 0 }: LeftNavProps) {
   const { user } = useDemoUser();
   const pathname = usePathname();
   const sections = getNav(user);
@@ -231,7 +256,7 @@ export function LeftNav() {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "mx-2 mt-0.5 flex items-center gap-2.5 rounded-lg px-3 py-[8px] text-[13px] font-medium transition-colors",
+                    "mx-2 mt-0.5 flex items-center gap-2.5 rounded-lg px-3 py-[7px] text-[13px] font-medium transition-colors",
                     active
                       ? "bg-blue-600 font-semibold text-white shadow-[0_2px_8px_rgba(37,99,235,0.4)]"
                       : "text-white/58 hover:bg-[#2a4060] hover:text-white/90",
@@ -240,10 +265,23 @@ export function LeftNav() {
                   <span className="w-[18px] shrink-0 text-center text-[15px] leading-none">
                     {item.icon}
                   </span>
-                  <span className="flex-1 truncate">{item.label}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate leading-tight">{item.label}</span>
+                    {item.description && (
+                      <span className={cn(
+                        "block truncate text-[10px] font-normal leading-tight mt-[1px]",
+                        active ? "text-white/60" : "text-white/30",
+                      )}>
+                        {item.description}
+                      </span>
+                    )}
+                  </span>
                   {item.badge && (
                     <Badge text={item.badge} type={item.badgeType ?? "red"} />
                   )}
+                  {item.href === "/workspace"  && pendingTasks > 0  && <Badge text={String(pendingTasks)} />}
+                  {item.href === "/capa"       && openCapas > 0     && <Badge text={String(openCapas)} />}
+                  {item.href === "/risk"       && openRisks > 0     && <Badge text={String(openRisks)} />}
                 </Link>
               );
             })}
@@ -251,7 +289,7 @@ export function LeftNav() {
         ))}
       </div>
 
-      <DemoSwitcher />
+      <UserPanel />
     </nav>
   );
 }

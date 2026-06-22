@@ -1,11 +1,13 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal, Field, Input, Select, SubmitRow } from "@/components/modals/Modal";
 import { addDocument } from "@/lib/actions/ehs";
+import type { Profile } from "@/lib/types";
+import { playCreateSound } from "@/lib/sounds";
 
-export function AddDocumentButton() {
+export function AddDocumentButton({ profiles = [] }: { profiles?: Profile[] }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const router = useRouter();
@@ -14,7 +16,7 @@ export function AddDocumentButton() {
     e.preventDefault();
     setPending(true);
     const res = await addDocument(null, new FormData(e.currentTarget));
-    if (res.ok) { setOpen(false); router.refresh(); }
+    if (res.ok) { playCreateSound(); setOpen(false); router.refresh(); }
     setPending(false);
   }
 
@@ -75,6 +77,14 @@ export function AddDocumentButton() {
                 </Select>
               </Field>
             </div>
+            <Field label="Document Owner">
+              <Select name="owner_id">
+                <option value="">Unassigned</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>{p.display_name}</option>
+                ))}
+              </Select>
+            </Field>
           </div>
           <SubmitRow onClose={() => setOpen(false)} submitting={pending} />
         </form>
@@ -82,3 +92,4 @@ export function AddDocumentButton() {
     </>
   );
 }
+

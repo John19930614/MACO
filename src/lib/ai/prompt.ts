@@ -1,8 +1,9 @@
 /**
  * SafetyIQ Causality Engine prompt (build manual Appendix B).
- * The engine MUST return structured JSON matching AiAnalysisOutput. Output is
- * always stored as a pending AI finding — never written straight to official
- * records — and high/critical recommendations are flagged human_review_required.
+ * The engine returns structured JSON matching CausalityOutput, validated by
+ * aiCellAnalysisOutputSchema before storage. Output is always stored as a
+ * pending AI finding — never written straight to official records — and
+ * high/critical recommendations are flagged human_review_required.
  */
 import type { SafetyCell } from "@/lib/types";
 import { EDGE_TYPES, ENERGY_SOURCES, EXPOSURE_TYPES, CONTROL_GAPS, SEVERITIES } from "@/lib/constants";
@@ -116,7 +117,7 @@ Return JSON with this exact shape:
   "hazard_genome": { "energySource": string, "exposureType": string, "trigger": string, "controlGap": string, "environment"?: string },
   "missing_data": string[],
   "causal_factors": string[],
-  "suggested_edges": [{ "target_cell_id": string, "type": "caused_by|contributed_to|same_control_gap|same_location|prevention_for|contradicts", "confidence": number (0-1), "rationale": string }],
+  "suggested_edges": [{ "target_cell_id": string, "type": "contributes_to|contributed_to|triggers|amplifies|inhibits|precedes|same_location|same_control_gap", "confidence": number (0-1), "rationale": string }],
   "prevention": [{ "action": string, "counterfactual": string, "rationale": string }],
   "plain_language_summary": string,
   "human_review_required": boolean

@@ -7,6 +7,8 @@ import type {
   ComplianceStatus,
   ReviewStatus,
   Severity,
+  CellStatus,
+  ProofStatus,
 } from "@/lib/constants";
 
 // ── Risk level ─────────────────────────────────────────────────────────────
@@ -149,6 +151,62 @@ export function SeverityBadge({ severity }: { severity: Severity }) {
     <Pill className={cn(SEVERITY_STYLE[severity])}>
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: SEVERITY_DOT[severity] }} />
       {severity.charAt(0).toUpperCase() + severity.slice(1)}
+    </Pill>
+  );
+}
+
+// ── Safety Cell status ─────────────────────────────────────────────────────
+
+const CELL_STATUS_STYLE: Record<CellStatus, string> = {
+  open:         "bg-blue-100 text-blue-700",
+  investigating:"bg-amber-100 text-amber-700",
+  controlled:   "bg-purple-100 text-purple-700",
+  closed:       "bg-emerald-100 text-emerald-700",
+};
+
+const CELL_STATUS_LABEL: Record<CellStatus, string> = {
+  open:         "Open",
+  investigating:"Investigating",
+  controlled:   "Controlled",
+  closed:       "Closed",
+};
+
+export function StatusBadge({ status }: { status: CellStatus }) {
+  return <Pill className={CELL_STATUS_STYLE[status]}>{CELL_STATUS_LABEL[status]}</Pill>;
+}
+
+// ── Control Proof status ───────────────────────────────────────────────────
+
+const PROOF_STATUS_STYLE: Record<ProofStatus, string> = {
+  proven:         "bg-emerald-100 text-emerald-700",
+  weak_proof:     "bg-amber-100 text-amber-700",
+  not_checked:    "bg-slate-100 text-slate-500",
+  missing:        "bg-red-100 text-red-700",
+  expired:        "bg-orange-100 text-orange-700",
+  conflicting:    "bg-rose-100 text-rose-700",
+  not_applicable: "bg-slate-100 text-slate-400",
+};
+
+const PROOF_STATUS_LABEL: Record<ProofStatus, string> = {
+  proven:         "Proven",
+  weak_proof:     "Weak Proof",
+  not_checked:    "Not Checked",
+  missing:        "Missing",
+  expired:        "Expired",
+  conflicting:    "Conflicting",
+  not_applicable: "N/A",
+};
+
+export function ProofBadge({ status }: { status: ProofStatus }) {
+  return <Pill className={PROOF_STATUS_STYLE[status]}>{PROOF_STATUS_LABEL[status]}</Pill>;
+}
+
+// ── AI pending indicator ───────────────────────────────────────────────────
+
+export function AiPendingBadge() {
+  return (
+    <Pill className="border border-dashed border-violet-400 bg-violet-50 text-violet-700">
+      AI · Pending
     </Pill>
   );
 }

@@ -23,9 +23,11 @@ export interface DemoProfile {
   job_title: string;
   is_reliance: boolean;
   company: string;
+  email: string;
 }
 
 export const DEMO_USERS: DemoProfile[] = [
+  // ── BioStar Research Inc. ────────────────────────────────────────────────────
   {
     id: "p-sarah-chen-001",
     display_name: "Sarah Chen",
@@ -34,6 +36,7 @@ export const DEMO_USERS: DemoProfile[] = [
     job_title: "EHS Manager",
     is_reliance: false,
     company: "BioStar Research Inc.",
+    email: "sarah.chen@biostarresearch.com",
   },
   {
     id: "p-kim-park-001",
@@ -43,6 +46,7 @@ export const DEMO_USERS: DemoProfile[] = [
     job_title: "EHS Coordinator",
     is_reliance: false,
     company: "BioStar Research Inc.",
+    email: "kim.park@biostarresearch.com",
   },
   {
     id: "p-james-wu-001",
@@ -52,6 +56,7 @@ export const DEMO_USERS: DemoProfile[] = [
     job_title: "Lab Safety Officer",
     is_reliance: false,
     company: "BioStar Research Inc.",
+    email: "james.wu@biostarresearch.com",
   },
   {
     id: "p-tom-reed-001",
@@ -61,7 +66,30 @@ export const DEMO_USERS: DemoProfile[] = [
     job_title: "Research Director",
     is_reliance: false,
     company: "BioStar Research Inc.",
+    email: "tom.reed@biostarresearch.com",
   },
+  // ── NovaBio Sciences (onboarding demo) ──────────────────────────────────────
+  {
+    id: "p-david-kim-001",
+    display_name: "David Kim",
+    role: "ehs_manager",
+    tenant_id: "t-novabio-001",
+    job_title: "EHS Manager",
+    is_reliance: false,
+    company: "NovaBio Sciences",
+    email: "david.kim@novabio.com",
+  },
+  {
+    id: "p-lisa-tang-001",
+    display_name: "Lisa Tang",
+    role: "ehs_coordinator",
+    tenant_id: "t-novabio-001",
+    job_title: "Safety Coordinator",
+    is_reliance: false,
+    company: "NovaBio Sciences",
+    email: "lisa.tang@novabio.com",
+  },
+  // ── Reliance platform admin ──────────────────────────────────────────────────
   {
     id: "p-reliance-admin-001",
     display_name: "Maria Lopez",
@@ -70,10 +98,11 @@ export const DEMO_USERS: DemoProfile[] = [
     job_title: "Platform Administrator",
     is_reliance: true,
     company: "Reliance Predictive Safety Technologies",
+    email: "maria.lopez@reliance.com",
   },
 ];
 
-const LS_KEY = "maco-demo-user";
+const LS_KEY      = "maco-demo-user";
 const DEFAULT_USER = DEMO_USERS[0];
 
 interface DemoUserCtx {
@@ -103,6 +132,8 @@ export function DemoUserProvider({ children }: { children: ReactNode }) {
     setUserState(u);
     try {
       localStorage.setItem(LS_KEY, u.id);
+      document.cookie = `maco-mock-tenant=${u.tenant_id ?? "t-biostar-001"}; path=/; max-age=86400; SameSite=Lax`;
+      document.cookie = `maco-mock-profile=${u.id}; path=/; max-age=86400; SameSite=Lax`;
     } catch {}
   }
 

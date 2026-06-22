@@ -17,6 +17,9 @@ import {
   DOCUMENT_STATUSES,
   RISK_LEVELS,
   ROLES,
+  CELL_STATUSES,
+  PROOF_STATUSES,
+  EDGE_TYPES,
 } from "./constants";
 
 // ── Chemical Inventory ────────────────────────────────────────────────────────
@@ -269,3 +272,140 @@ export const aiAnalysisOutputSchema = z.object({
 });
 
 export type AiAnalysisOutputValidated = z.infer<typeof aiAnalysisOutputSchema>;
+
+/**
+ * Zod schema for the AMAYA Causality Engine output (Arc per-cell analysis).
+ * Validated before the result is ever stored — a malformed payload triggers
+ * the heuristic fallback. Numbers are coerced/clamped for model tolerance.
+ */
+export const aiCellAnalysisOutputSchema = z.object({
+  risk_score: z.number().min(0).max(100).catch(50),
+  hazard_genome: z.object({
+    energySource: z.string().min(1),
+    exposureType: z.string().min(1),
+    trigger: z.string().min(1),
+    controlGap: z.string().min(1),
+    environment: z.string().default(""),
+  }),
+  missing_data: z.array(z.string()).default([]),
+  causal_factors: z.array(z.string()).default([]),
+  suggested_edges: z.array(z.object({
+    target_cell_id: z.string().min(1),
+    type: z.enum(EDGE_TYPES),
+    confidence: z.number().min(0).max(1).catch(0.5),
+    rationale: z.string().min(1),
+  })).default([]),
+  prevention: z.array(z.object({
+    action: z.string().min(1),
+    counterfactual: z.string().min(1),
+    rationale: z.string().default(""),
+  })).default([]),
+  plain_language_summary: z.string().min(1),
+  human_review_required: z.boolean(),
+});
+
+export type AiCellAnalysisOutputValidated = z.infer<typeof aiCellAnalysisOutputSchema>;
+
+// ── Arc — Safety Cells ────────────────────────────────────────────────────────
+
+export const hazardGenomeSchema = z.object({
+  energySource: z.string().min(1, "Energy source is required"),
+  exposureType: z.string().min(1, "Exposure type is required"),
+  trigger: z.string().min(1, "Trigger is required"),
+  controlGap: z.string().min(1, "Control gap is required"),
+});
+
+export const safetyCellSchema = z.object({
+  site_id: z.string().min(1, "Select a site"),
+  location_id: z.string().min(1, "Select a location"),
+  title: z.string().min(1, "Title is required"),
+  description: z.string().default(""),
+  task: z.string().min(1, "Task is required"),
+  crew: z.string().nullable().optional(),
+  company: z.string().nullable().optional(),
+  permit_ref: z.string().nullable().optional(),
+  hazard_genome: hazardGenomeSchema,
+  severity: z.enum(SEVERITIES),
+  likelihood: z.number().int().min(1).max(5),
+  status: z.enum(CELL_STATUSES).default("open"),
+  owner_id: z.string().nullable().optional(),
+});
+
+export type SafetyCellInput = z.infer<typeof safetyCellSchema>;
+
+export const eventInputSchema = z.object({
+  site_id: z.string().min(1, "Select a site"),
+  cell_id: z.string().nullable().optional(),
+  kind: z.enum(["incident", "near_miss", "audit_finding", "claim"]),
+  title: z.string().min(5, "Title must be at least 5 characters"),
+  description: z.string().optional(),
+  severity: z.enum(SEVERITIES),
+  occurred_at: z.string().optional(),
+});
+
+export type EventInput = z.infer<typeof eventInputSchema>;
+
+export const analyzeCellSchema = z.object({
+  cell_id: z.string().min(1, "Cell ID is required"),
+});
+
+export const evidenceSchema = z.object({
+  cell_id: z.string().min(1),
+  kind: z.enum(["photo", "video", "document", "note"]),
+  name: z.string().min(1, "File name is required"),
+  summary: z.string().optional(),
+});
+
+export const causalEdgeSchema = z.object({
+  source_cell_id: z.string().min(1, "Source cell is required"),
+  target_cell_id: z.string().min(1, "Target cell is required"),
+  type: z.enum(EDGE_TYPES),
+  confidence: z.number().min(0).max(1).default(0.8),
+  rationale: z.string().default(""),
+});
+
+export const proofUpdateSchema = z.object({
+  id: z.string().min(1),
+  status: z.enum(PROOF_STATUSES),
+  evidence_summary: z.string().nullable().optional(),
+  expires_at: z.string().nullable().optional(),
+  reason: z.string().optional(),
+});
+
+export const actionSchema = z.object({
+  cell_id: z.string().min(1, "Cell ID is required"),
+  title: z.string().min(1, "Title is required"),
+  kind: z.enum(["corrective", "preventive"]),
+  owner_id: z.string().nullable().optional(),
+  due_date: z.string().nullable().optional(),
+});
+
+// Alias so existing API routes using `eventSchema` continue to compile.
+export const eventSchema = eventInputSchema;
+
+// Edge review / PATCH — accept, reject, or edit a causal edge.
+export const edgeReviewSchema = z.object({
+  id: z.string().min(1, "Edge ID is required"),
+  review_status: z.enum(REVIEW_STATUSES),
+  type: z.enum(EDGE_TYPES).optional(),
+  rationale: z.string().optional(),
+  reason: z.string().optional(),
+});
+
+// Structured output from the EXP LLM extractor — validated before use.
+export const extractedCellSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().default(""),
+  task: z.string().default(""),
+  severity: z.enum(SEVERITIES),
+  likelihood: z.number().int().min(1).max(5).default(3),
+  hazard_genome: z.object({
+    energySource: z.string().default("unknown"),
+    exposureType: z.string().default("contact"),
+    trigger: z.string().default(""),
+    controlGap: z.string().default("unknown"),
+    environment: z.string().optional(),
+  }),
+  confidence: z.number().min(0).max(1).default(0.7),
+  signals: z.array(z.string()).default([]),
+});

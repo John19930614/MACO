@@ -1,6 +1,12 @@
+import Link from "next/link";
 import { Microscope, AlertTriangle, ShieldCheck, FileText, FlaskConical, Biohazard, CheckSquare, Clock, Plus } from "lucide-react";
 import { PageHeader, Card, CardHeader, Pill } from "@/components/ui/primitives";
-import { getBiosafetyLabs, getBiohazardAgents, getBiosafetyIncidents } from "@/lib/data/ehsRepo";
+import { getBiosafetyLabs, getBiohazardAgents, getBiosafetyIncidents, getChemicals, getCapaActions } from "@/lib/data/ehsRepo";
+import { getServerTenantId } from "@/lib/auth/session";
+import { MOCK_TENANT_ID } from "@/lib/data/mock";
+import { RegisterLabButton } from "./RegisterLabButton";
+import { AddAgentButton } from "./AddAgentButton";
+import { BiosafetyExportButton } from "./BiosafetyExportButton";
 
 function statusColor(s: string) {
   const map: Record<string, string> = {
@@ -46,10 +52,14 @@ function incidentDisplayType(incident_type: string, title: string): string {
 }
 
 export default async function BiosafetyPage() {
-  const [labs, agents, bslIncidents] = await Promise.all([
-    getBiosafetyLabs(),
-    getBiohazardAgents(),
-    getBiosafetyIncidents(),
+  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+
+  const [labs, agents, bslIncidents, chemicals, allCapas] = await Promise.all([
+    getBiosafetyLabs(tenantId),
+    getBiohazardAgents(tenantId),
+    getBiosafetyIncidents(tenantId),
+    getChemicals(tenantId),
+    getCapaActions(tenantId),
   ]);
 
   const inspectionsDue = labs.filter((l) => l.status === "inspection_due").length;
@@ -58,6 +68,56 @@ export default async function BiosafetyPage() {
   ).length;
   const reviewRequired = agents.filter((a) => a.status === "review_required").length;
 
+  // Derive compliance checklist items from live data
+  const labsWithFindings = labs.filter((l) => l.open_findings > 0);
+  const allCompliant     = labs.length > 0 && labs.every((l) => l.status === "compliant");
+  const inspectionOverdue = labs.some((l) => l.next_inspection && new Date(l.next_inspection) < new Date());
+  const highHazardChems  = chemicals.filter(
+    (c) => c.is_scheduled || c.hazard_statements.some((h) => ["H350","H331","H330","H311","H310","H300","H351"].some((hh) => h.startsWith(hh)))
+  );
+  const openBslCapas = allCapas.filter(
+    (c) => (c.source_type === "audit_finding" || c.source_type === "incident") &&
+           (c.status === "open" || c.status === "in_progress" || c.status === "overdue")
+  );
+
+  const COMPLIANCE_ITEMS = [
+    {
+      label: "Lab Inspection Schedule",
+      status: inspectionOverdue ? "Overdue — action required" : inspectionsDue > 0 ? `${inspectionsDue} inspection${inspectionsDue > 1 ? "s" : ""} due` : "All labs current",
+      ok: inspectionOverdue ? false : inspectionsDue > 0 ? null : true,
+    },
+    {
+      label: "Biological Agent Register",
+      status: reviewRequired > 0 ? `${reviewRequired} agent${reviewRequired > 1 ? "s" : ""} need review` : `${agents.length} agents registered`,
+      ok: reviewRequired > 0 ? null : true,
+    },
+    {
+      label: "Open BSL Findings",
+      status: labsWithFindings.length > 0 ? `${labsWithFindings.map((l) => l.name).join(", ")}` : "No open findings",
+      ok: labsWithFindings.length > 0 ? false : true,
+    },
+    {
+      label: "Open Incident Investigations",
+      status: openBslIncidents > 0 ? `${openBslIncidents} investigation${openBslIncidents > 1 ? "s" : ""} in progress` : "None open",
+      ok: openBslIncidents > 0 ? false : true,
+    },
+    {
+      label: "Lab Safety CAPAs",
+      status: openBslCapas.length > 0 ? `${openBslCapas.length} open corrective action${openBslCapas.length > 1 ? "s" : ""}` : "All actions closed",
+      ok: openBslCapas.length > 0 ? null : true,
+    },
+    {
+      label: "High-Hazard Chemicals in Labs",
+      status: highHazardChems.length > 0 ? `${highHazardChems.length} high-hazard chemical${highHazardChems.length > 1 ? "s" : ""} on file` : "No high-hazard chemicals",
+      ok: highHazardChems.length > 0 ? null : true,
+    },
+    {
+      label: "Overall Lab Compliance",
+      status: allCompliant ? "All labs compliant" : `${labs.filter((l) => l.status !== "compliant").length} non-compliant lab${labs.filter((l) => l.status !== "compliant").length > 1 ? "s" : ""}`,
+      ok: allCompliant,
+    },
+  ];
+
   return (
     <div className="flex flex-col overflow-hidden h-full">
       <PageHeader
@@ -65,19 +125,26 @@ export default async function BiosafetyPage() {
         subtitle="Biological agent inventory, BSL classifications, lab inspections, and containment compliance"
         actions={
           <div className="flex items-center gap-2">
-            <button className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
+            <BiosafetyExportButton labs={labs} agents={agents} incidents={bslIncidents} />
+            <Link
+              href="/documents"
+              className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+            >
               <FileText className="h-4 w-4" />
               SOP Library
-            </button>
-            <button className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
+            </Link>
+            <Link
+              href="/incidents"
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            >
               <Plus className="h-4 w-4" />
               Log Incident
-            </button>
+            </Link>
           </div>
         }
       />
 
-      <div className="flex-1 overflow-y-auto p-5">
+      <div className="iq-scroll flex-1 overflow-y-auto p-5">
         {/* KPI strip */}
         <div className="mb-5 grid grid-cols-4 gap-4">
           {[
@@ -110,11 +177,7 @@ export default async function BiosafetyPage() {
               <CardHeader
                 title="Registered BSL Laboratories"
                 subtitle="Inspection status and compliance for each registered lab"
-                right={
-                  <button className="flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-blue-700">
-                    <Plus className="h-3 w-3" /> Register Lab
-                  </button>
-                }
+                right={<RegisterLabButton />}
               />
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -152,11 +215,7 @@ export default async function BiosafetyPage() {
               <CardHeader
                 title="Biological Agent Inventory"
                 subtitle="Registered biohazardous materials and storage locations"
-                right={
-                  <button className="flex items-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-600">
-                    <Plus className="h-3 w-3" /> Add Agent
-                  </button>
-                }
+                right={<AddAgentButton />}
               />
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -194,18 +253,11 @@ export default async function BiosafetyPage() {
 
           {/* Right column */}
           <div className="flex flex-col gap-5">
-            {/* Compliance summary */}
+            {/* Compliance summary — live derived */}
             <Card>
-              <CardHeader title="Biosafety Compliance" subtitle="Current program status" />
+              <CardHeader title="Biosafety Compliance" subtitle="Derived from live program data" />
               <div className="p-4 space-y-3">
-                {[
-                  { label: "IBC Committee Review",          status: "Current",      ok: true  },
-                  { label: "Biosafety Manual (2024)",        status: "Active",       ok: true  },
-                  { label: "Personnel Medical Surveillance", status: "2 overdue",    ok: false },
-                  { label: "Autoclave Calibration Records",  status: "Current",      ok: true  },
-                  { label: "Decontamination Procedures",     status: "Under review", ok: null  },
-                  { label: "Emergency Response Plan (BSL)",  status: "Current",      ok: true  },
-                ].map((item) => (
+                {COMPLIANCE_ITEMS.map((item) => (
                   <div key={item.label} className="flex items-center gap-2">
                     {item.ok === true  && <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-500" />}
                     {item.ok === false && <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />}
@@ -219,16 +271,54 @@ export default async function BiosafetyPage() {
               </div>
             </Card>
 
+            {/* High-hazard chemicals cross-reference */}
+            {highHazardChems.length > 0 && (
+              <Card>
+                <CardHeader
+                  title="High-Hazard Chemicals"
+                  subtitle="Chemicals requiring BSL-level controls"
+                  right={
+                    <Link href="/chemicals" className="text-[11px] font-medium text-blue-600 hover:underline">
+                      View all →
+                    </Link>
+                  }
+                />
+                <div className="divide-y divide-slate-50">
+                  {highHazardChems.slice(0, 5).map((c) => (
+                    <Link key={c.id} href={`/chemicals/${c.id}`} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors">
+                      <FlaskConical className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-slate-800 truncate">{c.name}</div>
+                        <div className="text-[10px] text-slate-400">{c.storage_location ?? "—"} · {c.cas_number ?? "No CAS"}</div>
+                      </div>
+                      <Pill className={c.is_scheduled ? "bg-red-100 text-red-700 text-[10px]" : "bg-amber-100 text-amber-700 text-[10px]"}>
+                        {c.is_scheduled ? "Scheduled" : "High-Hazard"}
+                      </Pill>
+                    </Link>
+                  ))}
+                  {highHazardChems.length > 5 && (
+                    <div className="px-3 py-2 text-[11px] text-slate-400">
+                      +{highHazardChems.length - 5} more · <Link href="/chemicals" className="text-blue-600 hover:underline">View all</Link>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+
             {/* Recent BSL incidents */}
             <Card>
               <CardHeader
                 title="Recent BSL Incidents"
                 subtitle={`${bslIncidents.length} biosafety event${bslIncidents.length !== 1 ? "s" : ""}`}
-                right={<Plus className="h-4 w-4 text-slate-400 cursor-pointer hover:text-slate-600" />}
+                right={
+                  <Link href="/incidents" className="text-xs font-medium text-blue-600 hover:underline">
+                    All incidents →
+                  </Link>
+                }
               />
               <div className="divide-y divide-slate-50">
                 {bslIncidents.slice(0, 5).map((inc) => (
-                  <div key={inc.id} className="px-3 py-2.5">
+                  <Link key={inc.id} href={`/incidents/${inc.id}`} className="block px-3 py-2.5 hover:bg-slate-50 transition-colors">
                     <div className="flex items-start justify-between gap-2">
                       <div className="text-xs font-medium text-slate-800 leading-snug">
                         {incidentDisplayType(inc.incident_type, inc.title)}
@@ -241,7 +331,7 @@ export default async function BiosafetyPage() {
                       <span>{fmtDate(inc.occurred_at)}</span>
                     </div>
                     <Pill className={`mt-1 ${statusColor(inc.status)}`} style={{ fontSize: "9.5px" }}>{inc.status.replace(/_/g, " ")}</Pill>
-                  </div>
+                  </Link>
                 ))}
                 {bslIncidents.length === 0 && (
                   <div className="px-3 py-4 text-center text-xs text-slate-400">No biosafety incidents recorded</div>

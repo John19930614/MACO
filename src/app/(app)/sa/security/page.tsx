@@ -1,4 +1,4 @@
-import { PageHeader, Card, CardHeader, Pill } from "@/components/ui/primitives";
+import { DarkPageHeader, DarkCard, DarkCardHeader, Pill } from "@/components/ui/primitives";
 import { Lock, ShieldCheck, Users, Key, AlertTriangle, CheckCircle2, Clock, Globe } from "lucide-react";
 
 const AUDIT_LOG = [
@@ -18,15 +18,15 @@ const TENANTS_STATUS = [
 ];
 
 function eventColor(s: string) {
-  if (s === "success") return "bg-emerald-100 text-emerald-700";
-  if (s === "blocked") return "bg-red-100 text-red-700";
-  return "bg-amber-100 text-amber-700";
+  if (s === "success") return "bg-emerald-900/50 text-emerald-300";
+  if (s === "blocked") return "bg-red-900/50 text-red-300";
+  return "bg-amber-900/50 text-amber-300";
 }
 
 export default function SecurityPage() {
   return (
-    <div className="flex flex-col overflow-hidden h-full">
-      <PageHeader
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <DarkPageHeader
         title="Security & System Settings"
         subtitle="Platform-wide security configuration, access logs, and tenant security posture"
       />
@@ -35,15 +35,15 @@ export default function SecurityPage() {
         {/* KPIs */}
         <div className="mb-5 grid grid-cols-4 gap-4">
           {[
-            { label: "Active Tenants",      value: "4",   sub: "All healthy",         color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-100" },
-            { label: "MFA Enabled",         value: "75%", sub: "3 of 4 tenants",      color: "text-blue-700",    bg: "bg-blue-50 border-blue-100" },
-            { label: "Failed Logins (24h)", value: "3",   sub: "1 IP blocked",        color: "text-red-700",     bg: "bg-red-50 border-red-100" },
-            { label: "SSO Tenants",         value: "1",   sub: "Nexgen Pharma",       color: "text-purple-700",  bg: "bg-purple-50 border-purple-100" },
+            { label: "Active Tenants",      value: "4",   sub: "All healthy",         color: "text-emerald-400", bg: "bg-emerald-900/20 border-emerald-800/50" },
+            { label: "MFA Enabled",         value: "75%", sub: "3 of 4 tenants",      color: "text-blue-400",    bg: "bg-blue-900/20 border-blue-800/50" },
+            { label: "Failed Logins (24h)", value: "3",   sub: "1 IP blocked",        color: "text-red-400",     bg: "bg-red-900/20 border-red-800/50" },
+            { label: "SSO Tenants",         value: "1",   sub: "Nexgen Pharma",       color: "text-purple-300",  bg: "bg-purple-900/20 border-purple-800/50" },
           ].map((s) => (
             <div key={s.label} className={`rounded-xl border p-3 ${s.bg}`}>
-              <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{s.label}</div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{s.label}</div>
               <div className={`mt-1 text-3xl font-extrabold ${s.color}`}>{s.value}</div>
-              <div className="mt-0.5 text-[10.5px] text-slate-400">{s.sub}</div>
+              <div className="mt-0.5 text-[11px] text-slate-400">{s.sub}</div>
             </div>
           ))}
         </div>
@@ -51,74 +51,74 @@ export default function SecurityPage() {
         <div className="grid grid-cols-3 gap-5">
           <div className="col-span-2 flex flex-col gap-5">
             {/* Audit log */}
-            <Card>
-              <CardHeader title="Security Audit Log" subtitle="Recent access and system events" right={<Globe className="h-4 w-4 text-slate-400" />} />
+            <DarkCard>
+              <DarkCardHeader title="Security Audit Log" subtitle="Recent access and system events" right={<Globe className="h-4 w-4 text-slate-400" />} />
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="border-b border-slate-100 bg-slate-50">
+                  <thead className="border-b border-white/5 bg-slate-800/40">
                     <tr>
                       {["Event", "User", "Company", "IP", "Time", "Status"].map((h) => (
                         <th key={h} className="px-4 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">{h}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-50">
+                  <tbody className="divide-y divide-white/5">
                     {AUDIT_LOG.map((e, i) => (
-                      <tr key={i} className="hover:bg-slate-50/60">
-                        <td className="px-4 py-2.5 text-xs font-medium text-slate-800">{e.event}</td>
-                        <td className="px-4 py-2.5 text-xs text-slate-600">{e.user}</td>
-                        <td className="px-4 py-2.5 text-xs text-slate-500">{e.company}</td>
+                      <tr key={i} className="hover:bg-white/4">
+                        <td className="px-4 py-2.5 text-xs font-medium text-white">{e.event}</td>
+                        <td className="px-4 py-2.5 text-xs text-slate-300">{e.user}</td>
+                        <td className="px-4 py-2.5 text-xs text-slate-400">{e.company}</td>
                         <td className="px-4 py-2.5 font-mono text-[11px] text-slate-400">{e.ip}</td>
-                        <td className="px-4 py-2.5 text-[11px] text-slate-500">{e.time}</td>
+                        <td className="px-4 py-2.5 text-[11px] text-slate-400">{e.time}</td>
                         <td className="px-4 py-2.5"><Pill className={eventColor(e.status)}>{e.status}</Pill></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </Card>
+            </DarkCard>
 
             {/* Tenant security */}
-            <Card>
-              <CardHeader title="Tenant Security Posture" subtitle="MFA, SSO, and last activity per tenant" right={<Users className="h-4 w-4 text-slate-400" />} />
+            <DarkCard>
+              <DarkCardHeader title="Tenant Security Posture" subtitle="MFA, SSO, and last activity per tenant" right={<Users className="h-4 w-4 text-slate-400" />} />
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="border-b border-slate-100 bg-slate-50">
+                  <thead className="border-b border-white/5 bg-slate-800/40">
                     <tr>
                       {["Company", "Users", "MFA", "SSO", "Last Login", "Status"].map((h) => (
                         <th key={h} className="px-4 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">{h}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-50">
+                  <tbody className="divide-y divide-white/5">
                     {TENANTS_STATUS.map((t) => (
-                      <tr key={t.name} className="hover:bg-slate-50/60">
-                        <td className="px-4 py-2.5 text-xs font-medium text-slate-800">{t.name}</td>
-                        <td className="px-4 py-2.5 text-xs text-slate-600">{t.users}</td>
+                      <tr key={t.name} className="hover:bg-white/4">
+                        <td className="px-4 py-2.5 text-xs font-medium text-white">{t.name}</td>
+                        <td className="px-4 py-2.5 text-xs text-slate-300">{t.users}</td>
                         <td className="px-4 py-2.5">
                           {t.mfa
-                            ? <span className="flex items-center gap-1 text-[11px] text-emerald-600 font-semibold"><CheckCircle2 className="h-3.5 w-3.5" />On</span>
-                            : <span className="flex items-center gap-1 text-[11px] text-red-500 font-semibold"><AlertTriangle className="h-3.5 w-3.5" />Off</span>}
+                            ? <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-semibold"><CheckCircle2 className="h-3.5 w-3.5" />On</span>
+                            : <span className="flex items-center gap-1 text-[11px] text-red-400 font-semibold"><AlertTriangle className="h-3.5 w-3.5" />Off</span>}
                         </td>
                         <td className="px-4 py-2.5">
                           {t.sso
-                            ? <span className="flex items-center gap-1 text-[11px] text-blue-600 font-semibold"><CheckCircle2 className="h-3.5 w-3.5" />On</span>
+                            ? <span className="flex items-center gap-1 text-[11px] text-blue-400 font-semibold"><CheckCircle2 className="h-3.5 w-3.5" />On</span>
                             : <span className="text-[11px] text-slate-400">—</span>}
                         </td>
-                        <td className="px-4 py-2.5 text-xs text-slate-500">{t.last_login}</td>
-                        <td className="px-4 py-2.5"><Pill className="bg-emerald-100 text-emerald-700">{t.status}</Pill></td>
+                        <td className="px-4 py-2.5 text-xs text-slate-400">{t.last_login}</td>
+                        <td className="px-4 py-2.5"><Pill className="bg-emerald-900/50 text-emerald-300">{t.status}</Pill></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </Card>
+            </DarkCard>
           </div>
 
           <div className="flex flex-col gap-5">
-            <Card>
-              <CardHeader title="Security Settings" subtitle="Platform-wide configuration" right={<Lock className="h-4 w-4 text-slate-400" />} />
-              <div className="divide-y divide-slate-50">
+            <DarkCard>
+              <DarkCardHeader title="Security Settings" subtitle="Platform-wide configuration" right={<Lock className="h-4 w-4 text-slate-400" />} />
+              <div className="divide-y divide-white/5">
                 {[
                   { label: "MFA enforcement",        value: "Required for admin", ok: true },
                   { label: "Session timeout",         value: "8 hours",           ok: true },
@@ -129,38 +129,38 @@ export default function SecurityPage() {
                   { label: "SOC 2 audit",             value: "Due Aug 2026",      ok: null },
                 ].map((item) => (
                   <div key={item.label} className="flex items-center gap-2 px-4 py-2.5">
-                    {item.ok === true  && <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-500" />}
-                    {item.ok === null  && <Clock className="h-4 w-4 shrink-0 text-amber-500" />}
-                    {item.ok === false && <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />}
-                    <div className="flex-1 text-xs text-slate-700">{item.label}</div>
-                    <div className={`text-[11px] font-semibold ${item.ok ? "text-emerald-600" : "text-amber-500"}`}>{item.value}</div>
+                    {item.ok === true  && <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" />}
+                    {item.ok === null  && <Clock className="h-4 w-4 shrink-0 text-amber-400" />}
+                    {item.ok === false && <AlertTriangle className="h-4 w-4 shrink-0 text-red-400" />}
+                    <div className="flex-1 text-xs text-slate-200">{item.label}</div>
+                    <div className={`text-[11px] font-semibold ${item.ok ? "text-emerald-400" : "text-amber-400"}`}>{item.value}</div>
                   </div>
                 ))}
               </div>
-            </Card>
+            </DarkCard>
 
-            <Card>
-              <CardHeader title="API Keys" subtitle="Platform integrations" right={<Key className="h-4 w-4 text-slate-400" />} />
-              <div className="divide-y divide-slate-50">
+            <DarkCard>
+              <DarkCardHeader title="API Keys" subtitle="Platform integrations" right={<Key className="h-4 w-4 text-slate-400" />} />
+              <div className="divide-y divide-white/5">
                 {[
                   { name: "Supabase — Main DB", status: "configured", last: "Jun 10" },
-                  { name: "OpenAI / AI Engine", status: "configured", last: "Jun 5" },
+                  { name: "Anthropic / AI Engine (Claude)", status: "configured", last: "Jun 5" },
                   { name: "SendGrid (Email)", status: "error", last: "Jun 16" },
                   { name: "AWS S3 (Documents)", status: "configured", last: "May 28" },
                 ].map((k) => (
                   <div key={k.name} className="flex items-center gap-2.5 px-3 py-2.5">
                     <Key className={`h-4 w-4 shrink-0 ${k.status === "error" ? "text-red-400" : "text-emerald-400"}`} />
                     <div className="flex-1 min-w-0">
-                      <div className="text-[11.5px] font-medium text-slate-800">{k.name}</div>
-                      <div className="text-[10px] text-slate-400">Last verified {k.last}</div>
+                      <div className="text-[11.5px] font-medium text-white">{k.name}</div>
+                      <div className="text-[11px] text-slate-400">Last verified {k.last}</div>
                     </div>
-                    <Pill className={k.status === "error" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}>
+                    <Pill className={k.status === "error" ? "bg-red-900/50 text-red-300" : "bg-emerald-900/50 text-emerald-300"}>
                       {k.status}
                     </Pill>
                   </div>
                 ))}
               </div>
-            </Card>
+            </DarkCard>
           </div>
         </div>
       </div>

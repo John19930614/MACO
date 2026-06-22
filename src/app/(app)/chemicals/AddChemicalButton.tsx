@@ -1,9 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal, Field, Input, Select, SubmitRow } from "@/components/modals/Modal";
 import { addChemical } from "@/lib/actions/ehs";
+import { playCreateSound } from "@/lib/sounds";
 
 export function AddChemicalButton() {
   const [open, setOpen] = useState(false);
@@ -14,7 +15,7 @@ export function AddChemicalButton() {
     e.preventDefault();
     setPending(true);
     const res = await addChemical(null, new FormData(e.currentTarget));
-    if (res.ok) { setOpen(false); router.refresh(); }
+    if (res.ok) { playCreateSound(); setOpen(false); router.refresh(); }
     setPending(false);
   }
 
@@ -69,3 +70,4 @@ export function AddChemicalButton() {
     </>
   );
 }
+

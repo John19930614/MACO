@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Reliance — Signal Wiring Board</title>
+<style>
+  :root{
+    --board:#0a1628;
+    --board2:#0d1d35;
+    --surface:#13294d;
+    --surface-line:#244e85;
+    --ink:#eaf1fb;
+    --muted:#9db4d4;
+    --amber:#ffb020;
+    --live:#34d399;
+    --degraded:#f5a623;
+    --error:#ff4d5e;
+    --offline:#5a7196;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1200px 600px at 78% -10%, rgba(255,176,32,.08), transparent 60%),
+      radial-gradient(900px 500px at 8% 110%, rgba(52,211,153,.06), transparent 60%),
+      var(--board);
+    color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding:18px;
+  }
+  .wrap{max-width:1280px;margin:0 auto}
+
+  header{margin-bottom:14px}
+  .eyebrow{
+    font-size:11px;letter-spacing:.28em;text-transform:uppercase;
+    color:var(--amber);font-weight:700;margin-bottom:6px;
+  }
+  h1{font-size:clamp(20px,4vw,28px);margin:0;font-weight:700;letter-spacing:.4px}
+  .sub{color:var(--muted);font-size:13px;margin-top:4px;max-width:680px}
+
+  /* status / control bar */
+  .bar{
+    display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+    margin:16px 0 12px;
+  }
+  .health{
+    display:flex;align-items:baseline;gap:8px;
+    background:var(--board2);border:1px solid var(--surface-line);
+    border-radius:12px;padding:10px 16px;
+  }
+  .health .pct{font-size:26px;font-weight:800;line-height:1}
+  .health .lbl{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .counts{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{
+    display:inline-flex;align-items:center;gap:7px;
+    background:var(--board2);border:1px solid var(--surface-line);
+    border-radius:999px;padding:7px 12px;font-size:12px;font-weight:600;color:var(--ink);
+  }
+  .dot{width:11px;height:11px;border-radius:50%;flex:none}
+  .dot.live{background:var(--live);box-shadow:0 0 8px rgba(52,211,153,.7)}
+  .dot.degraded{background:var(--degraded);box-shadow:0 0 8px rgba(245,166,35,.6)}
+  .dot.error{background:var(--error);box-shadow:0 0 8px rgba(255,77,94,.6)}
+  .dot.offline{background:transparent;border:2px solid var(--offline)}
+  .spacer{flex:1 1 auto}
+  button{
+    font:inherit;font-size:12px;font-weight:700;letter-spacing:.04em;
+    color:var(--ink);background:var(--surface);border:1px solid var(--surface-line);
+    padding:9px 14px;border-radius:10px;cursor:pointer;transition:.15s;
+  }
+  button:hover{border-color:var(--amber);color:var(--amber)}
+  button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+  /* selection readout */
+  .readout{
+    background:var(--board2);border:1px solid var(--surface-line);
+    border-radius:12px;padding:11px 16px;margin-bottom:12px;
+    font-size:13px;min-height:44px;display:flex;align-items:center;gap:10px;
+  }
+  .readout .tag{
+    font-weight:800;letter-spacing:.12em;text-transform:uppercase;font-size:11px;
+    padding:4px 10px;border-radius:6px;
+  }
+  .readout .hint{color:var(--muted)}
+
+  /* board */
+  .board-scroll{
+    border:1px solid var(--surface-line);border-radius:16px;overflow-x:auto;
+    background:linear-gradient(180deg,var(--board2),var(--board));
+  }
+  svg{display:block;width:100%;min-width:860px;height:auto;touch-action:manipulation}
+
+  .col-head{fill:var(--amber);font-size:13px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}
+  .col-rule{stroke:var(--surface-line);stroke-width:1;stroke-dasharray:2 6;opacity:.5}
+
+  .node-box{stroke:var(--surface-line);stroke-width:1.5;rx:11}
+  .node-label{fill:var(--ink);font-size:15px;font-weight:700}
+  .node-sub{fill:var(--muted);font-size:11px;font-weight:500;letter-spacing:.02em}
+  .node-g{cursor:pointer}
+  .node-g:hover .node-box{stroke:var(--amber)}
+
+  .wire-base{fill:none;stroke-width:3;stroke-linecap:round;opacity:.9}
+  .wire-flow{fill:none;stroke-width:3;stroke-linecap:round;stroke-dasharray:2 14;}
+  .wire-hit{fill:none;stroke:transparent;stroke-width:20;cursor:pointer}
+  .flowing{animation:flow .9s linear infinite}
+  .flowing.slow{animation-duration:1.9s}
+  @keyframes flow{to{stroke-dashoffset:-32}}
+  .paused .flowing{animation:none}
+  @media (prefers-reduced-motion: reduce){ .flowing{animation:none} }
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:14px;font-size:12px;color:var(--muted)}
+  .legend .item{display:flex;align-items:center;gap:8px}
+  .legend .swatch{width:26px;height:4px;border-radius:2px}
+  .foot{margin-top:14px;color:var(--muted);font-size:12px;line-height:1.6}
+  .foot b{color:var(--ink)}
+
+  .ts{color:var(--muted);font-size:11px;white-space:nowrap}
+  .ts b{color:var(--ink)}
+
+  .note-wrap{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+  .note-input{
+    flex:1;background:var(--board2);border:1px solid var(--surface-line);
+    border-radius:8px;padding:6px 10px;color:var(--ink);font:inherit;font-size:12px;
+    outline:none;min-width:160px;max-width:420px;
+  }
+  .note-input:focus{border-color:var(--amber)}
+  .note-input::placeholder{color:var(--muted)}
+  .note-save{
+    font:inherit;font-size:11px;font-weight:700;letter-spacing:.04em;
+    color:var(--board);background:var(--amber);border:none;
+    padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;flex:none;
+  }
+  .note-save:hover{opacity:.85}
+  .note-text{color:var(--amber);font-size:12px;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:360px}
+
+  .toast{
+    position:fixed;bottom:20px;right:20px;
+    background:var(--surface);border:1px solid var(--live);
+    color:var(--live);border-radius:10px;padding:9px 16px;
+    font-size:12px;font-weight:700;letter-spacing:.04em;
+    opacity:0;transition:opacity .25s;pointer-events:none;z-index:100;
+  }
+  .toast.show{opacity:1}
+  .toast.warn{border-color:var(--degraded);color:var(--degraded)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Reliance Predictive Safety · System Map</div>
+    <h1>Signal Wiring Board</h1>
+    <div class="sub">Every connection from field modules → AI Gateway → AI core → outputs, drawn as a live wire. Tap any wire or node to set its real status and watch the signal flow.</div>
+  </header>
+
+  <div class="bar">
+    <div class="health">
+      <span class="pct" id="healthPct">—</span>
+      <span class="lbl">Wires<br>live</span>
+    </div>
+    <div class="counts" id="counts"></div>
+    <span class="chip" id="lastChange" style="display:none">🕐 <span id="lastChangeText"></span></span>
+    <div class="spacer"></div>
+    <button id="exportBtn">📋 Copy report</button>
+    <button id="pauseBtn">⏸ Pause flow</button>
+    <button id="resetBtn">↺ Reset</button>
+  </div>
+
+  <div class="readout" id="readout">
+    <span class="hint">Tap a wire to cycle its status: <b>live → degraded → error → offline</b>. Tap a node to cycle the node itself.</span>
+  </div>
+
+  <div class="board-scroll">
+    <svg id="board" viewBox="0 0 1260 1200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Platform wiring diagram"></svg>
+  </div>
+
+  <div class="legend">
+    <div class="item"><span class="swatch" style="background:var(--live)"></span> Live — wired, signal flowing</div>
+    <div class="item"><span class="swatch" style="background:var(--degraded)"></span> Degraded — wired, partial / slow</div>
+    <div class="item"><span class="swatch" style="background:var(--error)"></span> Error — broken connection</div>
+    <div class="item"><span class="swatch" style="background:var(--offline);opacity:.6"></span> Offline — not built yet</div>
+  </div>
+
+  <div class="foot">
+    <b>How to use:</b> tap any wire or node to cycle its status. State auto-saves to your browser — it will be here when you come back. Hit <b>↺ Reset</b> to clear back to defaults.
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ───────────────── EDIT HERE: your system ───────────────── */
+const COLS = ["Modules","AI Gateway","AI Core","Outputs"];
+
+const NODES = [
+  // col 0 — real platform modules (matches BASE_COMPANY_NAV)
+  {id:"jsa",       label:"JSA / Task Risk",  sub:"Job Safety Analyses",  col:0, status:"live"},
+  {id:"incidents", label:"Incident Reports", sub:"Near-miss & injuries", col:0, status:"live"},
+  {id:"audits",    label:"Audits",           sub:"Assessments",          col:0, status:"live"},
+  {id:"capa",      label:"CAPA",             sub:"Corrective Actions",   col:0, status:"live"},
+  {id:"osha",      label:"OSHA Logs",        sub:"300/301 records",      col:0, status:"live"},
+  {id:"riskintel", label:"Risk Intelligence",sub:"Risk register",        col:0, status:"live"},
+  {id:"legal",     label:"Legal Register",   sub:"Regulations",          col:0, status:"live"},
+  {id:"training",  label:"Training",         sub:"Competency records",   col:0, status:"live"},
+  {id:"documents", label:"Documents",        sub:"SOPs & programs",      col:0, status:"live"},
+  {id:"chemicals", label:"Chemicals",        sub:"SDS & inventory",      col:0, status:"live"},
+  {id:"biosafety", label:"Biosafety",        sub:"BSL protocols",        col:0, status:"live"},
+  {id:"waste",     label:"Waste Mgmt",       sub:"Hazardous streams",    col:0, status:"live"},
+  {id:"ergonomics",label:"Ergonomics / MSD", sub:"Workstation risk",     col:0, status:"live"},
+  {id:"monitoring",label:"Monitoring",       sub:"Calibration & equip",  col:0, status:"live"},
+  {id:"hsl",       label:"HSL Signals",      sub:"Fatigue·Stress·SA",    col:0, status:"degraded"},
+
+  // col 1 — gateway
+  {id:"gateway",   label:"AI Gateway",       sub:"Edge Functions·Auth·RLS", col:1, status:"live"},
+
+  // col 2 — AI core
+  {id:"vela",      label:"VELA",             sub:"Data Layer·pgvector",  col:2, status:"live"},
+  {id:"gus",       label:"GUS",              sub:"Master AI Engine",     col:2, status:"live"},
+  {id:"claude",    label:"Claude API",       sub:"LLM reasoning",        col:2, status:"live"},
+  {id:"vertical",  label:"Vertical Engines", sub:"19 models",            col:2, status:"degraded"},
+
+  // col 3 — outputs
+  {id:"riskscore", label:"Risk Scores",      sub:"P-CLSS forecast",      col:3, status:"live"},
+  {id:"alerts",    label:"Alerts/Stop-Work", sub:"Notifications",        col:3, status:"error"},
+  {id:"dash",      label:"Dashboards",       sub:"Live status",          col:3, status:"live"},
+  {id:"reports",   label:"Reports & Docs",   sub:"Generated output",     col:3, status:"live"},
+  {id:"recs",      label:"Prevention Recs",  sub:"Controls",             col:3, status:"degraded"},
+];
+
+const LINKS = [
+  // all modules → gateway
+  {from:"jsa",       to:"gateway", status:"live"},
+  {from:"incidents", to:"gateway", status:"live"},
+  {from:"audits",    to:"gateway", status:"live"},
+  {from:"capa",      to:"gateway", status:"live"},
+  {from:"osha",      to:"gateway", status:"live"},
+  {from:"riskintel", to:"gateway", status:"live"},
+  {from:"legal",     to:"gateway", status:"live"},
+  {from:"training",  to:"gateway", status:"live"},
+  {from:"documents", to:"gateway", status:"live"},
+  {from:"chemicals", to:"gateway", status:"live"},
+  {from:"biosafety", to:"gateway", status:"live"},
+  {from:"waste",     to:"gateway", status:"live"},
+  {from:"ergonomics",to:"gateway", status:"live"},
+  {from:"monitoring",to:"gateway", status:"live"},
+  {from:"hsl",       to:"gateway", status:"degraded"},
+
+  // gateway → AI core
+  {from:"gateway",   to:"gus",      status:"live"},
+  {from:"gateway",   to:"vela",     status:"live"},
+
+  // AI core internal
+  {from:"vela",      to:"gus",      status:"live"},
+  {from:"gus",       to:"claude",   status:"live"},
+  {from:"gus",       to:"vertical", status:"degraded"},
+  {from:"vertical",  to:"claude",   status:"offline"},
+
+  // AI core → outputs
+  {from:"gus",       to:"riskscore",status:"live"},
+  {from:"vertical",  to:"riskscore",status:"offline"},
+  {from:"gus",       to:"alerts",   status:"error"},
+  {from:"gus",       to:"dash",     status:"live"},
+  {from:"gus",       to:"reports",  status:"live"},
+  {from:"gus",       to:"recs",     status:"degraded"},
+];
+/* ───────────────── end edit zone ───────────────── */
+
+const ORDER = ["live","degraded","error","offline"];
+const COLOR = {live:"var(--live)", degraded:"var(--degraded)", error:"var(--error)", offline:"var(--offline)"};
+const LABEL = {live:"LIVE", degraded:"DEGRADED", error:"ERROR", offline:"OFFLINE"};
+
+// deep copy of initial state for reset
+const INIT = JSON.parse(JSON.stringify({NODES, LINKS}));
+
+// layout geometry per column
+const COLX = [40, 470, 800, 1080];   // left x of node box
+const NW   = [165, 175, 165, 165];   // node width
+const NH   = 60;
+const TOP  = 92, BOT = 1140;
+const svg  = document.getElementById("board");
+const NS   = "http://www.w3.org/2000/svg";
+let paused = false;
+
+function layout(){
+  // group nodes by column and distribute vertically
+  for(let c=0;c<COLS.length;c++){
+    const list = NODES.filter(n=>n.col===c);
+    const n = list.length;
+    if(c===1){ // gateway: tall, centered
+      list.forEach(nd=>{ nd.w=NW[c]; nd.h=420; nd.x=COLX[c]; nd.y=(TOP+BOT)/2-210; });
+    } else {
+      const step = n>1 ? (BOT-TOP-NH)/(n-1) : 0;
+      list.forEach((nd,i)=>{ nd.w=NW[c]; nd.h=NH; nd.x=COLX[c]; nd.y= n>1? TOP + i*step : (TOP+BOT)/2-NH/2; });
+    }
+  }
+}
+const byId = id => NODES.find(n=>n.id===id);
+
+function pathFor(l){
+  const a=byId(l.from), b=byId(l.to);
+  const sx=a.x+a.w, sy=a.y+a.h/2;
+  const tx=b.x,      ty=b.y+b.h/2;
+  const co=Math.max(55,(tx-sx)*0.45);
+  return `M ${sx} ${sy} C ${sx+co} ${sy}, ${tx-co} ${ty}, ${tx} ${ty}`;
+}
+function el(tag,attrs){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);return e;}
+
+function render(){
+  svg.innerHTML="";
+  svg.classList.toggle("paused",paused);
+
+  // column headers + rules
+  COLS.forEach((c,i)=>{
+    const cx = COLX[i]+NW[i]/2;
+    const t=el("text",{x:cx,y:40,"text-anchor":"middle"});t.setAttribute("class","col-head");t.textContent=c;
+    svg.appendChild(t);
+    if(i<COLS.length-1){
+      const rx=(COLX[i]+NW[i]+COLX[i+1])/2;
+      svg.appendChild(el("line",{x1:rx,y1:60,x2:rx,y2:1160,class:"col-rule"}));
+    }
+  });
+
+  // wires (under nodes)
+  const wireG=el("g",{});
+  LINKS.forEach((l,idx)=>{
+    const d=pathFor(l), col=COLOR[l.status];
+    const wb=el("path",{d,class:"wire-base","data-link-base":idx,stroke: l.status==="offline" ? "var(--offline)" : col,
+      "stroke-dasharray": l.status==="offline" ? "6 9" : "none",
+      "opacity": l.status==="offline" ? .55 : .9});
+    wireG.appendChild(wb);
+    if(l.status==="live"||l.status==="degraded"){
+      const f=el("path",{d,class:"wire-flow","data-link-base":idx,
+        class:"wire-flow"+(l.status==="degraded"?" flowing slow":" flowing"),stroke:"#ffffff","opacity":.85});
+      wireG.appendChild(f);
+    }
+    if(l.status==="error"){
+      const f=el("path",{d,"data-link-base":idx,class:"wire-flow",stroke:col,"stroke-dasharray":"1 10","opacity":.9});
+      wireG.appendChild(f);
+    }
+    const hit=el("path",{d,class:"wire-hit"}); hit.dataset.link=idx;
+    wireG.appendChild(hit);
+  });
+  svg.appendChild(wireG);
+
+  // nodes (over wires)
+  NODES.forEach(n=>{
+    const g=el("g",{class:"node-g"}); g.dataset.node=n.id;
+    g.appendChild(el("rect",{x:n.x,y:n.y,width:n.w,height:n.h,rx:11,class:"node-box",fill:"var(--surface)"}));
+    // status dot
+    g.appendChild(el("circle",{cx:n.x+15,cy:n.y+15,r:6,fill: n.status==="offline"?"transparent":COLOR[n.status],
+      stroke:n.status==="offline"?"var(--offline)":"none","stroke-width":2}));
+    const lab=el("text",{x:n.x+n.w/2,y:n.y+ (n.h>100? n.h/2-4 : 26),"text-anchor":"middle",class:"node-label"});
+    lab.textContent=n.label; g.appendChild(lab);
+    const sub=el("text",{x:n.x+n.w/2,y:n.y+ (n.h>100? n.h/2+16 : 43),"text-anchor":"middle",class:"node-sub"});
+    sub.textContent=n.sub; g.appendChild(sub);
+    // note badge — amber "N" pill in top-right corner
+    if(NOTES[`n:${n.id}`]){
+      const bx=n.x+n.w-22, by=n.y+4;
+      g.appendChild(el("rect",{x:bx,y:by,width:18,height:13,rx:4,fill:"var(--amber)"}));
+      const bt=el("text",{x:bx+9,y:by+10,"text-anchor":"middle",fill:"#0a1628",
+        "font-size":"9","font-weight":"800"});
+      bt.textContent="N"; g.appendChild(bt);
+    }
+    svg.appendChild(g);
+  });
+
+  updateStats();
+}
+
+function updateStats(){
+  const c={live:0,degraded:0,error:0,offline:0};
+  LINKS.forEach(l=>c[l.status]++);
+  const total=LINKS.length;
+  document.getElementById("healthPct").textContent = Math.round(c.live/total*100)+"%";
+  document.getElementById("counts").innerHTML = ORDER.map(s=>
+    `<span class="chip"><span class="dot ${s}"></span>${c[s]} ${LABEL[s].toLowerCase()}</span>`).join("");
+
+  // last-change chip
+  const allTs = Object.values(TIMESTAMPS);
+  if(allTs.length){
+    const latest = Math.max(...allTs);
+    document.getElementById('lastChange').style.display='';
+    document.getElementById('lastChangeText').textContent = 'last change ' + timeAgo(latest);
+  }
+}
+
+function setReadout(html){ document.getElementById("readout").innerHTML=html; }
+
+function cycle(status){ return ORDER[(ORDER.indexOf(status)+1)%ORDER.length]; }
+
+/* ── Downstream trace ─────────────────────────────────────── */
+function getDownstream(startIds){
+  const nodes = new Set(startIds);
+  const links = new Set();
+  const queue = [...startIds];
+  while(queue.length){
+    const id = queue.shift();
+    LINKS.forEach((l,i)=>{ if(l.from===id && !links.has(i)){ links.add(i); if(!nodes.has(l.to)){ nodes.add(l.to); queue.push(l.to); } } });
+  }
+  return {nodes, links};
+}
+
+function applyHighlight(nodeSet, linkSet){
+  document.querySelectorAll('.node-g').forEach(g=>{
+    g.style.opacity = nodeSet.has(g.dataset.node) ? '1' : '0.1';
+  });
+  document.querySelectorAll('[data-link-base]').forEach(p=>{
+    p.style.opacity = linkSet.has(+p.getAttribute('data-link-base')) ? '1' : '0.06';
+  });
+}
+
+function clearHighlight(){
+  document.querySelectorAll('.node-g').forEach(g=>g.style.opacity='');
+  document.querySelectorAll('[data-link-base]').forEach(p=>p.style.opacity='');
+}
+
+let _currentHover = null;
+let _savedReadout  = null;
+
+svg.addEventListener('mouseover', e=>{
+  const g = e.target.closest('.node-g');
+  if(!g) return;
+  const id = g.dataset.node;
+  if(id === _currentHover) return;
+  _currentHover = id;
+  if(_savedReadout === null) _savedReadout = document.getElementById('readout').innerHTML;
+  const n = byId(id);
+  const {nodes, links} = getDownstream([id]);
+  applyHighlight(nodes, links);
+  const outputs = NODES.filter(nd=>nd.col===3 && nodes.has(nd.id));
+  const outHtml = outputs.length
+    ? outputs.map(o=>`<b style="color:${COLOR[o.status]}">${o.label}</b>`).join(' · ')
+    : '<span class="hint">no downstream outputs</span>';
+  const nts = TIMESTAMPS[`n:${id}`];
+  const tsHtml = nts ? `<span class="ts"> · changed <b>${timeAgo(nts)}</b></span>` : '';
+  setReadout(`<span class="hint">◎ Signal from <b>${n.label}</b>${tsHtml} reaches → ${outHtml}</span>`);
+});
+
+svg.addEventListener('mouseleave', ()=>{
+  _currentHover = null;
+  clearHighlight();
+  if(_savedReadout !== null){
+    document.getElementById('readout').innerHTML = _savedReadout;
+    _savedReadout = null;
+  }
+});
+/* ────────────────────────────────────────────────────────── */
+
+/* ── Persistence ──────────────────────────────────────────── */
+const STORAGE_KEY = 'maco-wiring-v2';
+const NOTES      = {}; // keyed by "n:<nodeId>" or "l:<linkIdx>"
+const TIMESTAMPS = {}; // same key scheme — ms epoch of last status change
+
+function saveState(){
+  const state = {
+    nodes: Object.fromEntries(NODES.map(n=>[n.id, n.status])),
+    links: LINKS.map(l=>l.status),
+    notes: {...NOTES},
+    timestamps: {...TIMESTAMPS},
+    savedAt: Date.now(),
+  };
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e){}
+  showToast('✓ State saved');
+}
+
+function loadState(){
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return null;
+    const state = JSON.parse(raw);
+    if(state.nodes) NODES.forEach(n=>{ if(state.nodes[n.id]) n.status=state.nodes[n.id]; });
+    if(state.links) LINKS.forEach((l,i)=>{ if(state.links[i]) l.status=state.links[i]; });
+    if(state.notes) Object.assign(NOTES, state.notes);
+    if(state.timestamps) Object.assign(TIMESTAMPS, state.timestamps);
+    return state.savedAt || null;
+  } catch(e){ return null; }
+}
+
+function stampTime(key){ TIMESTAMPS[key] = Date.now(); }
+
+let _toastTimer;
+function showToast(msg, warn=false){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.classList.toggle('warn', warn);
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+function timeAgo(ts){
+  const s=Math.round((Date.now()-ts)/1000);
+  if(s<60) return `${s}s ago`;
+  if(s<3600) return `${Math.round(s/60)}m ago`;
+  if(s<86400) return `${Math.round(s/3600)}h ago`;
+  return `${Math.round(s/86400)}d ago`;
+}
+/* ────────────────────────────────────────────────────────── */
+
+function noteReadout(tag, title, hint, nkey, status){
+  const note = NOTES[nkey] || '';
+  const needsNote = status==='degraded' || status==='error';
+  const ts = TIMESTAMPS[nkey] ? `<span class="ts"> · changed <b>${timeAgo(TIMESTAMPS[nkey])}</b></span>` : '';
+  let html = `<span class="tag" style="background:${COLOR[status]};color:#0a1628">${LABEL[status]}</span>
+    <b>${title}</b> <span class="hint">${hint}</span>${ts}`;
+  if(needsNote){
+    html += `<span class="note-wrap">
+      <input class="note-input" data-nkey="${nkey}" placeholder="Add a note… (what's broken / who's on it)" value="${note.replace(/"/g,'&quot;')}">
+      <button class="note-save" data-nkey="${nkey}">Save note</button>
+    </span>`;
+  } else if(note){
+    html += `<span class="note-text" title="${note.replace(/"/g,'&quot;')}">📝 ${note}</span>`;
+  }
+  setReadout(html);
+  if(needsNote){
+    const inp = document.querySelector('.note-input');
+    if(inp){ inp.focus(); inp.select(); }
+  }
+}
+
+function saveNote(nkey){
+  const inp = document.querySelector(`.note-input[data-nkey="${nkey}"]`);
+  if(!inp) return;
+  const val = inp.value.trim();
+  if(val) NOTES[nkey]=val; else delete NOTES[nkey];
+  saveState();
+  render();
+  showToast(val ? '📝 Note saved' : '🗑 Note cleared');
+}
+
+document.getElementById('readout').addEventListener('keydown', e=>{
+  if(e.target.classList.contains('note-input') && e.key==='Enter'){
+    saveNote(e.target.dataset.nkey);
+  }
+});
+document.getElementById('readout').addEventListener('click', e=>{
+  if(e.target.classList.contains('note-save')){
+    saveNote(e.target.dataset.nkey);
+  }
+});
+
+svg.addEventListener("click",e=>{
+  _savedReadout = null; // don't restore hover-readout after a click
+  _currentHover = null;
+  clearHighlight();
+  const wire=e.target.closest("[data-link]");
+  const node=e.target.closest("[data-node]");
+  if(wire){
+    const idx = +wire.dataset.link;
+    const l=LINKS[idx];
+    l.status=cycle(l.status);
+    const lkey=`l:${idx}`;
+    if(l.status==='live'||l.status==='offline'){ delete NOTES[lkey]; delete TIMESTAMPS[lkey]; }
+    else stampTime(lkey);
+    render();
+    saveState();
+    const a=byId(l.from),b=byId(l.to);
+    noteReadout(LABEL[l.status], `${a.label} → ${b.label}`, '— tap again to change', lkey, l.status);
+  } else if(node){
+    const n=byId(node.dataset.node);
+    n.status=cycle(n.status);
+    const nkey=`n:${n.id}`;
+    if(n.status==='live'||n.status==='offline'){ delete NOTES[nkey]; delete TIMESTAMPS[nkey]; }
+    else stampTime(nkey);
+    render();
+    saveState();
+    noteReadout(LABEL[n.status], n.label, `${n.sub} — node status`, nkey, n.status);
+  }
+});
+
+/* ── Export ───────────────────────────────────────────────── */
+function buildReport(){
+  const now = new Date().toISOString().replace('T',' ').slice(0,19)+' UTC';
+  const c={live:0,degraded:0,error:0,offline:0};
+  LINKS.forEach(l=>c[l.status]++);
+  const pct = Math.round(c.live/LINKS.length*100);
+
+  const lines=[
+    '╔══════════════════════════════════════════════════╗',
+    '║   MACO · Signal Wiring Board — Health Snapshot  ║',
+    '╚══════════════════════════════════════════════════╝',
+    `Generated : ${now}`,
+    `Health    : ${pct}% wires live`,
+    `Counts    : ${c.live} live · ${c.degraded} degraded · ${c.error} error · ${c.offline} offline`,
+    '',
+  ];
+
+  const badNodes = NODES.filter(n=>n.status!=='live'&&n.status!=='offline');
+  const badLinks = LINKS.map((l,i)=>({l,i})).filter(({l})=>l.status!=='live'&&l.status!=='offline');
+
+  if(badNodes.length||badLinks.length){
+    lines.push('ITEMS NEEDING ATTENTION');
+    lines.push('─'.repeat(52));
+
+    badNodes.forEach(n=>{
+      const key=`n:${n.id}`;
+      const ts=TIMESTAMPS[key]?`  · changed ${timeAgo(TIMESTAMPS[key])}`:'';
+      lines.push(`[${LABEL[n.status]}]  NODE  ${n.label}${ts}`);
+      if(NOTES[key]) lines.push(`             Note: ${NOTES[key]}`);
+    });
+
+    if(badNodes.length&&badLinks.length) lines.push('');
+
+    badLinks.forEach(({l,i})=>{
+      const key=`l:${i}`;
+      const a=byId(l.from),b=byId(l.to);
+      const ts=TIMESTAMPS[key]?`  · changed ${timeAgo(TIMESTAMPS[key])}`:'';
+      lines.push(`[${LABEL[l.status]}]  WIRE  ${a.label} → ${b.label}${ts}`);
+      if(NOTES[key]) lines.push(`             Note: ${NOTES[key]}`);
+    });
+  } else {
+    lines.push('✓  All connections live — no issues to report.');
+  }
+
+  lines.push('');
+  lines.push('─'.repeat(52));
+  lines.push('Reliance Predictive Safety · SafetyIQ Platform');
+  return lines.join('\n');
+}
+
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const report = buildReport();
+  navigator.clipboard.writeText(report)
+    .then(()=>showToast('📋 Report copied to clipboard'))
+    .catch(()=>{
+      // Fallback: open in a new window so user can copy manually
+      const w=window.open('','_blank','width=600,height=420');
+      w.document.write(`<pre style="font:13px/1.6 monospace;padding:20px;background:#0a1628;color:#eaf1fb;margin:0;white-space:pre-wrap">${report.replace(/</g,'&lt;')}</pre>`);
+      w.document.close();
+      showToast('📋 Report opened in new window', true);
+    });
+});
+/* ────────────────────────────────────────────────────────── */
+
+document.getElementById("pauseBtn").addEventListener("click",e=>{
+  paused=!paused; svg.classList.toggle("paused",paused);
+  e.target.textContent = paused ? "▶ Resume flow" : "⏸ Pause flow";
+});
+document.getElementById("resetBtn").addEventListener("click",()=>{
+  const fresh=JSON.parse(JSON.stringify(INIT));
+  NODES.forEach((n,i)=>n.status=fresh.NODES[i].status);
+  LINKS.forEach((l,i)=>l.status=fresh.LINKS[i].status);
+  paused=false; document.getElementById("pauseBtn").textContent="⏸ Pause flow";
+  try { localStorage.removeItem(STORAGE_KEY); } catch(e){}
+  render();
+  showToast('↺ Reset — saved state cleared', true);
+  setReadout(`<span class="hint">Reset to defaults. Tap any wire or node to update status.</span>`);
+});
+
+layout();
+const _loaded = loadState();
+render();
+if(_loaded){
+  setReadout(`<span class="hint">Restored from last session <b>(saved ${timeAgo(_loaded)})</b> — tap any wire or node to update.</span>`);
+} else {
+  setReadout(`<span class="hint">Tap a wire to cycle its status: <b>live → degraded → error → offline</b>. Tap a node to cycle the node itself.</span>`);
+}
+</script>
+</body>
+</html>

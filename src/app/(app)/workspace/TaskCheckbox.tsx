@@ -13,7 +13,7 @@ export function TaskCheckbox({ taskId }: { taskId: string }) {
     if (done || busy) return;
     setBusy(true);
     setDone(true);
-    await completeWorkspaceTask(taskId);
+    await completeWorkspaceTask(taskId, "", "");
     router.refresh();
     setBusy(false);
   }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { CheckCircle2, AlertTriangle, XCircle, ArrowRight } from "lucide-react";
-import { PageHeader, Card, CardHeader, Pill } from "@/components/ui/primitives";
+import { DarkPageHeader, DarkCard, DarkCardHeader, Pill } from "@/components/ui/primitives";
 import { runGatewayPipeline } from "@/lib/gateway/pipeline";
 import type { CheckStatus } from "@/lib/gateway/pipeline";
 
@@ -15,16 +15,16 @@ const JOB_CONFIGS = [
 
 const STATUS_TONE = {
   pass: {
-    icon: <CheckCircle2 className="h-5 w-5 text-emerald-600" />,
-    text: "text-emerald-800", bg: "bg-emerald-50", border: "border-emerald-200", label: "All checks passing",
+    icon: <CheckCircle2 className="h-5 w-5 text-emerald-400" />,
+    text: "text-emerald-300", bg: "bg-emerald-900/20", border: "border-emerald-800/50", label: "All checks passing",
   },
   warn: {
-    icon: <AlertTriangle className="h-5 w-5 text-amber-600" />,
-    text: "text-amber-800", bg: "bg-amber-50", border: "border-amber-200", label: "Warnings detected",
+    icon: <AlertTriangle className="h-5 w-5 text-amber-400" />,
+    text: "text-amber-300", bg: "bg-amber-900/20", border: "border-amber-800/50", label: "Warnings detected",
   },
   fail: {
-    icon: <XCircle className="h-5 w-5 text-red-600" />,
-    text: "text-red-800", bg: "bg-red-50", border: "border-red-200", label: "Check failures — records being blocked",
+    icon: <XCircle className="h-5 w-5 text-red-400" />,
+    text: "text-red-300", bg: "bg-red-900/20", border: "border-red-800/50", label: "Check failures — records being blocked",
   },
 };
 
@@ -34,25 +34,25 @@ export default async function SAAIPage() {
   const tone = STATUS_TONE[overall];
 
   return (
-    <div className="flex h-full flex-col">
-      <PageHeader
+    <div className="flex flex-1 flex-col">
+      <DarkPageHeader
         title="AI Model Configuration"
         subtitle="P-Engine job configuration, model selection, AI Gateway status, and prompt management"
       />
       <div className="iq-scroll flex-1 overflow-y-auto p-6">
 
         {/* Prompt version banner */}
-        <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-800">
-          <strong>PROMPT_VERSION:</strong> <code className="rounded bg-violet-100 px-1.5 py-0.5 font-mono text-xs">safetyiq-ehs-2026-06-17</code>
+        <div className="mb-4 rounded-xl border bg-violet-900/20 border-violet-800/50 p-4 text-sm text-violet-300">
+          <strong>PROMPT_VERSION:</strong> <code className="rounded bg-violet-900/50 px-1.5 py-0.5 font-mono text-xs">safetyiq-ehs-2026-06-17</code>
           {" · "}
-          <strong>Model:</strong> <code className="rounded bg-violet-100 px-1.5 py-0.5 font-mono text-xs">claude-sonnet-4-6</code>
+          <strong>Model:</strong> <code className="rounded bg-violet-900/50 px-1.5 py-0.5 font-mono text-xs">claude-sonnet-4-6</code>
           {" · "}
           <strong>Provider:</strong> Anthropic
         </div>
 
         {/* AI Gateway utility checks */}
-        <Card className="mb-5">
-          <CardHeader
+        <DarkCard className="mb-5">
+          <DarkCardHeader
             title="AI Gateway — EHS Data Validation"
             subtitle="3-stage validation pipeline runs live over all EHS records — schema, business rules, anomaly & quality"
           />
@@ -64,12 +64,12 @@ export default async function SAAIPage() {
                   {tone.icon}
                   <div className="flex-1">
                     <div className={`text-sm font-bold ${tone.text}`}>{tone.label}</div>
-                    <div className="text-xs text-slate-500">
+                    <div className="text-xs text-slate-400">
                       {report.counts.pass} pass · {report.counts.warn} warn · {report.counts.fail} fail · {report.rejectQueue.length} blocked · mode: {report.mode}
                     </div>
                   </div>
                   <Link
-                    href="/gateway"
+                    href="/sa/gateway"
                     className="flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
                   >
                     Full report <ArrowRight className="h-3 w-3" />
@@ -83,7 +83,7 @@ export default async function SAAIPage() {
                     return (
                       <div key={g.id} className={`rounded-lg border px-3 py-2 ${t.bg} ${t.border}`}>
                         <div className={`text-[10px] font-bold uppercase tracking-wide ${t.text}`}>Gateway {i + 1}</div>
-                        <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-700">{g.name}</div>
+                        <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-200">{g.name}</div>
                         <div className={`mt-0.5 text-[10px] font-semibold ${t.text}`}>{g.status.toUpperCase()}</div>
                       </div>
                     );
@@ -100,37 +100,37 @@ export default async function SAAIPage() {
                     { label: "Chemicals",     value: report.stats.chemicals },
                     { label: "Equipment",     value: report.stats.equipment },
                   ].map(({ label, value, warn }) => (
-                    <div key={label} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-center">
-                      <div className={`text-lg font-bold ${warn ? "text-amber-600" : "text-slate-800"}`}>{value}</div>
+                    <div key={label} className="rounded-lg border border-white/8 bg-slate-900/60 px-2 py-2 text-center">
+                      <div className={`text-lg font-bold ${warn ? "text-amber-400" : "text-white"}`}>{value}</div>
                       <div className="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
                     </div>
                   ))}
                 </div>
 
                 {report.rejectQueue.length > 0 && (
-                  <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
-                    <div className="text-xs font-semibold text-red-800">
+                  <div className="mt-3 rounded-lg border bg-red-900/20 border-red-800/50 px-3 py-2">
+                    <div className="text-xs font-semibold text-red-300">
                       {report.rejectQueue.length} record(s) blocked from the EHS Database — review in the{" "}
-                      <Link href="/gateway" className="underline hover:no-underline">AI Gateway</Link>
+                      <Link href="/sa/gateway" className="underline hover:no-underline">AI Gateway</Link>
                     </div>
                   </div>
                 )}
               </>
             ) : (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+              <div className="rounded-lg border border-white/8 bg-slate-900/40 px-4 py-3 text-sm text-slate-400">
                 Gateway health check unavailable — ensure the EHS data layer is connected.
               </div>
             )}
           </div>
-        </Card>
+        </DarkCard>
 
         {/* P-Engine Job Configuration */}
-        <Card>
-          <CardHeader title="P-Engine Job Configuration" subtitle="AI analysis jobs and triggers" />
+        <DarkCard>
+          <DarkCardHeader title="P-Engine Job Configuration" subtitle="AI analysis jobs and triggers" />
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
+                <tr className="border-b border-white/5 text-xs uppercase tracking-wide text-slate-400">
                   <th className="px-4 py-2.5 text-left">Job</th>
                   <th className="px-4 py-2.5 text-left">Trigger</th>
                   <th className="px-4 py-2.5 text-left">Frequency</th>
@@ -138,20 +138,20 @@ export default async function SAAIPage() {
                   <th className="px-4 py-2.5 text-left">Enabled</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y divide-white/5">
                 {JOB_CONFIGS.map((j) => (
-                  <tr key={j.job} className="hover:bg-slate-50">
+                  <tr key={j.job} className="hover:bg-white/4">
                     <td className="px-4 py-3">
-                      <div className="font-medium text-slate-800">{j.label}</div>
+                      <div className="font-medium text-white">{j.label}</div>
                       <div className="mt-0.5 text-xs font-mono text-slate-400">{j.job}</div>
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-600">{j.trigger}</td>
+                    <td className="px-4 py-3 text-xs text-slate-300">{j.trigger}</td>
                     <td className="px-4 py-3">
-                      <Pill className="bg-blue-50 text-blue-700 text-xs">{j.frequency}</Pill>
+                      <Pill className="bg-blue-900/50 text-blue-300 text-xs">{j.frequency}</Pill>
                     </td>
-                    <td className="px-4 py-3 text-xs font-mono text-slate-500">{j.model}</td>
+                    <td className="px-4 py-3 text-xs font-mono text-slate-400">{j.model}</td>
                     <td className="px-4 py-3">
-                      <Pill className={j.enabled ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}>
+                      <Pill className={j.enabled ? "bg-emerald-900/50 text-emerald-300" : "bg-slate-800 text-slate-400"}>
                         {j.enabled ? "Enabled" : "Disabled"}
                       </Pill>
                     </td>
@@ -160,7 +160,7 @@ export default async function SAAIPage() {
               </tbody>
             </table>
           </div>
-        </Card>
+        </DarkCard>
       </div>
     </div>
   );
