@@ -68,81 +68,10 @@ interface RequiredDesignation {
   notes?: string;
 }
 
-const REQUIRED_DESIGNATIONS: Record<string, RequiredDesignation[]> = {
-  "t-biostar-001": [
-    {
-      role: "Chemical Hygiene Officer (CHO)",
-      regulatory_basis: "OSHA Laboratory Standard — mandatory for any lab using hazardous chemicals",
-      citation: "29 CFR 1910.1450(e)(3)(i)",
-      assignee: "Dr. Kim Park",
-      status: "pending",
-      notes: "Formal designation letter pending. Kim Park is performing CHO duties.",
-    },
-    {
-      role: "Biosafety Officer (BSO)",
-      regulatory_basis: "NIH/CDC BMBL 6th Edition — required for BSL-2 operations and rDNA work",
-      citation: "NIH Guidelines Section IV-B-7",
-      assignee: "Dr. Kim Park",
-      status: "assigned",
-    },
-    {
-      role: "RCRA Emergency Coordinator",
-      regulatory_basis: "EPA RCRA — SQG must designate an emergency coordinator available 24/7",
-      citation: "EPA 40 CFR 262.17(a)(1)(ii)",
-      assignee: "Tom Reed",
-      status: "assigned",
-    },
-    {
-      role: "First Aid / CPR Certified Personnel",
-      regulatory_basis: "OSHA First Aid — certified person must be present when medical facility is not reasonably accessible",
-      citation: "29 CFR 1910.151(b)",
-      assignee: "Sarah Chen, Tom Reed",
-      status: "assigned",
-      notes: "Minimum 2 certified persons on site. Re-certification due Dec 2026.",
-    },
-    {
-      role: "Workplace Violence Prevention Coordinator",
-      regulatory_basis: "California SB 553 — employer must designate a WVPP coordinator responsible for implementation",
-      citation: "Cal/OSHA 8 CCR 3342",
-      assignee: null,
-      status: "vacant",
-      notes: "SB 553 WVPP required to be implemented. Coordinator not yet designated.",
-    },
-  ],
-  "t-novabio-001": [
-    {
-      role: "Chemical Hygiene Officer (CHO)",
-      regulatory_basis: "OSHA Laboratory Standard — mandatory for any lab using hazardous chemicals",
-      citation: "29 CFR 1910.1450(e)(3)(i)",
-      assignee: "David Kim",
-      status: "pending",
-      notes: "CHO duties assigned to EHS Manager pending formal training completion.",
-    },
-    {
-      role: "RCRA Emergency Coordinator",
-      regulatory_basis: "EPA RCRA — SQG must designate an emergency coordinator available 24/7",
-      citation: "EPA 40 CFR 262.17(a)(1)(ii)",
-      assignee: null,
-      status: "vacant",
-      notes: "Required before first hazardous waste accumulation period expires.",
-    },
-    {
-      role: "Biosafety Officer (BSO)",
-      regulatory_basis: "NIH/CDC BMBL 6th Edition — required if BSL-2 agents are used",
-      citation: "NIH Guidelines Section IV-B-7",
-      assignee: null,
-      status: "vacant",
-      notes: "BSO must be designated before BSL-2 work commences.",
-    },
-    {
-      role: "Workplace Violence Prevention Coordinator",
-      regulatory_basis: "California SB 553 — employer must designate a WVPP coordinator",
-      citation: "Cal/OSHA 8 CCR 3342",
-      assignee: null,
-      status: "vacant",
-    },
-  ],
-};
+// Regulatory designations should be sourced from a tenant table; until that
+// exists, no hardcoded sample personnel are shown. (Removed demo data that was
+// scoped to the retired BioStar/NovaBio demo tenants.)
+const REQUIRED_DESIGNATIONS: Record<string, RequiredDesignation[]> = {};
 
 // ── Chemical-triggered training definitions ───────────────────────────────────
 

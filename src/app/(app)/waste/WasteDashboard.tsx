@@ -63,18 +63,14 @@ const CLASS_STYLE: Record<string, string> = {
   general:      "bg-slate-100 text-slate-600",
 };
 
+// Only tabs backed by the tenant's real data (waste streams) are exposed.
+// The remaining tabs (manifests/storage/labels/vendors/inspections/capa/
+// compliance/reports) were built on hardcoded sample data and are hidden until
+// rebuilt against real tables — their render branches below are unreachable.
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: "register",     label: "Waste Register",        Icon: FlaskConical },
   { id: "accumulation", label: "Accumulation Tracker",  Icon: Clock },
   { id: "schedule",     label: "Pickup Schedule",       Icon: Calendar },
-  { id: "manifests",    label: "Manifest / LDR",        Icon: FileText },
-  { id: "storage",      label: "SAA / CAA Areas",       Icon: Warehouse },
-  { id: "labels",       label: "Labels & Compat.",      Icon: Tag },
-  { id: "vendors",      label: "Vendors / TSDF",        Icon: Truck },
-  { id: "inspections",  label: "Inspections",           Icon: ClipboardCheck },
-  { id: "capa",         label: "CAPA",                  Icon: Wrench },
-  { id: "compliance",   label: "Training & Compliance", Icon: GraduationCap },
-  { id: "reports",      label: "Reports",               Icon: BarChart3 },
 ];
 
 // ── Storage Area mock data ────────────────────────────────────────────────────

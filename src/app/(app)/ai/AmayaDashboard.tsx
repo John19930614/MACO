@@ -14,6 +14,7 @@ import { RiskLevelBadge, ReviewStatusBadge } from "@/components/ui/badges";
 import type { RiskLevel } from "@/lib/constants";
 import type { AiAnalysisOutput } from "@/lib/types";
 import { RunScanButton } from "./RunScanButton";
+import { useDemoUser } from "@/lib/context/demo-user";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,7 @@ interface AiCtx {
   waste: WasteStream[];
   findings: AiFinding[];
   latestRun: PredictabilityRun | null;
+  companyName: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -136,7 +138,7 @@ function buildAmayaResponse(
     const activeChems = ctx.chemicals.filter((c) => c.status === "active").length;
     const openCapas  = ctx.capas.filter((c) => c.status === "open" || c.status === "overdue").length;
     return {
-      text: `Hello! I'm Amaya, your AI Safety Assistant for BioStar Research Inc. I have live access to your EHS data — ${activeChems} active chemicals, ${openCapas} open corrective actions, and all your training records, compliance requirements, and incidents.\n\nHere's what I can help with:\n\n• **Chemical safety** — inventory queries, GHS hazard classifications, SDS status, storage guidance\n• **Training & competency** — certification gaps, expiry tracking, role-based requirements\n• **Corrective actions** — open CAPAs, overdue items, verification status\n• **Compliance & regulatory** — OSHA, EPA, CDC requirements, gap analysis\n• **Risk intelligence** — compliance scores, predictive forecasts, high-risk priorities\n• **Platform navigation** — find any module or feature instantly\n\nWhat would you like to know?`,
+      text: `Hello! I'm Amaya, your AI Safety Assistant for ${ctx.companyName} I have live access to your EHS data — ${activeChems} active chemicals, ${openCapas} open corrective actions, and all your training records, compliance requirements, and incidents.\n\nHere's what I can help with:\n\n• **Chemical safety** — inventory queries, GHS hazard classifications, SDS status, storage guidance\n• **Training & competency** — certification gaps, expiry tracking, role-based requirements\n• **Corrective actions** — open CAPAs, overdue items, verification status\n• **Compliance & regulatory** — OSHA, EPA, CDC requirements, gap analysis\n• **Risk intelligence** — compliance scores, predictive forecasts, high-risk priorities\n• **Platform navigation** — find any module or feature instantly\n\nWhat would you like to know?`,
       followUps: [
         "What are my highest-risk chemicals?",
         "What is my overall compliance status?",
@@ -351,7 +353,7 @@ function buildAmayaResponse(
     }] : [];
 
     return {
-      text: `**BioStar Research Inc. — Compliance Summary**\n\nOut of **${totalReqs} regulatory requirements**, you have:\n• ${compliant} compliant ✓\n• ${minorGap} minor gaps\n• ${majorGap} major gaps ⚠️\n• ${nonComp} non-compliant ✗\n\nOverall compliance rate: **${pct}%**${forecast ? `\nP-Engine 30-day forecast: **${forecast}%** (${ctx.latestRun?.forecast_data?.compliance_trend ?? "stable"} trend)` : ""}\n\n${majorGap + nonComp > 0 ? `Your **${majorGap + nonComp} major gap(s) / non-compliance item(s)** carry the highest regulatory risk and should be addressed through CAPA actions immediately.` : "No critical compliance failures detected."}`,
+      text: `**${ctx.companyName} — Compliance Summary**\n\nOut of **${totalReqs} regulatory requirements**, you have:\n• ${compliant} compliant ✓\n• ${minorGap} minor gaps\n• ${majorGap} major gaps ⚠️\n• ${nonComp} non-compliant ✗\n\nOverall compliance rate: **${pct}%**${forecast ? `\nP-Engine 30-day forecast: **${forecast}%** (${ctx.latestRun?.forecast_data?.compliance_trend ?? "stable"} trend)` : ""}\n\n${majorGap + nonComp > 0 ? `Your **${majorGap + nonComp} major gap(s) / non-compliance item(s)** carry the highest regulatory risk and should be addressed through CAPA actions immediately.` : "No critical compliance failures detected."}`,
       cards,
       followUps: [
         "Which OSHA standard has the biggest gap?",
@@ -441,7 +443,7 @@ function buildAmayaResponse(
     }] : [];
 
     return {
-      text: `Your waste register has **${ctx.waste.length} waste streams**, of which **${haz.length} are classified as hazardous** and **${pending_.length} are pending pickup or approaching accumulation limits**.\n\nAs a **Small Quantity Generator** under EPA 40 CFR 262, BioStar must ensure:\n• Hazardous waste stored no longer than 180 days from accumulation start date\n• Proper labelling with "Hazardous Waste" and accumulation start date\n• Waste containers in good condition with compatible secondary containment\n• All disposals manifested by a licensed Treatment, Storage & Disposal Facility (TSDF)\n\n${pending_.length > 0 ? "Schedule a pickup for pending waste streams to avoid exceeding the 180-day storage limit." : "All waste streams are within acceptable storage timeframes."}`,
+      text: `Your waste register has **${ctx.waste.length} waste streams**, of which **${haz.length} are classified as hazardous** and **${pending_.length} are pending pickup or approaching accumulation limits**.\n\nAs a **Small Quantity Generator** under EPA 40 CFR 262, ${ctx.companyName} must ensure:\n• Hazardous waste stored no longer than 180 days from accumulation start date\n• Proper labelling with "Hazardous Waste" and accumulation start date\n• Waste containers in good condition with compatible secondary containment\n• All disposals manifested by a licensed Treatment, Storage & Disposal Facility (TSDF)\n\n${pending_.length > 0 ? "Schedule a pickup for pending waste streams to avoid exceeding the 180-day storage limit." : "All waste streams are within acceptable storage timeframes."}`,
       cards,
       followUps: [
         "Navigate me to Waste Management",
@@ -536,7 +538,7 @@ function buildAmayaResponse(
     }] : [];
 
     return {
-      text: `Your legal register tracks **${ctx.legal.length} regulatory requirements**. The most relevant OSHA standards for BioStar Research Inc. include:\n\n• **OSHA 29 CFR 1910.1200** — HazCom / GHS (chemical labelling & SDS)\n• **OSHA 29 CFR 1910.1450** — Laboratory Chemical Standard (Chemical Hygiene Plan)\n• **OSHA 29 CFR 1910.1048** — Formaldehyde Standard ⚠️ *Major Gap detected*\n• **OSHA 29 CFR 1910.1030** — Bloodborne Pathogens (for BSL-2 work)\n• **OSHA 29 CFR 1910.38** — Emergency Action Plan\n• **EPA 40 CFR 262** — RCRA Hazardous Waste Generator\n\n${openReqs.length > 0 ? `You currently have **${openReqs.length} requirements** with compliance gaps. These should be addressed through the CAPA programme.` : "All tracked regulatory requirements are currently compliant."}`,
+      text: `Your legal register tracks **${ctx.legal.length} regulatory requirements**. The most relevant OSHA standards for ${ctx.companyName} include:\n\n• **OSHA 29 CFR 1910.1200** — HazCom / GHS (chemical labelling & SDS)\n• **OSHA 29 CFR 1910.1450** — Laboratory Chemical Standard (Chemical Hygiene Plan)\n• **OSHA 29 CFR 1910.1048** — Formaldehyde Standard ⚠️ *Major Gap detected*\n• **OSHA 29 CFR 1910.1030** — Bloodborne Pathogens (for BSL-2 work)\n• **OSHA 29 CFR 1910.38** — Emergency Action Plan\n• **EPA 40 CFR 262** — RCRA Hazardous Waste Generator\n\n${openReqs.length > 0 ? `You currently have **${openReqs.length} requirements** with compliance gaps. These should be addressed through the CAPA programme.` : "All tracked regulatory requirements are currently compliant."}`,
       cards,
       followUps: [
         "What does OSHA 1910.1048 require for formaldehyde?",
@@ -549,7 +551,7 @@ function buildAmayaResponse(
   // ── Biosafety ─────────────────────────────────────────────────────────────────
   if (/biosafety|bsl|biological|bacteria|virus|bsc|cabinet|autoclave/i.test(q)) {
     return {
-      text: `**BSL-2 Biosafety Summary — BioStar Research Inc.**\n\nBioStar operates at Biosafety Level 2 (BSL-2), governed by the **CDC/NIH BMBL 6th Edition** and your Institutional Biosafety Committee (IBC) protocol.\n\n**Key BSL-2 requirements in your programme:**\n• All BSL-2 work must be performed in a certified Class II Biosafety Cabinet (BSC)\n• BSC certification: required annually by a certified field certifier (NSF 49)\n• Autoclave/decontamination: biological waste must be autoclaved prior to disposal; annual calibration with biological indicators required\n• PPE: lab coat, gloves, and eye protection at minimum; no eating/drinking/applying cosmetics in lab\n• Annual BSL-2 training required for all personnel working in BSL-2 areas\n• All work requires IBC approval; protocol amendments must be submitted before changes\n\nI recommend reviewing the **Biosafety & Lab Safety** module to verify all lab registrations, agent inventory, and calibration records are current.`,
+      text: `**BSL-2 Biosafety Summary — ${ctx.companyName}**\n\n${ctx.companyName} operates at Biosafety Level 2 (BSL-2), governed by the **CDC/NIH BMBL 6th Edition** and your Institutional Biosafety Committee (IBC) protocol.\n\n**Key BSL-2 requirements in your programme:**\n• All BSL-2 work must be performed in a certified Class II Biosafety Cabinet (BSC)\n• BSC certification: required annually by a certified field certifier (NSF 49)\n• Autoclave/decontamination: biological waste must be autoclaved prior to disposal; annual calibration with biological indicators required\n• PPE: lab coat, gloves, and eye protection at minimum; no eating/drinking/applying cosmetics in lab\n• Annual BSL-2 training required for all personnel working in BSL-2 areas\n• All work requires IBC approval; protocol amendments must be submitted before changes\n\nI recommend reviewing the **Biosafety & Lab Safety** module to verify all lab registrations, agent inventory, and calibration records are current.`,
       followUps: [
         "Navigate me to Biosafety & Lab Safety",
         "Is my BSL-2 training current?",
@@ -881,6 +883,7 @@ export function AmayaDashboard({
   runs: PredictabilityRun[];
   latestRun: PredictabilityRun | null;
 }) {
+  const { user } = useDemoUser();
   const [tab, setTab] = useState<TabId>("chat");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -888,7 +891,7 @@ export function AmayaDashboard({
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLInputElement>(null);
 
-  const ctx: AiCtx = { chemicals, courses, records, profiles, capas, incidents, legal, audits, waste, findings, latestRun };
+  const ctx: AiCtx = { chemicals, courses, records, profiles, capas, incidents, legal, audits, waste, findings, latestRun, companyName: user.company };
 
   const pendingFindings = findings.filter((f) => f.review_status === "pending").length;
 
