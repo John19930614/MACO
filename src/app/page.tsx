@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import HeroReel from "./HeroReel";
 
 export default function Home() {
-  redirect("/login");
+  return <HeroReel />;
 }
