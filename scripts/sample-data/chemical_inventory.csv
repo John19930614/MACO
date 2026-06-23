@@ -1,0 +1,7 @@
+Chemical Name,CAS Number,Quantity,Unit,Storage Location,Supplier,GHS Hazard Codes,Scheduled
+Acetone,67-64-1,10,L,Lab 1 - Flammables Cabinet B,Fisher Scientific,H225 H319 H336,No
+Sulfuric Acid 98%,7664-93-9,2.5,L,Lab 1 - Acids Cabinet,Sigma-Aldrich,H290 H314,No
+Toluene,108-88-3,4,L,Lab 2 - Flammables Cabinet A,VWR,H225 H304 H315 H336 H361 H373,No
+Sodium Azide,26628-22-8,100,g,Locked Toxics Cabinet,Sigma-Aldrich,H300 H310 H410,Yes
+Methylene Chloride (DCM),75-09-2,4,L,Lab 2 - Fume Hood 1,Honeywell,H315 H319 H335 H336 H351,Yes
+Hydrogen Peroxide 30%,7722-84-1,1,L,Oxidizers Cabinet,Fisher Scientific,H302 H318,No

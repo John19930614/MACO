@@ -50,17 +50,18 @@ function CountUp({ value, run, reduce }: { value: number; run: boolean; reduce: 
 
 export default function HeroReel() {
   const [active, setActive] = useState(0);
-  const [paused, setPaused] = useState(false);
   const reduce = usePrefersReducedMotion();
 
   const go = (n: number) => setActive(((n % SLIDES) + SLIDES) % SLIDES);
 
-  // Auto-advance; pauses on hover/focus and when reduced motion is requested.
+  // Auto-advance continuously. Manual nav (dots/arrows/keys) just resets the
+  // timer via the `active` dependency — it never stops the reel. Honors the
+  // reduced-motion preference.
   useEffect(() => {
-    if (paused || reduce) return;
+    if (reduce) return;
     const t = setTimeout(() => setActive((i) => (i + 1) % SLIDES), DURATION);
     return () => clearTimeout(t);
-  }, [active, paused, reduce]);
+  }, [active, reduce]);
 
   const slideClass = (i: number, base: string) =>
     `rps-slide ${base}${i === active ? " is-active" : ""}`;
@@ -80,10 +81,6 @@ export default function HeroReel() {
         aria-roledescription="carousel"
         aria-label="Reliance Predictive Safety Technologies highlights"
         tabIndex={0}
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
-        onFocus={() => setPaused(true)}
-        onBlur={() => setPaused(false)}
         onKeyDown={(e) => {
           if (e.key === "ArrowRight") go(active + 1);
           else if (e.key === "ArrowLeft") go(active - 1);

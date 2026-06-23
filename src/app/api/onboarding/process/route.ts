@@ -404,6 +404,31 @@ async function processSDS(files: UploadedFile[], tenantId: string) {
   return records.length;
 }
 
+// ── Reference documents (COI, EMR letter, etc.) ───────────────────────────────
+// No AI extraction — these are stored as reference records in the document
+// library so they're filed and tracked, not silently dropped.
+async function processReferenceDocs(files: UploadedFile[], tenantId: string, category: string) {
+  if (files.length === 0) return 0;
+  const svc = serviceClient();
+  const today = new Date().toISOString().slice(0, 10);
+  const reviewDate = new Date(Date.now() + 365 * 86400 * 1000).toISOString().slice(0, 10);
+  const records = files.map((f) => ({
+    tenant_id: tenantId,
+    title: f.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " ").trim() || "Reference Document",
+    category,
+    version: "1.0",
+    storage_path: f.path,
+    effective_date: today,
+    review_date: reviewDate,
+    status: "active",
+    acknowledgment_required: false,
+    regulation_ref: null,
+  }));
+  const { error } = await svc.from("documents").insert(records);
+  if (error) { console.error("[onboarding] reference docs insert:", error); return 0; }
+  return records.length;
+}
+
 // ── Safety Manual processor ───────────────────────────────────────────────────
 // Reads the company safety manual / IIPP and seeds:
 //   legal_requirements  — every regulation/standard referenced
@@ -1676,6 +1701,7 @@ export async function POST(req: NextRequest) {
     oshaCount, orgCount, equipCount,
     auditResult, jsaCount, erpResult, permitsResult,
     biosafetyResult, ihResult, nearMissCount,
+    coiCount, emrCount,
   ] = await Promise.all([
     // Existing processors
     processChemicals(uploads.chemicals ?? [], tenantId, userId),
@@ -1696,6 +1722,8 @@ export async function POST(req: NextRequest) {
     processBiosafetyInventory(uploads.biosafety_inventory ?? [], tenantId),
     processIHMonitoring(uploads.ih_monitoring ?? [], tenantId),
     processNearMissLog(uploads.near_miss_log ?? [], tenantId, siteId, userId),
+    processReferenceDocs(uploads.coi ?? [], tenantId, "insurance"),
+    processReferenceDocs(uploads.emr_letter ?? [], tenantId, "insurance"),
   ]);
 
   seeded.chemicals          = chemCount;
@@ -1713,6 +1741,7 @@ export async function POST(req: NextRequest) {
   seeded.audit_findings     = auditResult.findings;
   seeded.biosafety_labs     = biosafetyResult.labs;
   seeded.biohazard_agents   = biosafetyResult.agents;
+  seeded.reference_documents = coiCount + emrCount;
   } catch (err) {
     console.error("[onboarding] document processing failed:", err);
     // Return whatever was seeded rather than crashing — onboarding still completes.
