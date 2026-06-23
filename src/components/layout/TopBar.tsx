@@ -107,7 +107,9 @@ export function TopBar({
         <ThemeToggle />
 
         {/* Notification bell with live dropdown */}
-        <NotificationsDropdown count={notifCount} items={notifItems} />
+        <div data-tour="notifications">
+          <NotificationsDropdown count={notifCount} items={notifItems} />
+        </div>
 
         {/* User avatar */}
         <div className="flex items-center gap-2">

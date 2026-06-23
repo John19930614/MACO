@@ -1,20 +1,49 @@
-"use server";
+﻿"use server";
 
 import { revalidatePath } from "next/cache";
 import { getStore, nextId } from "@/lib/data/store";
 import { MOCK_TENANT_ID, MOCK_SITE_ID } from "@/lib/data/mock";
-import { createServerSupabase, DEMO_TENANT_ID, DEMO_SITE_ID, DEMO_SARAH_ID } from "@/lib/supabase/server";
+import { createSupabaseServerClient, DEMO_SARAH_ID } from "@/lib/supabase/server";
+import { getServerTenantId, getServerProfileId } from "@/lib/auth/session";
 import { MOCK_MODE } from "@/lib/env";
 import type { Severity, IncidentType, CapaStatus, AuditStatus, DocumentStatus } from "@/lib/constants";
-import type { CapaSourceType, AuditType, Incident, RiskAssessment, WasteStream, Equipment, LegalRequirement, TrainingRecord } from "@/lib/types";
+import { COMPLIANCE_STATUS_META, type ComplianceStatus } from "@/lib/constants";
+import type { CapaSourceType, AuditType, Incident, RiskAssessment, WasteStream, Equipment, LegalRequirement, TrainingRecord, OshaCase, AiFinding, Chemical, AiAnalysisOutput } from "@/lib/types";
+import { analyzeChemical, analyzeComplianceGap, buildPredictabilityForecast } from "@/lib/ai/engine";
+import {
+  getChemicals, getLegalRequirements, getTrainingRecords, getCapaActions,
+  getIncidents, getAudits, getRiskAssessments, getEquipment, getWasteStreams,
+  getDocuments, getOshaCases, getBiosafetyLabs,
+} from "@/lib/data/ehsRepo";
+
+// ── Session context helper ─────────────────────────────────────────────────────
+// Returns the session-aware Supabase client, the user's real tenant_id, site_id,
+// and profile_id. All live-mode actions use this so RLS is always respected.
+
+async function getCtx() {
+  const client = await createSupabaseServerClient();
+  if (!client) return null;
+  const tenantId = await getServerTenantId();
+  if (!tenantId) return null;
+  const profileId = await getServerProfileId();
+  const { data: profile } = await client
+    .from("profiles")
+    .select("default_site_id")
+    .eq("id", profileId)
+    .single();
+  return { client, tenantId, siteId: profile?.default_site_id ?? null, profileId };
+}
+
+// ── CAPAs ─────────────────────────────────────────────────────────────────────
 
 export async function addCapa(_prev: unknown, formData: FormData) {
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("capa_records").insert({
-        tenant_id: DEMO_TENANT_ID,
-        site_id: DEMO_SITE_ID,
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { error } = await ctx.client.from("capa_records").insert({
+        tenant_id: ctx.tenantId,
+        site_id: ctx.siteId,
         title: (formData.get("title") as string) || "Untitled CAPA",
         description: (formData.get("description") as string) || "",
         kind: (formData.get("kind") as string) || "corrective",
@@ -24,6 +53,7 @@ export async function addCapa(_prev: unknown, formData: FormData) {
         due_date: (formData.get("due_date") as string) || null,
         owner_id: null,
       });
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -55,16 +85,75 @@ export async function addCapa(_prev: unknown, formData: FormData) {
   return { ok: true };
 }
 
+export async function updateCapa(id: string, formData: FormData) {
+  const now = new Date().toISOString();
+  const newStatus = (formData.get("status") as CapaStatus) || "open";
+  const isClosing = newStatus === "closed";
+  const closureNote = (formData.get("closure_note") as string) || null;
+  const closedWithEvidence = formData.get("closed_with_evidence") === "true";
+  const ownerId = (formData.get("owner_id") as string) || null;
+
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client.from("capa_records").update({
+        title:               (formData.get("title") as string) || "Untitled CAPA",
+        description:         (formData.get("description") as string) || "",
+        kind:                (formData.get("kind") as string) || "corrective",
+        severity:            (formData.get("severity") as string) || "medium",
+        status:              newStatus,
+        owner_id:            ownerId,
+        due_date:            (formData.get("due_date") as string) || null,
+        root_cause:          (formData.get("root_cause") as string) || null,
+        verification_method: (formData.get("verification_method") as string) || null,
+        closure_note:        closureNote,
+        closed_with_evidence: closedWithEvidence,
+        closed_at:           isClosing ? now : null,
+        updated_at:          now,
+      }).eq("id", id).eq("tenant_id", ctx.tenantId);
+    }
+  } else {
+    const store = getStore();
+    const idx = store.capaActions.findIndex((c) => c.id === id);
+    if (idx !== -1) {
+      const existing = store.capaActions[idx];
+      store.capaActions[idx] = {
+        ...existing,
+        title:               (formData.get("title") as string) || existing.title,
+        description:         (formData.get("description") as string) || "",
+        kind:                (formData.get("kind") as "corrective" | "preventive") ?? existing.kind,
+        severity:            (formData.get("severity") as Severity) ?? existing.severity,
+        status:              newStatus,
+        owner_id:            ownerId,
+        due_date:            (formData.get("due_date") as string) || null,
+        root_cause:          (formData.get("root_cause") as string) || null,
+        verification_method: (formData.get("verification_method") as string) || null,
+        closure_note:        closureNote,
+        closed_with_evidence: closedWithEvidence,
+        closed_at:           isClosing ? now : (existing.closed_at ?? null),
+        updated_at:          now,
+      };
+    }
+  }
+  revalidatePath("/capa");
+  revalidatePath(`/capa/${id}`);
+  return { ok: true };
+}
+
+// ── Incidents ─────────────────────────────────────────────────────────────────
+
 export async function addIncident(_prev: unknown, formData: FormData) {
   const now = new Date().toISOString();
   const occurredAt = (formData.get("occurred_at") as string) || now.slice(0, 10);
 
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("incidents").insert({
-        tenant_id: DEMO_TENANT_ID,
-        site_id: DEMO_SITE_ID,
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { error } = await ctx.client.from("incidents").insert({
+        tenant_id: ctx.tenantId,
+        site_id: ctx.siteId,
         title: (formData.get("title") as string) || "Untitled Incident",
         description: (formData.get("description") as string) || "",
         incident_type: (formData.get("incident_type") as string) || "near_miss",
@@ -72,8 +161,9 @@ export async function addIncident(_prev: unknown, formData: FormData) {
         status: "reported",
         occurred_at: new Date(occurredAt).toISOString(),
         location: (formData.get("location") as string) || "Main Site",
-        reported_by: DEMO_SARAH_ID,
+        reported_by: ctx.profileId,
       });
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -107,63 +197,13 @@ export async function addIncident(_prev: unknown, formData: FormData) {
   return { ok: true };
 }
 
-export async function addChemical(_prev: unknown, formData: FormData) {
-  if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("chemical_inventory").insert({
-        tenant_id: DEMO_TENANT_ID,
-        site_id: DEMO_SITE_ID,
-        name: (formData.get("name") as string) || "Unnamed Chemical",
-        cas_number: (formData.get("cas_number") as string) || null,
-        ghs_classes: [],
-        quantity: parseFloat(formData.get("quantity") as string) || 0,
-        unit: (formData.get("unit") as string) || "L",
-        storage_location: (formData.get("storage_location") as string) || "",
-        is_scheduled: false,
-      });
-    }
-  } else {
-    const store = getStore();
-    const now = new Date().toISOString();
-    store.chemicals.push({
-      id: nextId("chem"),
-      tenant_id: MOCK_TENANT_ID,
-      site_id: MOCK_SITE_ID,
-      name: (formData.get("name") as string) || "Unnamed Chemical",
-      cas_number: (formData.get("cas_number") as string) || null,
-      un_number: null,
-      chemical_formula: null,
-      ghs_classes: [],
-      quantity: parseFloat(formData.get("quantity") as string) || 0,
-      unit: (formData.get("unit") as string) || "L",
-      storage_location: (formData.get("storage_location") as string) || "",
-      sds_url: null,
-      sds_expiry: null,
-      hazard_statements: [],
-      precautionary_statements: [],
-      is_scheduled: false,
-      schedule_ref: null,
-      supplier: (formData.get("supplier") as string) || null,
-      date_received: null,
-      status: "active" as const,
-      owner_id: null,
-      created_by: DEMO_SARAH_ID,
-      created_at: now,
-      updated_at: now,
-    });
-  }
-  revalidatePath("/chemicals");
-  revalidatePath("/dashboard");
-  return { ok: true };
-}
-
 export async function updateIncident(id: string, formData: FormData) {
   const now = new Date().toISOString();
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("incidents").update({
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client.from("incidents").update({
         title:       (formData.get("title") as string) || "Untitled Incident",
         description: (formData.get("description") as string) || "",
         incident_type: (formData.get("incident_type") as string) || "near_miss",
@@ -173,7 +213,7 @@ export async function updateIncident(id: string, formData: FormData) {
         immediate_actions: (formData.get("immediate_actions") as string) || null,
         root_cause:  (formData.get("root_cause") as string) || null,
         updated_at:  now,
-      }).eq("id", id).eq("tenant_id", DEMO_TENANT_ID);
+      }).eq("id", id).eq("tenant_id", ctx.tenantId);
     }
   } else {
     const store = getStore();
@@ -198,67 +238,187 @@ export async function updateIncident(id: string, formData: FormData) {
   return { ok: true };
 }
 
-export async function updateCapa(id: string, formData: FormData) {
-  const now = new Date().toISOString();
-  const newStatus = (formData.get("status") as CapaStatus) || "open";
-  const isClosing = newStatus === "closed";
-  const closureNote = (formData.get("closure_note") as string) || null;
-  const closedWithEvidence = formData.get("closed_with_evidence") === "true";
-  const ownerId = (formData.get("owner_id") as string) || null;
+// ── Chemicals ─────────────────────────────────────────────────────────────────
 
+// Parse free-typed GHS hazard codes ("H225, H319 H350") into a clean H-code array.
+// The platform stores H-codes in both ghs_classes and hazard_statements; the
+// dashboard/PPE/training logic maps these codes to hazard classes.
+function parseHazardCodes(raw: string | null): string[] {
+  if (!raw) return [];
+  return [...new Set(
+    raw.split(/[\s,;]+/).map((s) => s.trim().toUpperCase()).filter((s) => /^H\d{3}/.test(s)),
+  )];
+}
+
+export async function addChemical(_prev: unknown, formData: FormData) {
+  const hazards     = parseHazardCodes(formData.get("hazard_codes") as string);
+  const isScheduled = (formData.get("is_scheduled") as string) === "true";
+  const scheduleRef = (formData.get("schedule_ref") as string)?.trim() || null;
+  const sdsExpiry   = (formData.get("sds_expiry") as string) || null;
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("capa_records").update({
-        title:               (formData.get("title") as string) || "Untitled CAPA",
-        description:         (formData.get("description") as string) || "",
-        kind:                (formData.get("kind") as string) || "corrective",
-        severity:            (formData.get("severity") as string) || "medium",
-        status:              newStatus,
-        owner_id:            ownerId,
-        due_date:            (formData.get("due_date") as string) || null,
-        root_cause:          (formData.get("root_cause") as string) || null,
-        verification_method: (formData.get("verification_method") as string) || null,
-        closure_note:        closureNote,
-        closed_with_evidence: closedWithEvidence,
-        closed_at:           isClosing ? now : null,
-        updated_at:          now,
-      }).eq("id", id).eq("tenant_id", DEMO_TENANT_ID);
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { error } = await ctx.client.from("chemical_inventory").insert({
+        tenant_id: ctx.tenantId,
+        site_id: ctx.siteId,
+        name: (formData.get("name") as string) || "Unnamed Chemical",
+        cas_number: (formData.get("cas_number") as string) || null,
+        ghs_classes: hazards as Chemical["ghs_classes"],
+        hazard_statements: hazards,
+        quantity: parseFloat(formData.get("quantity") as string) || 0,
+        unit: (formData.get("unit") as string) || "L",
+        storage_location: (formData.get("storage_location") as string) || "",
+        supplier: (formData.get("supplier") as string) || null,
+        sds_expiry: sdsExpiry,
+        is_scheduled: isScheduled,
+        schedule_ref: scheduleRef,
+        created_by: ctx.profileId,
+      });
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
-    const idx = store.capaActions.findIndex((c) => c.id === id);
+    const now = new Date().toISOString();
+    store.chemicals.push({
+      id: nextId("chem"),
+      tenant_id: MOCK_TENANT_ID,
+      site_id: MOCK_SITE_ID,
+      name: (formData.get("name") as string) || "Unnamed Chemical",
+      cas_number: (formData.get("cas_number") as string) || null,
+      un_number: null,
+      chemical_formula: null,
+      ghs_classes: hazards as Chemical["ghs_classes"],
+      quantity: parseFloat(formData.get("quantity") as string) || 0,
+      unit: (formData.get("unit") as string) || "L",
+      storage_location: (formData.get("storage_location") as string) || "",
+      sds_url: null,
+      sds_expiry: sdsExpiry,
+      hazard_statements: hazards,
+      precautionary_statements: [],
+      is_scheduled: isScheduled,
+      schedule_ref: scheduleRef,
+      supplier: (formData.get("supplier") as string) || null,
+      date_received: null,
+      status: "active" as const,
+      owner_id: null,
+      created_by: DEMO_SARAH_ID,
+      created_at: now,
+      updated_at: now,
+    });
+  }
+  revalidatePath("/chemicals");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function updateChemical(id: string, formData: FormData) {
+  const now = new Date().toISOString();
+  // Hazard fields are optional on edit — only overwrite when the form supplied them.
+  const hasHazards  = formData.has("hazard_codes");
+  const hazards     = parseHazardCodes(formData.get("hazard_codes") as string);
+  const isScheduled = (formData.get("is_scheduled") as string) === "true";
+  const scheduleRef = (formData.get("schedule_ref") as string)?.trim() || null;
+  const sdsExpiry   = (formData.get("sds_expiry") as string) || null;
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client.from("chemical_inventory").update({
+        name:             (formData.get("name") as string) || "Unnamed Chemical",
+        cas_number:       (formData.get("cas_number") as string) || null,
+        quantity:         parseFloat(formData.get("quantity") as string) || 0,
+        unit:             (formData.get("unit") as string) || "L",
+        storage_location: (formData.get("storage_location") as string) || "",
+        supplier:         (formData.get("supplier") as string) || null,
+        ...(hasHazards ? {
+          ghs_classes:       hazards as Chemical["ghs_classes"],
+          hazard_statements: hazards,
+          is_scheduled:      isScheduled,
+          schedule_ref:      scheduleRef,
+          sds_expiry:        sdsExpiry,
+        } : {}),
+        updated_at:       now,
+      }).eq("id", id).eq("tenant_id", ctx.tenantId);
+    }
+  } else {
+    const store = getStore();
+    const idx = store.chemicals.findIndex((c) => c.id === id);
     if (idx !== -1) {
-      const existing = store.capaActions[idx];
-      store.capaActions[idx] = {
-        ...existing,
-        title:               (formData.get("title") as string) || existing.title,
-        description:         (formData.get("description") as string) || "",
-        kind:                (formData.get("kind") as "corrective" | "preventive") ?? existing.kind,
-        severity:            (formData.get("severity") as Severity) ?? existing.severity,
-        status:              newStatus,
-        owner_id:            ownerId,
-        due_date:            (formData.get("due_date") as string) || null,
-        root_cause:          (formData.get("root_cause") as string) || null,
-        verification_method: (formData.get("verification_method") as string) || null,
-        closure_note:        closureNote,
-        closed_with_evidence: closedWithEvidence,
-        closed_at:           isClosing ? now : (existing.closed_at ?? null),
-        updated_at:          now,
+      store.chemicals[idx] = {
+        ...store.chemicals[idx],
+        name:             (formData.get("name") as string) || store.chemicals[idx].name,
+        cas_number:       (formData.get("cas_number") as string) || null,
+        quantity:         parseFloat(formData.get("quantity") as string) || 0,
+        unit:             (formData.get("unit") as string) || "L",
+        storage_location: (formData.get("storage_location") as string) || "",
+        supplier:         (formData.get("supplier") as string) || null,
+        ...(hasHazards ? {
+          ghs_classes:       hazards as Chemical["ghs_classes"],
+          hazard_statements: hazards,
+          is_scheduled:      isScheduled,
+          schedule_ref:      scheduleRef,
+          sds_expiry:        sdsExpiry,
+        } : {}),
+        updated_at:       now,
       };
     }
   }
-  revalidatePath("/capa");
-  revalidatePath(`/capa/${id}`);
+  revalidatePath("/chemicals");
+  revalidatePath(`/chemicals/${id}`);
+  return { ok: true };
+}
+
+// ── Audits ────────────────────────────────────────────────────────────────────
+
+export async function addAudit(_prev: unknown, formData: FormData) {
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { error } = await ctx.client.from("audits").insert({
+        tenant_id: ctx.tenantId,
+        site_id: ctx.siteId,
+        title: (formData.get("title") as string) || "Untitled Audit",
+        type: (formData.get("type") as string) || "internal",
+        scheduled_date: (formData.get("scheduled_date") as string) || new Date().toISOString().slice(0, 10),
+        status: "scheduled",
+        lead_auditor_id: null,
+        scope: (formData.get("scope") as string) || "",
+      });
+      if (error) return { ok: false, error: error.message };
+    }
+  } else {
+    const store = getStore();
+    const now = new Date().toISOString();
+    store.audits.push({
+      id: nextId("aud"),
+      tenant_id: MOCK_TENANT_ID,
+      site_id: MOCK_SITE_ID,
+      title: (formData.get("title") as string) || "Untitled Audit",
+      type: (formData.get("type") as AuditType) ?? "internal",
+      scheduled_date: (formData.get("scheduled_date") as string) || now.slice(0, 10),
+      completed_date: null,
+      status: "scheduled",
+      lead_auditor_id: null,
+      scope: (formData.get("scope") as string) || "",
+      notes: null,
+      created_at: now,
+      updated_at: now,
+    });
+  }
+  revalidatePath("/audits");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
 export async function updateAudit(id: string, formData: FormData) {
   const now = new Date().toISOString();
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("audits").update({
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client.from("audits").update({
         title:          (formData.get("title") as string) || "Untitled Audit",
         type:           (formData.get("type") as string) || "internal",
         scheduled_date: (formData.get("scheduled_date") as string) || null,
@@ -266,7 +426,7 @@ export async function updateAudit(id: string, formData: FormData) {
         scope:          (formData.get("scope") as string) || null,
         notes:          (formData.get("notes") as string) || null,
         updated_at:     now,
-      }).eq("id", id).eq("tenant_id", DEMO_TENANT_ID);
+      }).eq("id", id).eq("tenant_id", ctx.tenantId);
     }
   } else {
     const store = getStore();
@@ -296,7 +456,7 @@ export async function submitAuditConduct(
     conductDate: string;
     score: number | null;
     notes: string;
-    itemSummary: string; // JSON string
+    itemSummary: string;
   },
 ) {
   const now = new Date().toISOString();
@@ -310,14 +470,15 @@ export async function submitAuditConduct(
   });
 
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("audits").update({
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client.from("audits").update({
         status:         "completed",
         completed_date: data.conductDate || now.slice(0, 10),
         notes:          notesJson,
         updated_at:     now,
-      }).eq("id", id).eq("tenant_id", DEMO_TENANT_ID);
+      }).eq("id", id).eq("tenant_id", ctx.tenantId);
     }
   } else {
     const store = getStore();
@@ -334,81 +495,6 @@ export async function submitAuditConduct(
   }
   revalidatePath("/audits");
   revalidatePath(`/audits/${id}`);
-  return { ok: true };
-}
-
-export async function updateChemical(id: string, formData: FormData) {
-  const now = new Date().toISOString();
-  if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("chemical_inventory").update({
-        name:             (formData.get("name") as string) || "Unnamed Chemical",
-        cas_number:       (formData.get("cas_number") as string) || null,
-        quantity:         parseFloat(formData.get("quantity") as string) || 0,
-        unit:             (formData.get("unit") as string) || "L",
-        storage_location: (formData.get("storage_location") as string) || "",
-        supplier:         (formData.get("supplier") as string) || null,
-        updated_at:       now,
-      }).eq("id", id).eq("tenant_id", DEMO_TENANT_ID);
-    }
-  } else {
-    const store = getStore();
-    const idx = store.chemicals.findIndex((c) => c.id === id);
-    if (idx !== -1) {
-      store.chemicals[idx] = {
-        ...store.chemicals[idx],
-        name:             (formData.get("name") as string) || store.chemicals[idx].name,
-        cas_number:       (formData.get("cas_number") as string) || null,
-        quantity:         parseFloat(formData.get("quantity") as string) || 0,
-        unit:             (formData.get("unit") as string) || "L",
-        storage_location: (formData.get("storage_location") as string) || "",
-        supplier:         (formData.get("supplier") as string) || null,
-        updated_at:       now,
-      };
-    }
-  }
-  revalidatePath("/chemicals");
-  revalidatePath(`/chemicals/${id}`);
-  return { ok: true };
-}
-
-export async function addAudit(_prev: unknown, formData: FormData) {
-  if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("audits").insert({
-        tenant_id: DEMO_TENANT_ID,
-        site_id: DEMO_SITE_ID,
-        title: (formData.get("title") as string) || "Untitled Audit",
-        type: (formData.get("type") as string) || "internal",
-        scheduled_date: (formData.get("scheduled_date") as string) || new Date().toISOString().slice(0, 10),
-        status: "scheduled",
-        lead_auditor_id: null,
-        scope: (formData.get("scope") as string) || "",
-      });
-    }
-  } else {
-    const store = getStore();
-    const now = new Date().toISOString();
-    store.audits.push({
-      id: nextId("aud"),
-      tenant_id: MOCK_TENANT_ID,
-      site_id: MOCK_SITE_ID,
-      title: (formData.get("title") as string) || "Untitled Audit",
-      type: (formData.get("type") as AuditType) ?? "internal",
-      scheduled_date: (formData.get("scheduled_date") as string) || now.slice(0, 10),
-      completed_date: null,
-      status: "scheduled",
-      lead_auditor_id: null,
-      scope: (formData.get("scope") as string) || "",
-      notes: null,
-      created_at: now,
-      updated_at: now,
-    });
-  }
-  revalidatePath("/audits");
-  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -430,11 +516,12 @@ export async function addRisk(_prev: unknown, formData: FormData) {
   const level = riskLevel(score);
 
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("risk_assessments").insert({
-        tenant_id: DEMO_TENANT_ID,
-        site_id:   DEMO_SITE_ID,
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { error } = await ctx.client.from("risk_assessments").insert({
+        tenant_id: ctx.tenantId,
+        site_id:   ctx.siteId,
         title:       (formData.get("title") as string) || "Untitled Risk",
         description: (formData.get("description") as string) || "",
         category:    (formData.get("category") as string) || "physical",
@@ -449,6 +536,7 @@ export async function addRisk(_prev: unknown, formData: FormData) {
         review_date: (formData.get("review_date") as string) || now.slice(0, 10),
         status: "active",
       });
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -491,9 +579,10 @@ export async function updateRisk(id: string, formData: FormData) {
   const level = riskLevel(score);
 
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("risk_assessments").update({
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client.from("risk_assessments").update({
         title:       (formData.get("title") as string) || "Untitled Risk",
         description: (formData.get("description") as string) || "",
         category:    (formData.get("category") as string) || "physical",
@@ -505,7 +594,7 @@ export async function updateRisk(id: string, formData: FormData) {
         status:      (formData.get("status") as string) || "active",
         review_date: (formData.get("review_date") as string) || null,
         updated_at:  now,
-      }).eq("id", id).eq("tenant_id", DEMO_TENANT_ID);
+      }).eq("id", id).eq("tenant_id", ctx.tenantId);
     }
   } else {
     const store = getStore();
@@ -537,42 +626,44 @@ export async function updateRisk(id: string, formData: FormData) {
 export async function addWasteStream(_prev: unknown, formData: FormData) {
   const now = new Date().toISOString();
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("waste_streams").insert({
-        tenant_id:          DEMO_TENANT_ID,
-        site_id:            DEMO_SITE_ID,
-        waste_name:         (formData.get("waste_name") as string) || "Unnamed Waste",
-        waste_code:         (formData.get("waste_code") as string) || null,
-        classification:     (formData.get("classification") as string) || "hazardous",
-        quantity:           parseFloat(formData.get("quantity") as string) || 0,
-        unit:               (formData.get("unit") as string) || "kg",
-        disposal_method:    (formData.get("disposal_method") as string) || "incineration",
-        disposal_contractor:(formData.get("disposal_contractor") as string) || null,
-        status:             "pending",
-        created_by:         DEMO_SARAH_ID,
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { error } = await ctx.client.from("waste_streams").insert({
+        tenant_id:           ctx.tenantId,
+        site_id:             ctx.siteId,
+        waste_name:          (formData.get("waste_name") as string) || "Unnamed Waste",
+        waste_code:          (formData.get("waste_code") as string) || null,
+        classification:      (formData.get("classification") as string) || "hazardous",
+        quantity:            parseFloat(formData.get("quantity") as string) || 0,
+        unit:                (formData.get("unit") as string) || "kg",
+        disposal_method:     (formData.get("disposal_method") as string) || "incineration",
+        disposal_contractor: (formData.get("disposal_contractor") as string) || null,
+        status:              "pending",
+        created_by:          ctx.profileId,
       });
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
     store.wasteStreams.push({
       id: nextId("ws"),
-      tenant_id:          MOCK_TENANT_ID,
-      site_id:            MOCK_SITE_ID,
-      waste_name:         (formData.get("waste_name") as string) || "Unnamed Waste",
-      waste_code:         (formData.get("waste_code") as string) || null,
-      classification:     (formData.get("classification") as WasteStream["classification"]) || "hazardous",
-      quantity:           parseFloat(formData.get("quantity") as string) || 0,
-      unit:               (formData.get("unit") as string) || "kg",
-      disposal_method:    (formData.get("disposal_method") as string) || "incineration",
-      disposal_contractor:(formData.get("disposal_contractor") as string) || null,
-      manifest_number:    null,
-      disposal_date:      null,
-      regulatory_limit:   null,
-      regulatory_unit:    null,
-      status:             "pending",
-      created_by:         "Sarah Chen",
-      created_at:         now,
+      tenant_id:           MOCK_TENANT_ID,
+      site_id:             MOCK_SITE_ID,
+      waste_name:          (formData.get("waste_name") as string) || "Unnamed Waste",
+      waste_code:          (formData.get("waste_code") as string) || null,
+      classification:      (formData.get("classification") as WasteStream["classification"]) || "hazardous",
+      quantity:            parseFloat(formData.get("quantity") as string) || 0,
+      unit:                (formData.get("unit") as string) || "kg",
+      disposal_method:     (formData.get("disposal_method") as string) || "incineration",
+      disposal_contractor: (formData.get("disposal_contractor") as string) || null,
+      manifest_number:     null,
+      disposal_date:       null,
+      regulatory_limit:    null,
+      regulatory_unit:     null,
+      status:              "pending",
+      created_by:          "Sarah Chen",
+      created_at:          now,
     });
   }
   revalidatePath("/waste");
@@ -581,22 +672,22 @@ export async function addWasteStream(_prev: unknown, formData: FormData) {
 }
 
 export async function updateWasteStream(id: string, formData: FormData) {
-  const now = new Date().toISOString();
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("waste_streams").update({
-        waste_name:         (formData.get("waste_name") as string) || "Unnamed Waste",
-        waste_code:         (formData.get("waste_code") as string) || null,
-        classification:     (formData.get("classification") as string) || "hazardous",
-        quantity:           parseFloat(formData.get("quantity") as string) || 0,
-        unit:               (formData.get("unit") as string) || "kg",
-        disposal_method:    (formData.get("disposal_method") as string) || "incineration",
-        disposal_contractor:(formData.get("disposal_contractor") as string) || null,
-        status:             (formData.get("status") as string) || "pending",
-        manifest_number:    (formData.get("manifest_number") as string) || null,
-        disposal_date:      (formData.get("disposal_date") as string) || null,
-      }).eq("id", id).eq("tenant_id", DEMO_TENANT_ID);
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client.from("waste_streams").update({
+        waste_name:          (formData.get("waste_name") as string) || "Unnamed Waste",
+        waste_code:          (formData.get("waste_code") as string) || null,
+        classification:      (formData.get("classification") as string) || "hazardous",
+        quantity:            parseFloat(formData.get("quantity") as string) || 0,
+        unit:                (formData.get("unit") as string) || "kg",
+        disposal_method:     (formData.get("disposal_method") as string) || "incineration",
+        disposal_contractor: (formData.get("disposal_contractor") as string) || null,
+        status:              (formData.get("status") as string) || "pending",
+        manifest_number:     (formData.get("manifest_number") as string) || null,
+        disposal_date:       (formData.get("disposal_date") as string) || null,
+      }).eq("id", id).eq("tenant_id", ctx.tenantId);
     }
   } else {
     const store = getStore();
@@ -604,16 +695,16 @@ export async function updateWasteStream(id: string, formData: FormData) {
     if (idx !== -1) {
       store.wasteStreams[idx] = {
         ...store.wasteStreams[idx],
-        waste_name:         (formData.get("waste_name") as string) || store.wasteStreams[idx].waste_name,
-        waste_code:         (formData.get("waste_code") as string) || null,
-        classification:     (formData.get("classification") as WasteStream["classification"]) || "hazardous",
-        quantity:           parseFloat(formData.get("quantity") as string) || 0,
-        unit:               (formData.get("unit") as string) || "kg",
-        disposal_method:    (formData.get("disposal_method") as string) || "incineration",
-        disposal_contractor:(formData.get("disposal_contractor") as string) || null,
-        status:             (formData.get("status") as WasteStream["status"]) || "pending",
-        manifest_number:    (formData.get("manifest_number") as string) || null,
-        disposal_date:      (formData.get("disposal_date") as string) || null,
+        waste_name:          (formData.get("waste_name") as string) || store.wasteStreams[idx].waste_name,
+        waste_code:          (formData.get("waste_code") as string) || null,
+        classification:      (formData.get("classification") as WasteStream["classification"]) || "hazardous",
+        quantity:            parseFloat(formData.get("quantity") as string) || 0,
+        unit:                (formData.get("unit") as string) || "kg",
+        disposal_method:     (formData.get("disposal_method") as string) || "incineration",
+        disposal_contractor: (formData.get("disposal_contractor") as string) || null,
+        status:              (formData.get("status") as WasteStream["status"]) || "pending",
+        manifest_number:     (formData.get("manifest_number") as string) || null,
+        disposal_date:       (formData.get("disposal_date") as string) || null,
       };
     }
   }
@@ -627,41 +718,43 @@ export async function updateWasteStream(id: string, formData: FormData) {
 export async function addEquipment(_prev: unknown, formData: FormData) {
   const now = new Date().toISOString();
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("equipment").insert({
-        tenant_id:              DEMO_TENANT_ID,
-        site_id:                DEMO_SITE_ID,
-        name:                   (formData.get("name") as string) || "Unnamed Equipment",
-        type:                   (formData.get("type") as string) || "other",
-        serial_number:          (formData.get("serial_number") as string) || null,
-        location:               (formData.get("location") as string) || "",
-        next_calibration_date:  (formData.get("next_calibration_date") as string) || null,
-        next_inspection_date:   (formData.get("next_inspection_date") as string) || null,
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { error } = await ctx.client.from("equipment").insert({
+        tenant_id:                ctx.tenantId,
+        site_id:                  ctx.siteId,
+        name:                     (formData.get("name") as string) || "Unnamed Equipment",
+        type:                     (formData.get("type") as string) || "other",
+        serial_number:            (formData.get("serial_number") as string) || null,
+        location:                 (formData.get("location") as string) || "",
+        next_calibration_date:    (formData.get("next_calibration_date") as string) || null,
+        next_inspection_date:     (formData.get("next_inspection_date") as string) || null,
         calibration_interval_days: parseInt(formData.get("calibration_interval_days") as string) || null,
         status: "operational",
       });
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
     store.equipment.push({
       id: nextId("eqp"),
-      tenant_id:               MOCK_TENANT_ID,
-      site_id:                 MOCK_SITE_ID,
-      name:                    (formData.get("name") as string) || "Unnamed Equipment",
-      type:                    (formData.get("type") as string) || "other",
-      serial_number:           (formData.get("serial_number") as string) || null,
-      location:                (formData.get("location") as string) || "",
-      last_calibration_date:   null,
-      next_calibration_date:   (formData.get("next_calibration_date") as string) || null,
-      last_inspection_date:    null,
-      next_inspection_date:    (formData.get("next_inspection_date") as string) || null,
+      tenant_id:                MOCK_TENANT_ID,
+      site_id:                  MOCK_SITE_ID,
+      name:                     (formData.get("name") as string) || "Unnamed Equipment",
+      type:                     (formData.get("type") as string) || "other",
+      serial_number:            (formData.get("serial_number") as string) || null,
+      location:                 (formData.get("location") as string) || "",
+      last_calibration_date:    null,
+      next_calibration_date:    (formData.get("next_calibration_date") as string) || null,
+      last_inspection_date:     null,
+      next_inspection_date:     (formData.get("next_inspection_date") as string) || null,
       calibration_interval_days: parseInt(formData.get("calibration_interval_days") as string) || null,
-      status:                  "operational" as Equipment["status"],
-      regulatory_ref:          null,
-      notes:                   null,
-      created_at:              now,
-      updated_at:              now,
+      status:                   "operational" as Equipment["status"],
+      regulatory_ref:           null,
+      notes:                    null,
+      created_at:               now,
+      updated_at:               now,
     });
   }
   revalidatePath("/monitoring");
@@ -672,21 +765,22 @@ export async function addEquipment(_prev: unknown, formData: FormData) {
 export async function updateEquipment(id: string, formData: FormData) {
   const now = new Date().toISOString();
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("equipment").update({
-        name:                   (formData.get("name") as string) || "Unnamed Equipment",
-        type:                   (formData.get("type") as string) || "other",
-        serial_number:          (formData.get("serial_number") as string) || null,
-        location:               (formData.get("location") as string) || "",
-        next_calibration_date:  (formData.get("next_calibration_date") as string) || null,
-        next_inspection_date:   (formData.get("next_inspection_date") as string) || null,
-        last_calibration_date:  (formData.get("last_calibration_date") as string) || null,
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client.from("equipment").update({
+        name:                     (formData.get("name") as string) || "Unnamed Equipment",
+        type:                     (formData.get("type") as string) || "other",
+        serial_number:            (formData.get("serial_number") as string) || null,
+        location:                 (formData.get("location") as string) || "",
+        next_calibration_date:    (formData.get("next_calibration_date") as string) || null,
+        next_inspection_date:     (formData.get("next_inspection_date") as string) || null,
+        last_calibration_date:    (formData.get("last_calibration_date") as string) || null,
         calibration_interval_days: parseInt(formData.get("calibration_interval_days") as string) || null,
-        status:                 (formData.get("status") as string) || "operational",
-        notes:                  (formData.get("notes") as string) || null,
-        updated_at:             now,
-      }).eq("id", id).eq("tenant_id", DEMO_TENANT_ID);
+        status:                   (formData.get("status") as string) || "operational",
+        notes:                    (formData.get("notes") as string) || null,
+        updated_at:               now,
+      }).eq("id", id).eq("tenant_id", ctx.tenantId);
     }
   } else {
     const store = getStore();
@@ -694,17 +788,17 @@ export async function updateEquipment(id: string, formData: FormData) {
     if (idx !== -1) {
       store.equipment[idx] = {
         ...store.equipment[idx],
-        name:                   (formData.get("name") as string) || store.equipment[idx].name,
-        type:                   (formData.get("type") as string) || store.equipment[idx].type,
-        serial_number:          (formData.get("serial_number") as string) || null,
-        location:               (formData.get("location") as string) || store.equipment[idx].location,
-        next_calibration_date:  (formData.get("next_calibration_date") as string) || null,
-        next_inspection_date:   (formData.get("next_inspection_date") as string) || null,
-        last_calibration_date:  (formData.get("last_calibration_date") as string) || null,
+        name:                     (formData.get("name") as string) || store.equipment[idx].name,
+        type:                     (formData.get("type") as string) || store.equipment[idx].type,
+        serial_number:            (formData.get("serial_number") as string) || null,
+        location:                 (formData.get("location") as string) || store.equipment[idx].location,
+        next_calibration_date:    (formData.get("next_calibration_date") as string) || null,
+        next_inspection_date:     (formData.get("next_inspection_date") as string) || null,
+        last_calibration_date:    (formData.get("last_calibration_date") as string) || null,
         calibration_interval_days: parseInt(formData.get("calibration_interval_days") as string) || null,
-        status:                 (formData.get("status") as Equipment["status"]) || "operational",
-        notes:                  (formData.get("notes") as string) || null,
-        updated_at:             now,
+        status:                   (formData.get("status") as Equipment["status"]) || "operational",
+        notes:                    (formData.get("notes") as string) || null,
+        updated_at:               now,
       };
     }
   }
@@ -713,47 +807,49 @@ export async function updateEquipment(id: string, formData: FormData) {
   return { ok: true };
 }
 
-// ── Legal Requirements (v2) ───────────────────────────────────────────────────
+// ── Legal Requirements ────────────────────────────────────────────────────────
 
 export async function addLegalRequirement(_prev: unknown, formData: FormData) {
   const now = new Date().toISOString();
   const nextReview = (formData.get("next_review_date") as string) || now.slice(0, 10);
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("legal_requirements").insert({
-        tenant_id:            DEMO_TENANT_ID,
-        regulation_ref:       (formData.get("regulation_ref") as string) || "",
-        title:                (formData.get("title") as string) || "Untitled Requirement",
-        description:          (formData.get("description") as string) || "",
-        jurisdiction:         (formData.get("jurisdiction") as string) || "",
-        category:             (formData.get("category") as string) || "general",
-        applicable_sectors:   [],
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { error } = await ctx.client.from("legal_requirements").insert({
+        tenant_id:             ctx.tenantId,
+        regulation_ref:        (formData.get("regulation_ref") as string) || "",
+        title:                 (formData.get("title") as string) || "Untitled Requirement",
+        description:           (formData.get("description") as string) || "",
+        jurisdiction:          (formData.get("jurisdiction") as string) || "",
+        category:              (formData.get("category") as string) || "general",
+        applicable_sectors:    [],
         review_frequency_days: 365,
-        next_review_date:     nextReview,
-        status:               (formData.get("status") as string) || "not_assessed",
+        next_review_date:      nextReview,
+        status:                (formData.get("status") as string) || "not_assessed",
       });
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
     store.legalRequirements.push({
-      id:                   nextId("leg"),
-      tenant_id:            MOCK_TENANT_ID,
-      site_id:              null,
-      regulation_ref:       (formData.get("regulation_ref") as string) || "",
-      title:                (formData.get("title") as string) || "Untitled Requirement",
-      description:          (formData.get("description") as string) || "",
-      jurisdiction:         (formData.get("jurisdiction") as string) || "",
-      category:             (formData.get("category") as string) || "general",
-      applicable_sectors:   [],
+      id:                    nextId("leg"),
+      tenant_id:             MOCK_TENANT_ID,
+      site_id:               null,
+      regulation_ref:        (formData.get("regulation_ref") as string) || "",
+      title:                 (formData.get("title") as string) || "Untitled Requirement",
+      description:           (formData.get("description") as string) || "",
+      jurisdiction:          (formData.get("jurisdiction") as string) || "",
+      category:              (formData.get("category") as string) || "general",
+      applicable_sectors:    [],
       review_frequency_days: 365,
-      next_review_date:     nextReview,
-      status:               ((formData.get("status") as string) || "not_assessed") as LegalRequirement["status"],
-      compliance_notes:     null,
-      evidence_url:         null,
-      owner_id:             null,
-      created_at:           now,
-      updated_at:           now,
+      next_review_date:      nextReview,
+      status:                ((formData.get("status") as string) || "not_assessed") as LegalRequirement["status"],
+      compliance_notes:      null,
+      evidence_url:          null,
+      owner_id:              null,
+      created_at:            now,
+      updated_at:            now,
     });
   }
   revalidatePath("/legal");
@@ -764,9 +860,10 @@ export async function addLegalRequirement(_prev: unknown, formData: FormData) {
 export async function updateLegalRequirement(id: string, formData: FormData) {
   const now = new Date().toISOString();
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("legal_requirements").update({
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client.from("legal_requirements").update({
         regulation_ref:   (formData.get("regulation_ref") as string) || "",
         title:            (formData.get("title") as string) || "Untitled Requirement",
         description:      (formData.get("description") as string) || "",
@@ -777,7 +874,7 @@ export async function updateLegalRequirement(id: string, formData: FormData) {
         compliance_notes: (formData.get("compliance_notes") as string) || null,
         evidence_url:     (formData.get("evidence_url") as string) || null,
         updated_at:       now,
-      }).eq("id", id).eq("tenant_id", DEMO_TENANT_ID);
+      }).eq("id", id).eq("tenant_id", ctx.tenantId);
     }
   } else {
     const store = getStore();
@@ -805,38 +902,63 @@ export async function updateLegalRequirement(id: string, formData: FormData) {
 
 // ── Training Records ──────────────────────────────────────────────────────────
 
+// Compute a cert expiry date = completed_date + the course's validity window.
+function computeExpiry(completedDate: string, validityDays: number | null | undefined): string | null {
+  if (!validityDays) return null;
+  const d = new Date(completedDate);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setDate(d.getDate() + validityDays);
+  return d.toISOString().slice(0, 10);
+}
+
 export async function addTrainingRecord(_prev: unknown, formData: FormData) {
   const now = new Date().toISOString();
   const scoreRaw = formData.get("score") as string;
   const score = scoreRaw ? parseInt(scoreRaw) : null;
   const passed = (formData.get("passed") as string) !== "false";
+  const courseId = (formData.get("course_id") as string) || "";
+  const completedDate = (formData.get("completed_date") as string) || now.slice(0, 10);
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("training_records").insert({
-        tenant_id:       DEMO_TENANT_ID,
-        site_id:         DEMO_SITE_ID,
-        profile_id:      (formData.get("profile_id") as string) || DEMO_SARAH_ID,
-        course_id:       (formData.get("course_id") as string) || "",
-        completed_date:  (formData.get("completed_date") as string) || now.slice(0, 10),
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      // Derive cert expiry from the course's validity period so renewal alerts work.
+      let expiry: string | null = null;
+      if (courseId) {
+        const { data: course } = await ctx.client
+          .from("training_courses")
+          .select("validity_period_days")
+          .eq("id", courseId)
+          .single();
+        expiry = computeExpiry(completedDate, course?.validity_period_days);
+      }
+      const { error } = await ctx.client.from("training_records").insert({
+        tenant_id:       ctx.tenantId,
+        site_id:         ctx.siteId,
+        profile_id:      (formData.get("profile_id") as string) || ctx.profileId,
+        course_id:       courseId,
+        completed_date:  completedDate,
+        expiry_date:     expiry,
         delivery_method: (formData.get("delivery_method") as string) || "classroom",
-        score:           score,
-        passed:          passed,
+        score,
+        passed,
         notes:           (formData.get("notes") as string) || null,
       });
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
+    const course = store.trainingCourses.find((c) => c.id === courseId);
     store.trainingRecords.push({
       id:              nextId("tr"),
       tenant_id:       MOCK_TENANT_ID,
       site_id:         MOCK_SITE_ID,
       profile_id:      (formData.get("profile_id") as string) || "",
-      course_id:       (formData.get("course_id") as string) || "",
-      completed_date:  (formData.get("completed_date") as string) || now.slice(0, 10),
-      expiry_date:     null,
-      score:           score,
-      passed:          passed,
+      course_id:       courseId,
+      completed_date:  completedDate,
+      expiry_date:     computeExpiry(completedDate, course?.validity_period_days),
+      score,
+      passed,
       delivery_method: ((formData.get("delivery_method") as string) || "classroom") as TrainingRecord["delivery_method"],
       instructor_id:   null,
       notes:           (formData.get("notes") as string) || null,
@@ -854,18 +976,19 @@ export async function updateTrainingRecord(id: string, formData: FormData) {
   const score = scoreRaw ? parseInt(scoreRaw) : null;
   const passed = (formData.get("passed") as string) !== "false";
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("training_records").update({
-        profile_id:      (formData.get("profile_id") as string) || DEMO_SARAH_ID,
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client.from("training_records").update({
+        profile_id:      (formData.get("profile_id") as string) || ctx.profileId,
         course_id:       (formData.get("course_id") as string) || "",
         completed_date:  (formData.get("completed_date") as string) || now.slice(0, 10),
         expiry_date:     (formData.get("expiry_date") as string) || null,
         delivery_method: (formData.get("delivery_method") as string) || "classroom",
-        score:           score,
-        passed:          passed,
+        score,
+        passed,
         notes:           (formData.get("notes") as string) || null,
-      }).eq("id", id).eq("tenant_id", DEMO_TENANT_ID);
+      }).eq("id", id).eq("tenant_id", ctx.tenantId);
     }
   } else {
     const store = getStore();
@@ -878,8 +1001,8 @@ export async function updateTrainingRecord(id: string, formData: FormData) {
         completed_date:  (formData.get("completed_date") as string) || store.trainingRecords[idx].completed_date,
         expiry_date:     (formData.get("expiry_date") as string) || null,
         delivery_method: ((formData.get("delivery_method") as string) || "classroom") as TrainingRecord["delivery_method"],
-        score:           score,
-        passed:          passed,
+        score,
+        passed,
         notes:           (formData.get("notes") as string) || null,
       };
     }
@@ -889,43 +1012,96 @@ export async function updateTrainingRecord(id: string, formData: FormData) {
   return { ok: true };
 }
 
+export async function addTrainingCourse(_prev: unknown, formData: FormData) {
+  const now            = new Date().toISOString();
+  const title          = (formData.get("title") as string)?.trim() || "Untitled Course";
+  const description    = (formData.get("description") as string)?.trim() || "";
+  const courseType     = (formData.get("course_type") as string) || "general";
+  const durationRaw    = formData.get("duration_minutes") as string;
+  const duration       = durationRaw ? parseInt(durationRaw) : 60;
+  const validityRaw    = formData.get("validity_period_days") as string;
+  const validity       = validityRaw ? parseInt(validityRaw) : null;
+  const regulatoryRef  = (formData.get("regulatory_ref") as string)?.trim() || null;
+
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { error } = await ctx.client.from("training_courses").insert({
+        tenant_id:            ctx.tenantId,
+        title,
+        description,
+        course_type:          courseType,
+        duration_minutes:     duration,
+        pass_score:           80,
+        validity_period_days: validity,
+        required_roles:       [],
+        regulatory_ref:       regulatoryRef,
+        active:               true,
+      });
+      if (error) return { ok: false, error: error.message };
+    }
+  } else {
+    const store = getStore();
+    store.trainingCourses.push({
+      id:                   nextId("course"),
+      tenant_id:            MOCK_TENANT_ID,
+      title,
+      description,
+      course_type:          courseType,
+      duration_minutes:     duration,
+      pass_score:           80,
+      validity_period_days: validity,
+      required_roles:       [],
+      regulatory_ref:       regulatoryRef,
+      active:               true,
+      created_at:           now,
+    });
+  }
+  revalidatePath("/training");
+  return { ok: true };
+}
+
 // ── Documents ─────────────────────────────────────────────────────────────────
 
 export async function addDocument(_prev: unknown, formData: FormData) {
   const now = new Date().toISOString();
   const ackRequired = (formData.get("acknowledgment_required") as string) === "true";
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("documents").insert({
-        tenant_id:                DEMO_TENANT_ID,
-        title:                    (formData.get("title") as string) || "Untitled Document",
-        category:                 (formData.get("category") as string) || "sop",
-        version:                  (formData.get("version") as string) || "1.0",
-        storage_path:             "",
-        effective_date:           (formData.get("effective_date") as string) || now.slice(0, 10),
-        review_date:              (formData.get("review_date") as string) || now.slice(0, 10),
-        status:                   (formData.get("status") as string) || "draft",
-        acknowledgment_required:  ackRequired,
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { error } = await ctx.client.from("documents").insert({
+        tenant_id:               ctx.tenantId,
+        title:                   (formData.get("title") as string) || "Untitled Document",
+        category:                (formData.get("category") as string) || "sop",
+        version:                 (formData.get("version") as string) || "1.0",
+        storage_path:            "",
+        effective_date:          (formData.get("effective_date") as string) || now.slice(0, 10),
+        review_date:             (formData.get("review_date") as string) || now.slice(0, 10),
+        status:                  (formData.get("status") as string) || "draft",
+        acknowledgment_required: ackRequired,
       });
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
     store.documents.push({
-      id:                       nextId("doc"),
-      tenant_id:                MOCK_TENANT_ID,
-      site_id:                  null,
-      title:                    (formData.get("title") as string) || "Untitled Document",
-      category:                 (formData.get("category") as string) || "sop",
-      version:                  (formData.get("version") as string) || "1.0",
-      storage_path:             "",
-      effective_date:           (formData.get("effective_date") as string) || now.slice(0, 10),
-      review_date:              (formData.get("review_date") as string) || now.slice(0, 10),
-      status:                   ((formData.get("status") as string) || "draft") as DocumentStatus,
-      owner_id:                 null,
-      acknowledgment_required:  ackRequired,
-      created_at:               now,
-      updated_at:               now,
+      id:                      nextId("doc"),
+      tenant_id:               MOCK_TENANT_ID,
+      site_id:                 null,
+      title:                   (formData.get("title") as string) || "Untitled Document",
+      category:                (formData.get("category") as string) || "sop",
+      version:                 (formData.get("version") as string) || "1.0",
+      storage_path:            "",
+      effective_date:          (formData.get("effective_date") as string) || now.slice(0, 10),
+      review_date:             (formData.get("review_date") as string) || now.slice(0, 10),
+      status:                  ((formData.get("status") as string) || "draft") as DocumentStatus,
+      owner_id:                null,
+      acknowledgment_required: ackRequired,
+      regulation_ref:          null,
+      created_at:              now,
+      updated_at:              now,
     });
   }
   revalidatePath("/documents");
@@ -937,18 +1113,19 @@ export async function updateDocument(id: string, formData: FormData) {
   const now = new Date().toISOString();
   const ackRequired = (formData.get("acknowledgment_required") as string) === "true";
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("documents").update({
-        title:                    (formData.get("title") as string) || "Untitled Document",
-        category:                 (formData.get("category") as string) || "sop",
-        version:                  (formData.get("version") as string) || "1.0",
-        effective_date:           (formData.get("effective_date") as string) || null,
-        review_date:              (formData.get("review_date") as string) || null,
-        status:                   (formData.get("status") as string) || "draft",
-        acknowledgment_required:  ackRequired,
-        updated_at:               now,
-      }).eq("id", id).eq("tenant_id", DEMO_TENANT_ID);
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client.from("documents").update({
+        title:                   (formData.get("title") as string) || "Untitled Document",
+        category:                (formData.get("category") as string) || "sop",
+        version:                 (formData.get("version") as string) || "1.0",
+        effective_date:          (formData.get("effective_date") as string) || null,
+        review_date:             (formData.get("review_date") as string) || null,
+        status:                  (formData.get("status") as string) || "draft",
+        acknowledgment_required: ackRequired,
+        updated_at:              now,
+      }).eq("id", id).eq("tenant_id", ctx.tenantId);
     }
   } else {
     const store = getStore();
@@ -956,14 +1133,14 @@ export async function updateDocument(id: string, formData: FormData) {
     if (idx !== -1) {
       store.documents[idx] = {
         ...store.documents[idx],
-        title:                    (formData.get("title") as string) || store.documents[idx].title,
-        category:                 (formData.get("category") as string) || store.documents[idx].category,
-        version:                  (formData.get("version") as string) || store.documents[idx].version,
-        effective_date:           (formData.get("effective_date") as string) || store.documents[idx].effective_date,
-        review_date:              (formData.get("review_date") as string) || store.documents[idx].review_date,
-        status:                   ((formData.get("status") as string) || "draft") as DocumentStatus,
-        acknowledgment_required:  ackRequired,
-        updated_at:               now,
+        title:                   (formData.get("title") as string) || store.documents[idx].title,
+        category:                (formData.get("category") as string) || store.documents[idx].category,
+        version:                 (formData.get("version") as string) || store.documents[idx].version,
+        effective_date:          (formData.get("effective_date") as string) || store.documents[idx].effective_date,
+        review_date:             (formData.get("review_date") as string) || store.documents[idx].review_date,
+        status:                  ((formData.get("status") as string) || "draft") as DocumentStatus,
+        acknowledgment_required: ackRequired,
+        updated_at:              now,
       };
     }
   }
@@ -976,12 +1153,13 @@ export async function updateDocument(id: string, formData: FormData) {
 
 export async function addWorkspaceTask(_prev: unknown, formData: FormData) {
   const now = new Date().toISOString();
-  const profileId = (formData.get("profile_id") as string) || DEMO_SARAH_ID;
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("workspace_tasks").insert({
-        tenant_id:  DEMO_TENANT_ID,
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const profileId = (formData.get("profile_id") as string) || ctx.profileId;
+      await ctx.client.from("workspace_tasks").insert({
+        tenant_id:  ctx.tenantId,
         profile_id: profileId,
         title:      (formData.get("title") as string) || "Untitled Task",
         type:       (formData.get("type") as string) || "General",
@@ -991,6 +1169,7 @@ export async function addWorkspaceTask(_prev: unknown, formData: FormData) {
       });
     }
   } else {
+    const profileId = (formData.get("profile_id") as string) || DEMO_SARAH_ID;
     const store = getStore();
     store.workspaceTasks.push({
       id:               nextId("task"),
@@ -1020,9 +1199,10 @@ export async function completeWorkspaceTask(
 ) {
   const now = new Date().toISOString();
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("workspace_tasks")
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client.from("workspace_tasks")
         .update({
           status:           "done",
           completed_by:     completedBy,
@@ -1031,7 +1211,7 @@ export async function completeWorkspaceTask(
           updated_at:       now,
         })
         .eq("id", id)
-        .eq("tenant_id", DEMO_TENANT_ID);
+        .eq("tenant_id", ctx.tenantId);
     }
   } else {
     const store = getStore();
@@ -1051,16 +1231,19 @@ export async function completeWorkspaceTask(
   return { ok: true };
 }
 
+// ── SDS / Evidence URLs ───────────────────────────────────────────────────────
+
 export async function updateSdsUrl(chemicalId: string, sdsUrl: string, sdsExpiry: string | null) {
   const now = new Date().toISOString();
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client
         .from("chemical_inventory")
         .update({ sds_url: sdsUrl.trim() || null, sds_expiry: sdsExpiry || null, updated_at: now })
         .eq("id", chemicalId)
-        .eq("tenant_id", DEMO_TENANT_ID);
+        .eq("tenant_id", ctx.tenantId);
     }
   } else {
     const store = getStore();
@@ -1082,13 +1265,14 @@ export async function updateSdsUrl(chemicalId: string, sdsUrl: string, sdsExpiry
 export async function updateLegalEvidence(requirementId: string, evidenceUrl: string) {
   const now = new Date().toISOString();
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client
         .from("legal_requirements")
         .update({ evidence_url: evidenceUrl.trim() || null, updated_at: now })
         .eq("id", requirementId)
-        .eq("tenant_id", DEMO_TENANT_ID);
+        .eq("tenant_id", ctx.tenantId);
     }
   } else {
     const store = getStore();
@@ -1106,14 +1290,17 @@ export async function updateLegalEvidence(requirementId: string, evidenceUrl: st
   return { ok: true };
 }
 
+// ── CAPA from incident / finding ──────────────────────────────────────────────
+
 export async function addCapaFromIncident(incidentId: string, formData: FormData) {
   const now = new Date().toISOString();
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("capa_records").insert({
-        tenant_id:   DEMO_TENANT_ID,
-        site_id:     DEMO_SITE_ID,
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client.from("capa_records").insert({
+        tenant_id:   ctx.tenantId,
+        site_id:     ctx.siteId,
         title:       (formData.get("title") as string) || "Untitled CAPA",
         description: (formData.get("description") as string) || "",
         kind:        (formData.get("kind") as string) || "corrective",
@@ -1124,10 +1311,10 @@ export async function addCapaFromIncident(incidentId: string, formData: FormData
         due_date:    (formData.get("due_date") as string) || null,
         owner_id:    null,
       });
-      await client.from("incidents")
+      await ctx.client.from("incidents")
         .update({ status: "capa_open", updated_at: now })
         .eq("id", incidentId)
-        .eq("tenant_id", DEMO_TENANT_ID);
+        .eq("tenant_id", ctx.tenantId);
     }
   } else {
     const store = getStore();
@@ -1175,16 +1362,18 @@ export async function addCapaFromFinding(findingTitle: string, findingDescriptio
   const due_date    = (formData.get("due_date") as string) || null;
 
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("capa_records").insert({
-        tenant_id:   DEMO_TENANT_ID,
-        site_id:     DEMO_SITE_ID,
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { error } = await ctx.client.from("capa_records").insert({
+        tenant_id:   ctx.tenantId,
+        site_id:     ctx.siteId,
         title, description, kind: "corrective",
         source_type: "audit_finding",
         source_id, severity, root_cause, status: "open",
         due_date, owner_id: null, verification_method,
       });
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -1215,15 +1404,18 @@ export async function addCapaFromFinding(findingTitle: string, findingDescriptio
   return { ok: true };
 }
 
+// ── Document Acknowledgment ───────────────────────────────────────────────────
+
 export async function acknowledgeDocument(documentId: string, profileId: string) {
   const now = new Date().toISOString();
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("document_acknowledgments").insert({
-        tenant_id:       DEMO_TENANT_ID,
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      await ctx.client.from("document_acknowledgments").insert({
+        tenant_id:       ctx.tenantId,
         document_id:     documentId,
-        profile_id:      profileId,
+        profile_id:      profileId || ctx.profileId,
         acknowledged_at: now,
       });
     }
@@ -1242,6 +1434,8 @@ export async function acknowledgeDocument(documentId: string, profileId: string)
   return { ok: true };
 }
 
+// ── Biosafety ─────────────────────────────────────────────────────────────────
+
 export async function createBiosafetyLab(_prev: unknown, formData: FormData) {
   const now       = new Date().toISOString();
   const name      = (formData.get("name") as string)?.trim() || "Unnamed Lab";
@@ -1250,12 +1444,19 @@ export async function createBiosafetyLab(_prev: unknown, formData: FormData) {
   const nextInsp  = (formData.get("next_inspection") as string) || null;
 
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("biosafety_labs").insert({
-        tenant_id: DEMO_TENANT_ID, name, bsl_level: bslLevel,
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { count } = await ctx.client
+        .from("biosafety_labs")
+        .select("*", { count: "exact", head: true })
+        .eq("tenant_id", ctx.tenantId);
+      const labCode = `LAB-${String((count ?? 0) + 1).padStart(3, "0")}`;
+      const { error } = await ctx.client.from("biosafety_labs").insert({
+        tenant_id: ctx.tenantId, lab_code: labCode, name, bsl_level: bslLevel,
         personnel_count: personnel, next_inspection: nextInsp, status: "compliant", open_findings: 0,
       });
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -1281,12 +1482,19 @@ export async function createBiohazardAgent(_prev: unknown, formData: FormData) {
   const quantity   = (formData.get("quantity") as string)?.trim() || "0 units";
 
   if (!MOCK_MODE) {
-    const client = createServerSupabase();
-    if (client) {
-      await client.from("biohazard_agents").insert({
-        tenant_id: DEMO_TENANT_ID, agent_name: agentName,
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { count } = await ctx.client
+        .from("biohazard_agents")
+        .select("*", { count: "exact", head: true })
+        .eq("tenant_id", ctx.tenantId);
+      const agentCode = `AGT-${String((count ?? 0) + 1).padStart(3, "0")}`;
+      const { error } = await ctx.client.from("biohazard_agents").insert({
+        tenant_id: ctx.tenantId, agent_code: agentCode, agent_name: agentName,
         risk_class: riskClass, storage_location: storageLoc, quantity, status: "registered",
       });
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -1306,11 +1514,186 @@ export async function createBiohazardAgent(_prev: unknown, formData: FormData) {
 // ── OSHA Recordkeeping ────────────────────────────────────────────────────────
 
 export async function addOshaCaseToStore(_prev: unknown, fd: FormData) {
-  if (!MOCK_MODE) return { ok: false };
   const raw = fd.get("case");
-  if (!raw) return { ok: false };
-  const c = JSON.parse(raw as string);
-  getStore().oshaStore.push(c);
+  if (!raw) return { ok: false, error: "Missing case data" };
+  let c: OshaCase;
+  try {
+    c = JSON.parse(raw as string) as OshaCase;
+  } catch {
+    return { ok: false, error: "Invalid case data" };
+  }
+
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    // Use the authenticated tenant_id (never the client-supplied one); let the
+    // DB generate id + created_at. capa_id is omitted — new cases have no linked
+    // CAPA yet and client ids may not be valid UUIDs.
+    const { error } = await ctx.client.from("osha_cases").insert({
+      tenant_id:              ctx.tenantId,
+      case_no:                c.caseNo,
+      employee:               c.employee,
+      job_title:              c.jobTitle ?? "",
+      date:                   c.date,
+      location:               c.location ?? "",
+      description:            c.description ?? "",
+      classification:         c.classification,
+      injury_type:            c.injuryType,
+      days_away:              c.daysAway ?? 0,
+      days_restricted:        c.daysRestricted ?? 0,
+      is_privacy:             c.isPrivacy ?? false,
+      is_severe_injury:       c.isSevereInjury ?? false,
+      how_occurred:           c.howOccurred ?? "",
+      equipment:              c.equipment ?? "",
+      physician:              c.physician ?? "",
+      med_facility:           c.medFacility ?? "",
+      treatment_er:           c.treatmentER ?? false,
+      treatment_hospitalized: c.treatmentHospitalized ?? false,
+    });
+    if (error) return { ok: false, error: error.message };
+  } else {
+    getStore().oshaStore.push(c);
+  }
   revalidatePath("/osha");
   return { ok: true };
+}
+
+// ── P-Engine predictability scan ──────────────────────────────────────────────
+// Reads the tenant's live EHS data, computes per-module compliance scores,
+// generates AI findings (via the engine — heuristic when no AI key), builds a
+// predictability forecast, and persists everything. Replaces the old cosmetic
+// "Run Scan" button so the AI/compliance layer is real for live tenants.
+
+function clampPct(n: number): number { return Math.max(0, Math.min(100, Math.round(n))); }
+function pctStatus(p: number): ComplianceStatus {
+  return p >= 80 ? "compliant" : p >= 65 ? "minor_gap" : "major_gap";
+}
+
+export async function runPredictabilityScan() {
+  if (MOCK_MODE) { revalidatePath("/ai"); revalidatePath("/dashboard"); return { ok: true, mock: true }; }
+
+  const ctx = await getCtx();
+  if (!ctx) return { ok: false, error: "Session expired — please reload." };
+  const { tenantId, siteId } = ctx;
+  const now = new Date();
+
+  const [chemicals, legal, records, capas, incidents, audits, risks, equipment, waste, documents, oshaCases, bioLabs] =
+    await Promise.all([
+      getChemicals(tenantId), getLegalRequirements(tenantId), getTrainingRecords(tenantId),
+      getCapaActions(tenantId), getIncidents(tenantId), getAudits(tenantId),
+      getRiskAssessments(tenantId), getEquipment(tenantId), getWasteStreams(tenantId),
+      getDocuments(tenantId), getOshaCases(tenantId), getBiosafetyLabs(tenantId),
+    ]);
+
+  // ── Per-module compliance scores (derived from real data) ──
+  const sdsOk = chemicals.filter((c) => c.sds_expiry && new Date(c.sds_expiry) > now).length;
+  const chemPct = chemicals.length ? clampPct((100 * sdsOk) / chemicals.length) : 100;
+
+  const assessed = legal.filter((l) => l.status !== "not_applicable");
+  const legalPct = assessed.length
+    ? clampPct(assessed.reduce((s, l) => s + (COMPLIANCE_STATUS_META[l.status]?.score ?? 0), 0) / assessed.length)
+    : 50;
+
+  const passedRecs = records.filter((r) => r.passed);
+  const currentRecs = passedRecs.filter((r) => !r.expiry_date || new Date(r.expiry_date) > now);
+  const expiredCerts = passedRecs.length - currentRecs.length;
+  const trainingPct = passedRecs.length ? clampPct((100 * currentRecs.length) / passedRecs.length) : 50;
+
+  const capaClosed = capas.filter((c) => c.status === "closed").length;
+  const capaInProg = capas.filter((c) => c.status === "in_progress").length;
+  const capaOverdue = capas.filter((c) => c.status === "overdue" || ((c.status === "open" || c.status === "in_progress") && c.due_date != null && new Date(c.due_date) < now)).length;
+  const capaPct = capas.length ? clampPct((100 * (capaClosed + 0.5 * capaInProg)) / capas.length - capaOverdue * 5) : 100;
+
+  const auditScores = audits
+    .filter((a) => a.status === "completed")
+    .map((a) => { try { return JSON.parse(a.notes ?? "{}").score as number; } catch { return null; } })
+    .filter((n): n is number => typeof n === "number");
+  const auditPct = audits.length ? (auditScores.length ? clampPct(auditScores.reduce((s, n) => s + n, 0) / auditScores.length) : 50) : 100;
+
+  const openHighInc = incidents.filter((i) => (i.severity === "high" || i.severity === "critical") && i.status !== "closed").length;
+  const incPct = clampPct(100 - openHighInc * 15 - oshaCases.length * 5);
+
+  const overdueReviews = risks.filter((r) => r.review_date && new Date(r.review_date) < now).length;
+  const extremeRisks = risks.filter((r) => r.risk_level === "extreme" || r.risk_level === "high").length;
+  const riskPct = risks.length ? clampPct(100 - overdueReviews * 10 - extremeRisks * 5) : 100;
+
+  const wastePct = waste.length ? 75 : 100;
+
+  const equipOverdue = equipment.filter((e) =>
+    (e.next_calibration_date && new Date(e.next_calibration_date) < now) ||
+    (e.next_inspection_date && new Date(e.next_inspection_date) < now)).length;
+  const equipPct = equipment.length ? clampPct((100 * (equipment.length - equipOverdue)) / equipment.length) : 100;
+
+  const docPct = documents.length ? clampPct(50 + documents.length * 3) : 40;
+  const bioPct = bioLabs.length ? 70 : 100;
+
+  const moduleScores: Record<string, number> = {
+    chemical: chemPct, legal: legalPct, training: trainingPct, capa: capaPct,
+    audits: auditPct, incidents: incPct, risk: riskPct, waste: wastePct,
+    equipment: equipPct, documents: docPct, biosafety: bioPct,
+  };
+
+  const scoreRows = Object.entries(moduleScores).map(([module, pct]) => ({
+    tenant_id: tenantId, site_id: siteId, module, score: pct, max_score: 100,
+    percentage: pct, status: pctStatus(pct), calculated_at: now.toISOString(),
+    details: { source: "p-engine-scan" },
+  }));
+
+  // ── AI findings: worst-offender chemicals + legal requirements ──
+  const topChems = [...chemicals]
+    .sort((a, b) =>
+      (b.ghs_classes.length + (b.is_scheduled ? 5 : 0)) - (a.ghs_classes.length + (a.is_scheduled ? 5 : 0)))
+    .slice(0, 4);
+  const worstLegal = legal
+    .filter((l) => l.status === "non_compliant" || l.status === "major_gap" || l.status === "minor_gap")
+    .slice(0, 3);
+
+  const findings: AiFinding[] = [];
+  for (const c of topChems) {
+    if (c.ghs_classes.length === 0 && !c.is_scheduled) continue;
+    try { findings.push(await analyzeChemical(c)); } catch { /* skip */ }
+  }
+  for (const l of worstLegal) {
+    try { findings.push(await analyzeComplianceGap(l)); } catch { /* skip */ }
+  }
+
+  const actionsProposed = findings.reduce((s, f) => s + ((f.output as AiAnalysisOutput)?.recommended_actions?.length ?? 0), 0);
+
+  const forecast = buildPredictabilityForecast({
+    complianceScores: moduleScores,
+    overdueCapaCount: capaOverdue,
+    overdueTrainingCount: expiredCerts,
+    expiringSdsCount: chemicals.filter((c) => c.sds_expiry && new Date(c.sds_expiry) <= now).length,
+    openIncidentCount: incidents.filter((i) => i.status !== "closed").length,
+  });
+
+  const itemsScanned = chemicals.length + legal.length + records.length + capas.length +
+    incidents.length + audits.length + risks.length + equipment.length + waste.length +
+    documents.length + oshaCases.length + bioLabs.length;
+
+  // ── Persist: recompute scores, refresh pending findings, log the run ──
+  await ctx.client.from("compliance_scores").delete().eq("tenant_id", tenantId);
+  if (scoreRows.length) await ctx.client.from("compliance_scores").insert(scoreRows);
+
+  // Keep human-reviewed findings; replace the pending (machine-proposed) set.
+  await ctx.client.from("ehs_ai_findings").delete().eq("tenant_id", tenantId).eq("review_status", "pending");
+  if (findings.length) {
+    await ctx.client.from("ehs_ai_findings").insert(findings.map((f) => ({
+      tenant_id: tenantId, site_id: siteId, cell_id: null, job: f.job,
+      source_type: f.source_type, source_id: f.source_id, model: f.model,
+      prompt_version: f.prompt_version, input_summary: f.input_summary, output: f.output,
+      confidence: f.confidence, review_status: "pending", human_review_required: f.human_review_required,
+    })));
+  }
+
+  await ctx.client.from("predictability_runs").insert({
+    tenant_id: tenantId, site_id: siteId, stage: "forecast",
+    summary: `P-Engine scanned ${itemsScanned} EHS records across ${scoreRows.length} modules. Compliance trend: ${forecast.compliance_trend}; 30-day projection ${forecast.predicted_compliance_score_30d}%. Top risk modules: ${forecast.top_risk_modules.join(", ")}. ${findings.length} findings raised, ${actionsProposed} actions proposed.`,
+    items_scanned: itemsScanned, signals_found: findings.length, actions_proposed: actionsProposed,
+    forecast_data: forecast,
+  });
+
+  revalidatePath("/ai");
+  revalidatePath("/dashboard");
+  return { ok: true, scanned: itemsScanned, findings: findings.length, modules: scoreRows.length };
 }

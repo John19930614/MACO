@@ -1,4 +1,4 @@
-import { CELLS, PROOFS } from "@/lib/data/mock";
+import { getCells, getProofs } from "@/lib/data/repo";
 import { PageHeader, Card, CardHeader, Stat } from "@/components/ui/primitives";
 import type { ProofStatus } from "@/lib/types";
 
@@ -27,11 +27,13 @@ const PROOF_ORDER: ProofStatus[] = [
 const proofRank = (status: ProofStatus) => PROOF_ORDER.indexOf(status);
 const BAD_STATUSES: Set<ProofStatus> = new Set(["missing", "expired", "conflicting", "not_checked"]);
 
-export default function ProofPage() {
-  const cellById = Object.fromEntries(CELLS.map(c => [c.id, c]));
+export default async function ProofPage() {
+  const [cells, proofs] = await Promise.all([getCells(), getProofs()]);
+
+  const cellById = Object.fromEntries(cells.map(c => [c.id, c]));
 
   const SEVERITY_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
-  const sorted = [...PROOFS].sort((a, b) => {
+  const sorted = [...proofs].sort((a, b) => {
     const rankDiff = proofRank(a.status as ProofStatus) - proofRank(b.status as ProofStatus);
     if (rankDiff !== 0) return rankDiff;
     const cellA = cellById[a.cell_id];
@@ -39,10 +41,10 @@ export default function ProofPage() {
     return (SEVERITY_RANK[cellA?.severity ?? "low"] ?? 3) - (SEVERITY_RANK[cellB?.severity ?? "low"] ?? 3);
   });
 
-  const total   = PROOFS.length;
-  const bad     = PROOFS.filter(p => BAD_STATUSES.has(p.status as ProofStatus)).length;
-  const proven  = PROOFS.filter(p => p.status === "proven").length;
-  const pending = PROOFS.filter(p => p.status === "not_checked").length;
+  const total   = proofs.length;
+  const bad     = proofs.filter(p => BAD_STATUSES.has(p.status as ProofStatus)).length;
+  const proven  = proofs.filter(p => p.status === "proven").length;
+  const pending = proofs.filter(p => p.status === "not_checked").length;
 
   return (
     <div className="flex h-full flex-col">
@@ -51,7 +53,6 @@ export default function ProofPage() {
         subtitle="Verification state for every required control."
       />
       <div className="iq-scroll flex-1 overflow-y-auto p-6">
-        {/* Stat cards */}
         <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Stat label="Total Proofs"      value={total}   strip="#94a3b8" />
           <Stat label="Missing / Expired" value={bad}     accent="#ef4444" strip="#ef4444" />
@@ -59,12 +60,8 @@ export default function ProofPage() {
           <Stat label="Pending Review"    value={pending} accent="#eab308" strip="#eab308" />
         </div>
 
-        {/* Proof table */}
         <Card>
-          <CardHeader
-            title="Proof Status by Control"
-            subtitle="Worst status shown first"
-          />
+          <CardHeader title="Proof Status by Control" subtitle="Worst status shown first" />
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -77,21 +74,19 @@ export default function ProofPage() {
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {sorted.map(proof => {
-                  const cell    = cellById[proof.cell_id];
-                  const badge   = PROOF_BADGE[proof.status as ProofStatus] ?? PROOF_BADGE.not_checked;
+                  const cell     = cellById[proof.cell_id];
+                  const badge    = PROOF_BADGE[proof.status as ProofStatus] ?? PROOF_BADGE.not_checked;
                   const sevColor = SEVERITY_COLORS[cell?.severity ?? "low"] ?? "#94a3b8";
                   return (
-                    <tr key={proof.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 max-w-[220px]">
+                    <tr key={proof.id} className="transition-colors hover:bg-slate-50">
+                      <td className="max-w-[220px] px-4 py-3">
                         {cell ? (
-                          <span className="font-medium leading-snug" style={{ color: sevColor }}>
-                            {cell.title}
-                          </span>
+                          <span className="font-medium leading-snug" style={{ color: sevColor }}>{cell.title}</span>
                         ) : (
-                          <span className="text-slate-400 italic">Unknown cell</span>
+                          <span className="italic text-slate-400">Unknown cell</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-600 max-w-[240px]">
+                      <td className="max-w-[240px] px-4 py-3 text-slate-600">
                         <span className="leading-snug">{proof.control}</span>
                       </td>
                       <td className="px-4 py-3">

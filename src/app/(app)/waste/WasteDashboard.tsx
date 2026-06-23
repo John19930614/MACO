@@ -1817,8 +1817,7 @@ export function WasteDashboard({
                       </td>
                       <td className="px-4 py-3">
                         <Pill className={
-                          t.submissionStatus === "filed"     ? "bg-emerald-100 text-emerald-700" :
-                          t.submissionStatus === "pending"   ? "bg-amber-100 text-amber-700"     :
+                          t.submissionStatus === "pending"   ? "bg-amber-100 text-amber-700" :
                                                                "bg-blue-100 text-blue-700"
                         }>
                           {t.submissionStatus}

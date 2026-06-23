@@ -63,6 +63,26 @@ export function AddChemicalButton() {
             <Field label="Storage Location" required>
               <Input name="storage_location" placeholder="Lab 3 — Flammables Cabinet A" required />
             </Field>
+
+            <Field label="GHS Hazard Codes">
+              <Input name="hazard_codes" placeholder="e.g. H225, H319, H350" />
+            </Field>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Scheduled / Regulated">
+                <Select name="is_scheduled" defaultValue="false">
+                  <option value="false">No</option>
+                  <option value="true">Yes — regulated substance</option>
+                </Select>
+              </Field>
+              <Field label="SDS Expiry / Review">
+                <Input name="sds_expiry" type="date" />
+              </Field>
+            </div>
+
+            <Field label="Schedule Reference">
+              <Input name="schedule_ref" placeholder="e.g. OSHA 29 CFR 1910.1048" />
+            </Field>
           </div>
           <SubmitRow onClose={() => setOpen(false)} submitting={pending} />
         </form>

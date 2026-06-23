@@ -19,6 +19,8 @@ export default function LoginPage() {
   const [authError, setAuthError] = useState("");
   const [loading,   setLoading]   = useState(false);
   const [hintsOpen, setHintsOpen] = useState(false);
+  const [resetMsg,  setResetMsg]  = useState("");
+  const [resetting, setResetting] = useState(false);
 
   // Redirect if already logged in
   useEffect(() => {
@@ -73,9 +75,35 @@ export default function LoginPage() {
       if (error) {
         setAuthError(error.message);
       } else {
-        router.push("/dashboard");
+        // Hard navigation so the auth cookie is committed before the middleware
+        // checks the session on the next request (router.push races the cookie)
+        window.location.href = "/dashboard";
       }
     }
+  }
+
+  // Live-mode password reset. Sends a recovery email; the link routes through
+  // /auth/callback (type=recovery) → /auth/set-password, reusing the invite infra.
+  async function handleForgotPassword() {
+    setAuthError("");
+    setResetMsg("");
+    const target = email.trim().toLowerCase();
+    if (!target) {
+      setAuthError("Enter your work email above, then choose “Forgot password.”");
+      return;
+    }
+    setResetting(true);
+    const supabase = createClient();
+    if (!supabase) { setResetting(false); return; }
+    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent("/auth/set-password")}`;
+    const { error } = await supabase.auth.resetPasswordForEmail(target, { redirectTo });
+    setResetting(false);
+    // Always show a neutral confirmation — never reveal whether an account exists.
+    setResetMsg(
+      error
+        ? "If an account exists for that email, a reset link is on its way."
+        : "Check your inbox — we sent a password reset link to that email.",
+    );
   }
 
   return (
@@ -135,9 +163,28 @@ export default function LoginPage() {
                 />
               </div>
 
+              {!MOCK_MODE && (
+                <div className="-mt-2 text-right">
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    disabled={resetting}
+                    className="text-xs font-medium text-blue-300/80 hover:text-blue-200 disabled:opacity-50"
+                  >
+                    {resetting ? "Sending…" : "Forgot password?"}
+                  </button>
+                </div>
+              )}
+
               {authError && (
                 <div className="rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-300">
                   {authError}
+                </div>
+              )}
+
+              {resetMsg && (
+                <div className="rounded-xl bg-blue-500/10 border border-blue-500/20 px-4 py-3 text-sm text-blue-200">
+                  {resetMsg}
                 </div>
               )}
 

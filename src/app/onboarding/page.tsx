@@ -6,7 +6,6 @@ import OnboardingWizard from "./OnboardingWizard";
 export const metadata = { title: "Company Onboarding | SafetyIQ" };
 
 export default async function OnboardingPage() {
-  // In mock mode, redirect to dashboard (onboarding is live-only)
   if (MOCK_MODE) {
     redirect("/dashboard");
   }
@@ -25,10 +24,9 @@ export default async function OnboardingPage() {
 
   if (!profile?.tenant_id) redirect("/dashboard");
 
-  // Check if already completed
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("impl_status, onboarding_completed_at")
+    .select("onboarding_completed_at")
     .eq("id", profile.tenant_id)
     .single();
 

@@ -1,5 +1,5 @@
-﻿import { getLegalRequirements, getProfiles, getComplianceScores, getAudits, getCapaActions, getEquipment } from "@/lib/data/ehsRepo";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getLegalRequirements, getProfiles, getComplianceScores, getAudits, getCapaActions, getEquipment } from "@/lib/data/ehsRepo";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader, Stat, Card, CardHeader } from "@/components/ui/primitives";
 import { LegalTable } from "./LegalTable";
@@ -8,7 +8,7 @@ import { AddLegalButton } from "./AddLegalButton";
 import { LegalExportButton } from "./LegalExportButton";
 
 export default async function LegalPage() {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
   const [requirements, profiles, scores, audits, capas, equipment] = await Promise.all([
     getLegalRequirements(tenantId),
     getProfiles(tenantId),
@@ -23,7 +23,7 @@ export default async function LegalPage() {
   const gaps         = requirements.filter((r) => r.status === "minor_gap" || r.status === "major_gap").length;
   const nonCompliant = requirements.filter((r) => r.status === "non_compliant").length;
 
-  // â”€â”€ Analytics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Analytics ──────────────────────────────────────────────────────────────
   // Compliance breakdown by category
   const byCat: Record<string, { total: number; compliant: number }> = {};
   requirements.forEach((r) => {
@@ -47,7 +47,7 @@ export default async function LegalPage() {
   // CAPA linkage for legal requirements
   const capasByReq: Record<string, number> = {};
   capas.forEach((c) => {
-    if (c.source_type === "legal" && c.source_id) {
+    if (c.source_type === "legal_requirement" && c.source_id) {
       capasByReq[c.source_id] = (capasByReq[c.source_id] ?? 0) + 1;
     }
   });
@@ -107,7 +107,7 @@ export default async function LegalPage() {
         {nonCompliant > 0 && (
           <div className="mb-5 rounded-xl border-l-4 border-red-500 bg-red-50 p-4">
             <div className="text-sm font-semibold text-red-900">
-              {nonCompliant} Non-Compliant Obligation{nonCompliant > 1 ? "s" : ""} â€” Immediate Action Required
+              {nonCompliant} Non-Compliant Obligation{nonCompliant > 1 ? "s" : ""} — Immediate Action Required
             </div>
             <div className="mt-0.5 text-xs text-red-700">
               Review the requirements marked Non-Compliant below and create CAPA actions to resolve.
@@ -273,7 +273,7 @@ export default async function LegalPage() {
         <Card className="mb-5">
           <CardHeader
             title="Compliance Calendar"
-            subtitle="Upcoming review dates, audits, CAPA deadlines, and equipment calibrations â€” next 90 days"
+            subtitle="Upcoming review dates, audits, CAPA deadlines, and equipment calibrations — next 90 days"
           />
           <ComplianceCalendar
             requirements={requirements}
@@ -287,7 +287,7 @@ export default async function LegalPage() {
         <Card>
           <CardHeader
             title="Regulatory Requirements"
-            subtitle={`${requirements.length} total Â· ${compliant} compliant Â· ${gaps} gaps Â· ${nonCompliant} non-compliant`}
+            subtitle={`${requirements.length} total · ${compliant} compliant · ${gaps} gaps · ${nonCompliant} non-compliant`}
           />
           <LegalTable requirements={requirements} profiles={profiles} />
         </Card>

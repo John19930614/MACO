@@ -1,15 +1,17 @@
-import { SITES, CELLS, LOCATIONS } from "@/lib/data/mock";
+import { getSites, getCells, getLocations } from "@/lib/data/repo";
 import { SiteMapView } from "@/components/arc/SiteMapView";
 import { PageHeader } from "@/components/ui/primitives";
 
-export default function MapPage() {
+export default async function MapPage() {
+  const [sites, cells, locations] = await Promise.all([getSites(), getCells(), getLocations()]);
+
   return (
     <div className="flex h-full flex-col">
       <PageHeader
         title="Site Map"
         subtitle="All active sites, risk density, and live Safety Cell coverage by location."
       />
-      <SiteMapView sites={SITES} cells={CELLS} locations={LOCATIONS} />
+      <SiteMapView sites={sites} cells={cells} locations={locations} />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
+import type { ServerUser } from "@/lib/auth/types";
 
 export type DemoRole =
   | "viewer"
@@ -105,6 +106,21 @@ export const DEMO_USERS: DemoProfile[] = [
 const LS_KEY      = "maco-demo-user";
 const DEFAULT_USER = DEMO_USERS[0];
 
+// Build a DemoProfile from the real server session (live mode) so client
+// components (incl. all exports) show the actual tenant — not the demo default.
+function profileFromServerUser(su: ServerUser): DemoProfile {
+  return {
+    id:           su.id,
+    display_name: su.display_name,
+    role:         (su.role as DemoRole) || "ehs_manager",
+    tenant_id:    su.tenant_id,
+    job_title:    su.job_title ?? "",
+    is_reliance:  su.tenant_id === null,
+    company:      su.company ?? "Your Company",
+    email:        "",
+  };
+}
+
 interface DemoUserCtx {
   user: DemoProfile;
   setUser: (u: DemoProfile) => void;
@@ -115,10 +131,17 @@ const Ctx = createContext<DemoUserCtx>({
   setUser: () => {},
 });
 
-export function DemoUserProvider({ children }: { children: ReactNode }) {
-  const [user, setUserState] = useState<DemoProfile>(DEFAULT_USER);
+export function DemoUserProvider({ children, serverUser }: { children: ReactNode; serverUser?: ServerUser | null }) {
+  const [user, setUserState] = useState<DemoProfile>(
+    serverUser ? profileFromServerUser(serverUser) : DEFAULT_USER,
+  );
 
   useEffect(() => {
+    // Live mode: the context is seeded from the real session — ignore demo localStorage.
+    if (serverUser) {
+      setUserState(profileFromServerUser(serverUser));
+      return;
+    }
     try {
       const saved = localStorage.getItem(LS_KEY);
       if (saved) {
@@ -126,7 +149,7 @@ export function DemoUserProvider({ children }: { children: ReactNode }) {
         if (found) setUserState(found);
       }
     } catch {}
-  }, []);
+  }, [serverUser]);
 
   function setUser(u: DemoProfile) {
     setUserState(u);

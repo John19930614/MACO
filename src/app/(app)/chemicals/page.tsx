@@ -1,7 +1,9 @@
-﻿import { getChemicals, getTrainingCourses } from "@/lib/data/ehsRepo";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getChemicals, getTrainingCourses } from "@/lib/data/ehsRepo";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader, Card, CardHeader } from "@/components/ui/primitives";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { FlaskConical } from "lucide-react";
 import { AddChemicalButton } from "./AddChemicalButton";
 import { ChemicalExportButton } from "./ChemicalExportButton";
 import { ChemicalsDashboard } from "./ChemicalsDashboard";
@@ -36,7 +38,7 @@ function hazardClassLabel(h: string): string | null {
 }
 
 export default async function ChemicalsPage() {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
   const [chemicals, courses] = await Promise.all([
     getChemicals(tenantId),
     getTrainingCourses(tenantId),
@@ -44,7 +46,7 @@ export default async function ChemicalsPage() {
 
   const active = chemicals.filter((c) => c.status === "active");
 
-  // â”€â”€ Analytics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Analytics ────────────────────────────────────────────────────────────────
 
   // Hazard class distribution across all hazard_statements
   const hazardCounts: Record<string, number> = {};
@@ -94,6 +96,14 @@ export default async function ChemicalsPage() {
         }
       />
       <div className="iq-scroll flex-1 overflow-y-auto p-6">
+        {chemicals.length === 0 ? (
+          <EmptyState
+            icon={<FlaskConical className="h-6 w-6" />}
+            title="No chemicals in your inventory yet"
+            description="Add your first chemical with the button above, or import your full inventory during onboarding. SafetyIQ derives SDS tracking, hazard classes, and PPE from each entry."
+          />
+        ) : (
+          <>
 
         {/* Analytics strip */}
         <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -178,6 +188,8 @@ export default async function ChemicalsPage() {
         </div>
 
         <ChemicalsDashboard chemicals={chemicals} courses={courses} />
+          </>
+        )}
       </div>
     </div>
   );

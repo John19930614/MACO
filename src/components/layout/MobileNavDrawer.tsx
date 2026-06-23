@@ -76,7 +76,7 @@ function getNav(role: string, isReliance: boolean): NavSection[] {
   if (isReliance) return BASE_NAV;
   if (role === "viewer") return VIEWER_NAV;
   if (role === "field_officer") return FIELD_NAV;
-  if (role === "admin") return [...BASE_NAV, { group: "Admin", items: [{ href: "/settings", label: "Company Settings", icon: "⚙" }] }];
+  if (role === "admin") return [...BASE_NAV, { group: "Admin", items: [{ href: "/team", label: "Team & Invites", icon: "👥" }, { href: "/settings", label: "Company Settings", icon: "⚙" }] }];
   return BASE_NAV;
 }
 

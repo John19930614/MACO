@@ -136,8 +136,8 @@ export function BiosafetyExportButton({
       const riskSt: StyleId  = isHighRisk ? "warn" : base;
       const statusSt: StyleId =
         a.status === "review_required" ? "warn"
-        : a.status === "approved"        ? "good"
-        : a.status === "restricted"      ? "danger"
+        : a.status === "registered"      ? "good"
+        : a.status === "suspended"       ? "danger"
         : base;
 
       return {

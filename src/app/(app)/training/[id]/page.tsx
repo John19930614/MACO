@@ -4,7 +4,7 @@ import { ArrowLeft, Award, Calendar, CheckCircle2, Clock, UserCircle, XCircle, B
 import { getTrainingRecordById, getTrainingCourses, getProfiles } from "@/lib/data/ehsRepo";
 import { Card, CardHeader, Pill } from "@/components/ui/primitives";
 import { EditTrainingForm } from "./EditTrainingForm";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 
 const DELIVERY_LABEL: Record<string, string> = {
@@ -29,7 +29,7 @@ function daysUntil(s: string | null): number | null {
 
 export default async function TrainingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
   const [record, courses, profiles] = await Promise.all([
     getTrainingRecordById(id),
     getTrainingCourses(tenantId),

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
@@ -34,6 +35,32 @@ export async function createSupabaseServerClient() {
     },
   });
 }
+
+// ── Cached auth user — deduplicates getUser() across all server components
+// within a single request (layout + page both call session helpers, which
+// each previously made an independent round-trip to Supabase).
+export const getAuthUser = cache(async () => {
+  const client = await createSupabaseServerClient();
+  if (!client) return null;
+  const { data: { user }, error } = await client.auth.getUser();
+  if (error || !user) return null;
+  return user;
+});
+
+// ── Cached profile — deduplicates the profiles table lookup that getServerTenantId
+// and getServerUser both need on every request.
+export const getAuthProfile = cache(async () => {
+  const user = await getAuthUser();
+  if (!user) return null;
+  const client = await createSupabaseServerClient();
+  if (!client) return null;
+  const { data } = await client
+    .from("profiles")
+    .select("id, display_name, role, tenant_id, job_title, tenants(name)")
+    .eq("id", user.id)
+    .single();
+  return data ?? null;
+});
 
 export const DEMO_TENANT_ID =
   process.env.NEXT_PUBLIC_DEMO_TENANT_ID ?? "aaaaaaaa-0000-4000-a000-000000000001";

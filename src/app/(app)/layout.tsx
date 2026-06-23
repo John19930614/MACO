@@ -8,19 +8,17 @@ import { MobileNavDrawer } from "@/components/layout/MobileNavDrawer";
 import { ModuleGateClient } from "@/components/layout/ModuleGateClient";
 import { DemoUserProvider } from "@/lib/context/demo-user";
 import { AuthGuard } from "@/components/layout/AuthGuard";
+import { GuidedTour } from "@/components/tour/GuidedTour";
 import { getCapaActions, getRiskAssessments, getWorkspaceTasks, getIncidents } from "@/lib/data/ehsRepo";
-import { getServerTenantId, getServerUser, getServerProfileId } from "@/lib/auth/session";
-import { MOCK_TENANT_ID } from "@/lib/data/mock";
+import { getEffectiveTenantId, getServerUser, getServerProfileId } from "@/lib/auth/session";
 import type { NotifItem } from "@/components/layout/NotificationsDropdown";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const [serverUser, tenantId, profileId] = await Promise.all([
+  const [serverUser, effectiveTenantId, profileId] = await Promise.all([
     getServerUser(),
-    getServerTenantId(),
+    getEffectiveTenantId(),
     getServerProfileId(),
   ]);
-
-  const effectiveTenantId = tenantId ?? MOCK_TENANT_ID;
 
   const [capas, risks, tasks, incidents] = await Promise.all([
     getCapaActions(effectiveTenantId),
@@ -94,7 +92,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const notifCount = notifItems.length;
 
   return (
-    <DemoUserProvider>
+    <DemoUserProvider serverUser={serverUser}>
       <AuthGuard>
         <GusStatusBriefing />
         <GusMaintenancePanel capas={capas} incidents={incidents} />
@@ -104,8 +102,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <TopBar notifCount={notifCount} notifItems={notifItems} serverUser={serverUser} />
           <CommandPalette />
           <div className="flex flex-1 overflow-hidden">
-            <div className="hidden md:block print:hidden">
-              <LeftNav openCapas={openCapas} openRisks={openRisks} pendingTasks={pendingTasks} />
+            <div className="hidden md:block print:hidden" data-tour="left-nav">
+              <LeftNav openCapas={openCapas} openRisks={openRisks} pendingTasks={pendingTasks} serverUser={serverUser} />
             </div>
             <main id="main-content" className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <ModuleGateClient>
@@ -114,6 +112,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </main>
           </div>
         </div>
+        <GuidedTour />
       </AuthGuard>
     </DemoUserProvider>
   );

@@ -9,7 +9,7 @@ import {
   getAudits, getEquipment, getProfiles, getDocuments, getTrainingCourses,
   getDocumentAcknowledgments,
 } from "@/lib/data/ehsRepo";
-import { getServerTenantId, getServerProfileId } from "@/lib/auth/session";
+import { getEffectiveTenantId, getServerProfileId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { AddTaskButton } from "./AddTaskButton";
 import { CompleteTaskButton } from "./CompleteTaskButton";
@@ -119,7 +119,7 @@ const TRAINING_STATUS_LABEL = {
 };
 
 export default async function WorkspacePage() {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
   const currentProfileId = await getServerProfileId();
 
   const [

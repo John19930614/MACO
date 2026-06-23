@@ -182,8 +182,8 @@ function runValidation(
     ),
     check(
       "g2-equipment-cal", "Equipment — calibration records missing interval",
-      equipment.filter(e => e.status === "active" && !e.calibration_interval_days && !e.next_calibration_date).map(e => e.name),
-      equipment.filter(e => e.status === "active").length,
+      equipment.filter(e => e.status === "operational" && !e.calibration_interval_days && !e.next_calibration_date).map(e => e.name),
+      equipment.filter(e => e.status === "operational").length,
       "Active calibrated equipment must have a calibration interval or a next-calibration date.",
       "warn",
     ),
@@ -192,7 +192,7 @@ function runValidation(
   // ── Gateway 3: Safety Coverage ────────────────────────────────────────────
 
   const activeChemicals = chemicals.filter(c => c.status === "active");
-  const activeEquipment  = equipment.filter(e => e.status === "active" || e.status === "due_for_inspection");
+  const activeEquipment  = equipment.filter(e => e.status === "operational" || e.status === "inspection_due");
 
   const g3: CheckResult[] = [
     check(
@@ -204,10 +204,10 @@ function runValidation(
     check(
       "g3-risk-capa-gap", "High-risk assessments — no linked CAPA",
       riskAssessments
-        .filter(r => (r.risk_level === "high" || r.risk_level === "critical") && r.status === "active")
+        .filter(r => (r.risk_level === "high" || r.risk_level === "extreme") && r.status === "active")
         .filter(r => !capas.some(c => c.source_type === "risk_assessment" && c.source_id === r.id))
         .map(r => `${r.title} (${r.risk_level})`),
-      riskAssessments.filter(r => (r.risk_level === "high" || r.risk_level === "critical") && r.status === "active").length,
+      riskAssessments.filter(r => (r.risk_level === "high" || r.risk_level === "extreme") && r.status === "active").length,
       "Every active high or critical risk assessment must have at least one linked CAPA.",
     ),
     check(
@@ -286,9 +286,9 @@ function runValidation(
     check(
       "nm-risk-review-overdue", "Critical risk assessments — review overdue",
       riskAssessments
-        .filter(r => r.risk_level === "critical" && r.status === "active" && r.review_date < today)
+        .filter(r => r.risk_level === "extreme" && r.status === "active" && r.review_date < today)
         .map(r => `${r.title} (review was ${r.review_date})`),
-      riskAssessments.filter(r => r.risk_level === "critical" && r.status === "active").length,
+      riskAssessments.filter(r => r.risk_level === "extreme" && r.status === "active").length,
       "Critical risk assessments must be reviewed on schedule. Overdue reviews invalidate the risk record.",
     ),
   ];

@@ -5,6 +5,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDemoUser, type DemoProfile } from "@/lib/context/demo-user";
+import { MOCK_MODE } from "@/lib/env";
+import { createClient } from "@/lib/supabase/client";
+import type { ServerUser } from "@/lib/auth/types";
 
 // ── Nav types ─────────────────────────────────────────────────────────────────
 
@@ -64,6 +67,7 @@ const COMPANY_ADMIN_EXTRA: NavSection[] = [
   {
     group: "Admin",
     items: [
+      { href: "/team",       label: "Team & Invites",          description: "Members, roster & invites",     icon: "👥" },
       { href: "/settings",   label: "Company Settings",        description: "Users, roles & preferences",    icon: "⚙" },
     ],
   },
@@ -188,13 +192,21 @@ function Badge({ text, type = "red" }: { text: string; type?: "red" | "info" | "
 
 // ── User panel (sign out only — no switching) ─────────────────────────────────
 
-function UserPanel() {
-  const { user } = useDemoUser();
-  const router   = useRouter();
-  const initials = user.display_name.split(" ").map((n) => n[0]).join("").slice(0, 2);
+function UserPanel({ serverUser }: { serverUser?: ServerUser | null }) {
+  const { user: demoUser } = useDemoUser();
+  const router = useRouter();
 
-  function signOut() {
+  const displayName = serverUser?.display_name ?? demoUser.display_name;
+  const roleLabel   = serverUser?.job_title ?? getRoleBadge(demoUser);
+  const initials    = displayName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
+
+  async function signOut() {
+    if (!MOCK_MODE) {
+      const supabase = createClient();
+      if (supabase) await supabase.auth.signOut();
+    }
     document.cookie = "maco-mock-tenant=; path=/; max-age=0; SameSite=Lax";
+    document.cookie = "maco-mock-profile=; path=/; max-age=0; SameSite=Lax";
     localStorage.removeItem("maco-logged-in");
     localStorage.removeItem("maco-demo-user");
     router.push("/login");
@@ -207,8 +219,8 @@ function UserPanel() {
           {initials}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[12px] font-bold text-white">{user.display_name}</div>
-          <div className="text-[10px] text-white/40">{getRoleBadge(user)}</div>
+          <div className="truncate text-[12px] font-bold text-white">{displayName}</div>
+          <div className="text-[10px] text-white/40">{roleLabel}</div>
         </div>
         <button
           onClick={signOut}
@@ -228,9 +240,10 @@ interface LeftNavProps {
   openCapas?: number;
   openRisks?: number;
   pendingTasks?: number;
+  serverUser?: ServerUser | null;
 }
 
-export function LeftNav({ openCapas = 0, openRisks = 0, pendingTasks = 0 }: LeftNavProps) {
+export function LeftNav({ openCapas = 0, openRisks = 0, pendingTasks = 0, serverUser }: LeftNavProps) {
   const { user } = useDemoUser();
   const pathname = usePathname();
   const sections = getNav(user);
@@ -289,7 +302,7 @@ export function LeftNav({ openCapas = 0, openRisks = 0, pendingTasks = 0 }: Left
         ))}
       </div>
 
-      <UserPanel />
+      <UserPanel serverUser={serverUser} />
     </nav>
   );
 }

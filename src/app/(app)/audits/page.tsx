@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getAudits, getAuditFindings, getProfiles } from "@/lib/data/ehsRepo";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader, Stat, Card, CardHeader, Pill } from "@/components/ui/primitives";
 import { AuditStatusBadge, SeverityBadge } from "@/components/ui/badges";
@@ -9,7 +9,8 @@ import { AddAuditButton } from "./AddAuditButton";
 import { AuditsExportButton } from "./AuditsExportButton";
 import { CreateCapaFromFindingButton } from "./CreateCapaFromFindingButton";
 import { TemplateEditButton } from "./TemplateEditButton";
-import { FileText } from "lucide-react";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { FileText, ClipboardCheck } from "lucide-react";
 
 const TYPE_LABEL: Record<string, string> = {
   internal: "Internal", external: "External", regulatory: "Regulatory",
@@ -31,7 +32,7 @@ function fmt(s: string | null) {
 }
 
 export default async function AuditsPage() {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
 
   const audits   = await getAudits(tenantId);
   const findings = await getAuditFindings(tenantId);
@@ -49,7 +50,7 @@ export default async function AuditsPage() {
     (f) => f.severity === "critical" || f.severity === "high",
   );
 
-  // â"€â"€ Analytics â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Analytics ──────────────────────────────────────────────────────────────
   const completionRate = audits.length > 0 ? Math.round((completed / audits.length) * 100) : 0;
 
   const byCategory: Record<string, number> = {};
@@ -235,6 +236,18 @@ export default async function AuditsPage() {
                     </td>
                   </tr>
                 ))}
+                {audits.length === 0 && (
+                  <tr>
+                    <td colSpan={6}>
+                      <EmptyState
+                        icon={<ClipboardCheck className="h-7 w-7" />}
+                        title="No audits scheduled"
+                        description="Schedule your first inspection or compliance audit with the button above. Use the built-in checklist templates below to get started fast."
+                        action={{ label: "Schedule First Audit", href: "/audits" }}
+                      />
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -311,13 +324,13 @@ export default async function AuditsPage() {
                 <FileText className="h-4 w-4 text-slate-500" />
                 <span className="text-sm font-semibold text-slate-800">Audit Templates</span>
               </div>
-              <p className="mt-0.5 text-xs text-slate-500">Built-in checklists auto-selected by audit type ? Custom templates via Reliance configuration</p>
+              <p className="mt-0.5 text-xs text-slate-500">Built-in checklists auto-selected by audit type · Custom templates via Reliance configuration</p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-4">
             {[
               { type: "internal",   label: "Internal",    sections: 5, items: 26, desc: "General site safety and EHS management system",   color: "bg-blue-100 text-blue-700" },
-              { type: "regulatory", label: "Regulatory",  sections: 6, items: 31, desc: "OSHA inspection readiness ? HazCom, Lab, Waste",   color: "bg-red-100 text-red-700" },
+              { type: "regulatory", label: "Regulatory",  sections: 6, items: 31, desc: "OSHA inspection readiness · HazCom, Lab, Waste",   color: "bg-red-100 text-red-700" },
               { type: "biosafety",  label: "Biosafety",   sections: 5, items: 25, desc: "BSL-1/BSL-2 biological safety and containment",     color: "bg-emerald-100 text-emerald-700" },
               { type: "chemical",   label: "Chemical",    sections: 5, items: 27, desc: "Chemical storage, SDS, and handling controls",      color: "bg-orange-100 text-orange-700" },
               { type: "waste",      label: "Waste",       sections: 4, items: 21, desc: "Hazardous waste accumulation and disposal",         color: "bg-amber-100 text-amber-700" },

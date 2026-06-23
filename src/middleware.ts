@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-// Routes that do NOT require authentication
-const PUBLIC_PATHS = ["/login"];
+// Routes that do NOT require authentication.
+// /auth/callback must be public: the invitee has no session yet when they arrive
+// via the magic link — the callback itself establishes it.
+const PUBLIC_PATHS = ["/login", "/onboarding", "/auth/callback"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

@@ -1,15 +1,18 @@
-# AMAYA — Advanced Mapping AI for Yielding Action
+# SafetyIQ — EHS Compliance Platform
 
-Map-first safety intelligence platform that turns inspections, incidents, permits,
-and observations into connected **Safety Cells** — living risk objects that capture
-*where* a risk is, *why* it happens, *what control proof* exists, and *what action*
-will prevent it from happening again.
+AI-powered Environment, Health & Safety (EHS) platform by **Reliance Predictive
+Safety Technologies**. A multi-tenant SaaS that turns a company's chemical
+inventory, SOPs, audits, and incidents into a connected compliance program —
+with the chemical inventory as the source of truth that cascades into waste
+profiles, training assignments, and AI hazard flags.
 
-AMAYA is the implementation of **ARC — the Adaptive Risk Continuum** method by
-Reliance Predictive Safety Technologies. See [docs/arc-integration.md](docs/arc-integration.md).
+## Modules
 
-> Built from the build manual (`AMAYA_Build_Manual_and_Visual_Mockup`) with the
-> ARC method diagram woven in as a first-class part of the product.
+Chemical management (SDS & GHS hazard mapping) · Legal register · Audits &
+findings · CAPA (corrective/preventive actions) · Incident reporting · OSHA
+300/301 logs · Training & competency · Documents & SOP library · Risk
+assessments · Waste management · Biosafety · Ergonomics · Monitoring &
+equipment · Reports & analytics · Amaya AI assistant.
 
 ---
 
@@ -17,14 +20,14 @@ Reliance Predictive Safety Technologies. See [docs/arc-integration.md](docs/arc-
 
 ```bash
 npm install
-npm run dev          # http://localhost:3000  (opens the map-first dashboard)
+npm run dev          # http://localhost:3000
 ```
 
-The app boots in **mock mode** out of the box (`NEXT_PUBLIC_AMAYA_MOCK=true` in
-`.env.local`). Every screen — map, Safety Cells, Control Proof Ledger, Causality
-Map, Risk Dashboard, and all ARC screens — works with deterministic fixture data
-and **no backend or API keys required**. A "Demo / mock data" badge shows in the
-top bar while mock mode is active.
+The app boots in **mock mode** out of the box (`NEXT_PUBLIC_SAFETYIQ_MOCK=true`,
+or whenever the Supabase env vars are absent). Every screen works with
+deterministic in-memory fixtures (the *BioStar Research* demo tenant) — **no
+backend or API keys required**. Sign in from the login page using any of the
+demo accounts listed there.
 
 ### Scripts
 
@@ -35,82 +38,71 @@ top bar while mock mode is active.
 | `npm run start` | Serve the production build |
 | `npm run lint` | ESLint (next/core-web-vitals + typescript) |
 | `npm run typecheck` | `tsc --noEmit` |
+| `npm run test` | Unit tests (Vitest) |
+| `npm run db:start` / `db:reset` / `db:stop` | Local Supabase stack (Docker) |
 
 ---
 
 ## Going live (Supabase + AI)
 
-1. Create a Supabase project. Apply the SQL in `supabase/migrations/` (via the
-   Supabase CLI `supabase db push`, or paste into the SQL editor in order:
-   `0001_init.sql`, `0002_rls.sql`), then optionally run `supabase/seed.sql`.
+1. Create a Supabase project and apply the SQL in `supabase/migrations/` (via
+   the Supabase CLI `supabase db push`, or the SQL editor in order).
 2. Copy `.env.example` → `.env.local` and fill in real values. Set
-   `NEXT_PUBLIC_AMAYA_MOCK=false` (or remove it).
-3. `SUPABASE_SERVICE_ROLE_KEY` and `OPENAI_API_KEY` are **server-only** — never
-   exposed to the browser (manual §8.2).
-4. Deploy to Vercel; connect the repo and set the same env vars for preview and
-   production.
+   `NEXT_PUBLIC_SAFETYIQ_MOCK=false` (or remove it). Required:
+   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` (**server-only** — admin tasks: onboarding seed,
+     team invites, auth callback provisioning)
+   - `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` for the AI features
+   - `SAFETYIQ_APP_URL` (your public origin, used to build auth-redirect links)
+3. In Supabase → Authentication → URL Configuration, add your redirect URLs
+   (`<origin>/auth/callback` and `<origin>/auth/set-password`) so employee
+   invites and password resets can return to the app.
+4. Deploy (e.g. Vercel); set the same env vars for preview and production.
 
-When Supabase keys are present and mock mode is off, the data layer
-(`src/lib/data/repo.ts`) queries Supabase tables whose names match the migration.
-The AI Causality Engine (`src/lib/ai/engine.ts`) calls the configured model; with
-no key it falls back to a deterministic heuristic analysis.
+When Supabase keys are present and mock mode is off, every page resolves the
+caller's tenant and reads/writes live Postgres. Tenant isolation is enforced by
+Postgres **Row-Level Security** — each table is scoped to the user's `tenant_id`,
+with cross-tenant access reserved for Reliance admin accounts. The AI engine
+(`src/lib/ai/engine.ts`) calls the configured model; with no key it falls back
+to a deterministic heuristic.
+
+### Onboarding & auth
+
+- New tenants upload SOPs, manuals, rosters, and registers; the onboarding
+  pipeline (`src/app/api/onboarding/process/route.ts`) uses AI to extract and
+  seed each module, then surfaces a welcome banner and team roster.
+- Auth supports email/password sign-in, employee invites (magic link →
+  `/auth/callback` → set password), and self-service password reset. Manage the
+  team from the **Team & Invites** page.
 
 ---
 
-## Local database (Docker) — live RLS verified
-
-For real-Postgres validation (not mock), use the local Supabase stack:
-
-```bash
-npm run db:start     # boot Postgres + Auth + Storage in Docker (first run pulls images)
-npm run db:reset     # apply supabase/migrations/* + seed.sql
-npm run test:live    # boot + reset + run the live RLS proof, then report
-npm run db:stop      # shut the stack down
-```
-
-`npm run test:live` runs [`test-live/rls.live.test.ts`](test-live/rls.live.test.ts):
-it creates two tenant-scoped users, signs in as each against the real database,
-and asserts Postgres RLS blocks cross-tenant reads **and** writes while keeping
-VELA cross-tenant. `embeddings.live.test.ts` proves the pgvector `match_cells`
-function ranks the nearest cell and stays tenant-scoped. This is the proof mock
-mode cannot give. Status: **6/6 passing** against local Postgres. The same
-migrations run unchanged on hosted Supabase later.
-
-The proactive **P-CLSS** engine runs on a schedule in production via a Vercel
-Cron (`vercel.json` → `/api/cron/pclss`, guarded by `CRON_SECRET`); the ARC
-Intelligence page also has a manual "Run engine now" and an "Auto" toggle.
-
 ## Architecture
 
-| Layer | Tech | Notes |
-| --- | --- | --- |
-| Frontend | Next.js 15 App Router, React 19, TypeScript, Tailwind v4 | Map-first UI |
-| Map | MapLibre GL JS | Offline-friendly dark basemap + severity pins |
-| Causality graph | @xyflow/react (React Flow) | AI-proposed edges shown dashed, pending review |
-| Data / Auth / Storage | Supabase (Postgres, RLS) | `@supabase/ssr` clients |
-| AI | OpenAI (configurable) | Server-only; structured pending findings |
-| Validation | Zod | `src/lib/schemas.ts` |
-
-Folder map:
+| Layer | Tech |
+| --- | --- |
+| Frontend | Next.js 15 App Router, React, TypeScript, Tailwind |
+| Data / Auth / Storage | Supabase (Postgres + RLS), `@supabase/ssr` clients |
+| AI | Anthropic (default) or OpenAI — server-only |
+| Validation | Zod (`src/lib/schemas.ts`) |
 
 ```
 src/
-  app/(app)/        map · cells · proof · causality · dashboard · arc/*
-  app/api/          cells · evidence · proof · ai · graph · actions · arc/*
-  components/       layout · map · cells · causality · ui
+  app/(app)/        the EHS module pages (dashboard, chemicals, capa, …)
+  app/(auth)/       login
+  app/auth/         invite/recovery callback + set-password
+  app/api/          onboarding pipeline + other routes
   lib/
-    arc/arc.ts      ARC method definitions (EXP, P-CLSS, HSL, GUS, VELA)
-    data/           repo (facade) · store + mock fixtures
-    ai/             prompt template + engine (manual Appendix B, §5.10)
+    data/           ehsRepo (read facade) + in-memory store & mock fixtures
+    actions/        server actions (ehs.ts, team.ts)
+    auth/           session helpers (tenant/profile resolution)
+    ai/             prompt + engine
     supabase/       browser + server clients
-supabase/migrations/   core data model + ARC tables + RLS
-docs/                  build manual reference, ARC integration, data dictionary, test plan
-public/                arc-method.svg + illustration assets
+supabase/migrations/   schema + RLS policies
 ```
 
-## Safety governance (non-negotiable)
+## Safety governance
 
-AMAYA AI is **decision support**. It never overrides human safety judgment, legal
-obligation, or company procedure. AI output is stored as **pending** and cannot
-mutate official records; high/critical recommendations are forced to
-`human_review_required`. See [AGENTS.md](AGENTS.md) and manual §8.
+SafetyIQ's AI is **decision support** — it never overrides human safety
+judgment, legal obligation, or company procedure. AI output is stored as
+pending and cannot mutate official records without review.

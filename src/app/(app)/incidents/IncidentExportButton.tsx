@@ -13,6 +13,7 @@ import {
   alt,
 } from "@/lib/xlsExport";
 import type { XlsRow, XlsCell } from "@/lib/xlsExport";
+import { OSHA_HOURS_WORKED } from "@/lib/osha";
 
 function fmtDate(s: string | null | undefined): string {
   if (!s) return "—";
@@ -22,8 +23,6 @@ function fmtDate(s: string | null | undefined): string {
 function humanize(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
-
-const HOURS_WORKED = 97760; // 47 employees × 40h × 52w
 
 export function IncidentExportButton({ incidents, profiles }: { incidents: Incident[]; profiles: Profile[] }) {
   const { user } = useDemoUser();
@@ -38,7 +37,7 @@ export function IncidentExportButton({ incidents, profiles }: { incidents: Incid
     const medicalTreat = incidents.filter((i) => i.medical_treatment_required);
     const lostTime    = incidents.filter((i) => (i.lost_time_days ?? 0) > 0);
     const open        = incidents.filter((i) => i.status !== "closed");
-    const trirNum     = ytd.length > 0 ? (ytd.length / HOURS_WORKED) * 200000 : 0;
+    const trirNum     = ytd.length > 0 ? (ytd.length / OSHA_HOURS_WORKED) * 200000 : 0;
     const trir        = trirNum.toFixed(2);
     const trirStyle: XlsCell["s"] = trirNum >= 3.0 ? "kpi_red" : trirNum >= 1.5 ? "kpi_amber" : "kpi_grn";
 
@@ -50,12 +49,10 @@ export function IncidentExportButton({ incidents, profiles }: { incidents: Incid
     const D = 5;
 
     const severityBreakdown: [string, number, XlsCell["s"]][] = [
-      ["Fatality",  incidents.filter((i) => i.severity === "fatality").length,  "danger"],
-      ["Critical",  incidents.filter((i) => i.severity === "critical").length,  "danger"],
-      ["Major",     incidents.filter((i) => i.severity === "major").length,     "warn"],
-      ["Serious",   incidents.filter((i) => i.severity === "serious").length,   "warn"],
-      ["Minor",     incidents.filter((i) => i.severity === "minor").length,     "d1"],
-      ["Near Miss", incidents.filter((i) => i.severity === "near_miss").length, "d2"],
+      ["Critical", incidents.filter((i) => i.severity === "critical").length, "danger"],
+      ["High",     incidents.filter((i) => i.severity === "high").length,     "warn"],
+      ["Medium",   incidents.filter((i) => i.severity === "medium").length,   "d1"],
+      ["Low",      incidents.filter((i) => i.severity === "low").length,      "d2"],
     ];
 
     const statusBreakdown: [string, number][] = [
@@ -99,7 +96,7 @@ export function IncidentExportButton({ incidents, profiles }: { incidents: Incid
       })),
       blankRow(D),
       {
-        cells: [{ v: `TRIR = (${ytd.length} incidents ÷ ${HOURS_WORKED} hours worked) × 200,000 = ${trir}  (OSHA benchmark < 3.0 per 100 FTE)`, s: "meta", m: 4 }] as XlsCell[],
+        cells: [{ v: `TRIR = (${ytd.length} incidents ÷ ${OSHA_HOURS_WORKED} hours worked) × 200,000 = ${trir}  (OSHA benchmark < 3.0 per 100 FTE)`, s: "meta", m: 4 }] as XlsCell[],
         h: 16,
       },
       {
@@ -118,8 +115,8 @@ export function IncidentExportButton({ incidents, profiles }: { incidents: Incid
       ...incidents.map((inc, i): XlsRow => {
         const a = alt(i);
         const sevStyle: XlsCell["s"] =
-          inc.severity === "critical" || inc.severity === "fatality" ? "danger" :
-          inc.severity === "major"    || inc.severity === "serious"   ? "warn" : a;
+          inc.severity === "critical" ? "danger" :
+          inc.severity === "high" ? "warn" : a;
         const statusStyle: XlsCell["s"] =
           inc.status === "closed"             ? "good" :
           inc.status === "under_investigation" ? "info" : a;
@@ -154,8 +151,8 @@ export function IncidentExportButton({ incidents, profiles }: { incidents: Incid
       oshaRecordable.forEach((inc, i) => {
         const a = alt(i);
         const sevStyle: XlsCell["s"] =
-          inc.severity === "critical" || inc.severity === "fatality" ? "danger" :
-          inc.severity === "major"    || inc.severity === "serious"   ? "warn" : a;
+          inc.severity === "critical" ? "danger" :
+          inc.severity === "high" ? "warn" : a;
         const cells: XlsCell[] = [
           { v: inc.id,                                                           s: a },
           { v: inc.title,                                                        s: a },

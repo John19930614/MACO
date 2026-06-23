@@ -639,9 +639,7 @@ function SDSRegister({ chemicals }: { chemicals: Chemical[] }) {
               key={s}
               className={`rounded-xl border p-3 text-center transition-colors ${
                 active
-                  ? s === "on_file"
-                    ? "border-emerald-200 bg-emerald-50"
-                    : "border-red-200 bg-red-50"
+                  ? "border-red-200 bg-red-50"
                   : s === "on_file"
                   ? "border-emerald-200 bg-emerald-50"
                   : "border-slate-100 bg-slate-50"

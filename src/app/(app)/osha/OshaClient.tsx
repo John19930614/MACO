@@ -7,6 +7,7 @@ import { X, Download, AlertTriangle, Printer, ChevronDown, ChevronUp, ExternalLi
 import type { OshaCase, OshaClassification, OshaInjuryType, Incident } from "@/lib/types";
 import { addOshaCaseToStore } from "@/lib/actions/ehs";
 import { useDemoUser } from "@/lib/context/demo-user";
+import { OSHA_FTE, OSHA_HOURS_WORKED, OSHA_DART_BENCHMARK } from "@/lib/osha";
 
 const EST_DEFAULTS = {
   ein:       "47-1234567",
@@ -16,9 +17,9 @@ const EST_DEFAULTS = {
   zip:       "94103",
   naics:     "541711",
   industry:  "R&D Biotechnology",
-  employees: 142,
-  hours:     295360,
-  benchDart: 1.8,
+  employees: OSHA_FTE,
+  hours:     OSHA_HOURS_WORKED,
+  benchDart: OSHA_DART_BENCHMARK,
 };
 type EstInfo = typeof EST_DEFAULTS & { name: string };
 
@@ -1214,13 +1215,24 @@ export function OshaClient({ initialCases, incidents = [] }: { initialCases: Osh
   const totalDaysRestr   = cases.reduce((s, c) => s + c.daysRestricted, 0);
   const severeCases      = cases.filter(c => c.isSevereInjury || c.classification === "fatality");
 
-  function handleAdd(c: OshaCase) {
-    const fd = new FormData();
-    fd.append("case", JSON.stringify(c));
-    addOshaCaseToStore(null, fd).catch(console.error);
+  async function handleAdd(c: OshaCase) {
+    // Optimistically show the case, then confirm the write persisted.
     setCases(prev => [...prev, c]);
     setToast(`Case #${c.caseNo} logged`);
-    setTimeout(() => setToast(""), 3000);
+    const fd = new FormData();
+    fd.append("case", JSON.stringify(c));
+    try {
+      const res = await addOshaCaseToStore(null, fd);
+      if (!res?.ok) {
+        // Roll back the optimistic add and surface the failure.
+        setCases(prev => prev.filter(x => x !== c));
+        setToast(`Could not save case — ${res?.error ?? "please try again"}`);
+      }
+    } catch (err) {
+      setCases(prev => prev.filter(x => x !== c));
+      setToast(`Could not save case — ${String(err)}`);
+    }
+    setTimeout(() => setToast(""), 4000);
   }
 
   return (

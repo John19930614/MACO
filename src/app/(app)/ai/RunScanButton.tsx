@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { runPredictabilityScan } from "@/lib/actions/ehs";
 
 export function RunScanButton() {
   const router = useRouter();
@@ -9,10 +10,14 @@ export function RunScanButton() {
 
   async function handleScan() {
     setStatus("running");
-    await new Promise((r) => setTimeout(r, 2000));
-    router.refresh();
-    setStatus("done");
-    setTimeout(() => setStatus("idle"), 3000);
+    try {
+      await runPredictabilityScan();
+      router.refresh();
+      setStatus("done");
+      setTimeout(() => setStatus("idle"), 3000);
+    } catch {
+      setStatus("idle");
+    }
   }
 
   if (status === "running") {

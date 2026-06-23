@@ -63,17 +63,25 @@ export function EditChemicalForm({ chemical }: { chemical: Chemical }) {
         <Input name="storage_location" defaultValue={chemical.storage_location ?? ""} placeholder="e.g. Lab 3, Chemical Store Room A" />
       </Field>
 
-      {/* Read-only hazard info */}
-      {chemical.hazard_statements.length > 0 && (
-        <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-          <p className="mb-1.5 text-xs font-semibold text-slate-500">GHS Hazard Statements (read-only)</p>
-          <div className="flex flex-wrap gap-1">
-            {chemical.hazard_statements.map((h) => (
-              <span key={h} className="rounded bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">{h}</span>
-            ))}
-          </div>
-        </div>
-      )}
+      <Field label="GHS Hazard Codes">
+        <Input name="hazard_codes" defaultValue={chemical.hazard_statements.join(", ")} placeholder="e.g. H225, H319, H350" />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Scheduled / Regulated">
+          <Select name="is_scheduled" defaultValue={chemical.is_scheduled ? "true" : "false"}>
+            <option value="false">No</option>
+            <option value="true">Yes — regulated substance</option>
+          </Select>
+        </Field>
+        <Field label="SDS Expiry / Review">
+          <Input name="sds_expiry" type="date" defaultValue={chemical.sds_expiry ?? ""} />
+        </Field>
+      </div>
+
+      <Field label="Schedule Reference">
+        <Input name="schedule_ref" defaultValue={chemical.schedule_ref ?? ""} placeholder="e.g. OSHA 29 CFR 1910.1048" />
+      </Field>
 
       <div className="flex items-center justify-between border-t border-slate-100 pt-4">
         <p className="text-xs text-slate-400">

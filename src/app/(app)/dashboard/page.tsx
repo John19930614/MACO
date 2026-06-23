@@ -4,12 +4,14 @@ import {
   getEquipment, getComplianceScores, getAudits, getIncidents,
   getOshaCases, overallComplianceScore, latestPredictabilityRun,
 } from "@/lib/data/ehsRepo";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId } from "@/lib/auth/session";
+import { oshaRate, OSHA_DART_BENCHMARK } from "@/lib/osha";
 import { MOCK_TENANT_ID, MOCK_TENANTS_ALL } from "@/lib/data/mock";
 import { MOCK_MODE } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PageHeader, Stat, Card, CardHeader } from "@/components/ui/primitives";
 import { CapaStatusBadge, ReviewStatusBadge } from "@/components/ui/badges";
+import { OnboardingWelcomeBanner } from "@/components/dashboard/OnboardingWelcomeBanner";
 import type { AiAnalysisOutput } from "@/lib/types";
 import { formatDate, relativeTime } from "@/lib/utils";
 import {
@@ -17,23 +19,38 @@ import {
   AlertTriangle, TrendingUp, TrendingDown, Minus,
 } from "lucide-react";
 
-export default async function DashboardPage() {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ onboarding?: string }>;
+}) {
+  const params      = await searchParams;
+  const justOnboarded = params.onboarding === "complete";
+
+  const tenantId   = await getEffectiveTenantId();
   const tenantName = MOCK_TENANTS_ALL.find((t) => t.id === tenantId)?.name ?? "Your Company";
 
-  // Check onboarding status (live mode only)
-  let onboardingComplete = true;
+  // Check onboarding status and fetch welcome-banner data (live mode only)
+  let onboardingComplete   = true;
+  let onboardingData: Record<string, unknown> = {};
+  let companyName          = tenantName;
+
   if (!MOCK_MODE) {
     const supabase = await createSupabaseServerClient();
     if (supabase) {
       const { data: tenant } = await supabase
         .from("tenants")
-        .select("onboarding_completed_at")
+        .select("name, onboarding_completed_at, onboarding_data")
         .eq("id", tenantId)
         .single();
       onboardingComplete = !!tenant?.onboarding_completed_at;
+      onboardingData     = (tenant?.onboarding_data as Record<string, unknown>) ?? {};
+      companyName        = (tenant?.name as string) || tenantName;
     }
   }
+
+  const seededCounts         = (onboardingData.seeded_counts        as Record<string, number>)  ?? {};
+  const extractedEmployees   = (onboardingData.extracted_employees  as { display_name: string; email?: string | null; job_title?: string | null; department?: string | null }[]) ?? [];
 
   const [chemicals, capas, aiFindings, trainingRecords, equipment, complianceScores, audits, incidents, oshaCases] =
     await Promise.all([
@@ -73,15 +90,10 @@ export default async function DashboardPage() {
   ).length;
 
   // OSHA safety rates — calculated from confirmed OSHA 300 log entries
-  const HOURS_WORKED = 295360; // 142 employees × 40h × 52w
   const oshaCasesYtd = oshaCases.filter((c) => c.date.startsWith("2026"));
-  const trir = oshaCasesYtd.length > 0
-    ? ((oshaCasesYtd.length / HOURS_WORKED) * 200000).toFixed(2)
-    : "0.00";
+  const trir = oshaRate(oshaCasesYtd.length);
   const dartCases = oshaCasesYtd.filter((c) => c.classification === "days_away" || c.classification === "restricted");
-  const dart = dartCases.length > 0
-    ? ((dartCases.length / HOURS_WORKED) * 200000).toFixed(2)
-    : "0.00";
+  const dart = oshaRate(dartCases.length);
   const severeOsha = oshaCasesYtd.filter((c) => c.isSevereInjury || c.classification === "fatality").length;
 
   // Compliance by module sorted by score ascending (lowest = most at risk)
@@ -125,32 +137,44 @@ export default async function DashboardPage() {
 
   return (
     <>
+      <div data-tour="command-center">
       <PageHeader
         title="Command Center"
         subtitle="EHS Command Center · AI-powered compliance overview"
         actions={
           <Link
             href="/ai"
+            data-tour="p-engine-btn"
             className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
           >
             <BrainCircuit className="h-4 w-4" /> Run P-Engine Scan
           </Link>
         }
       />
+      </div>
 
       <div className="iq-scroll flex-1 overflow-auto p-6">
-        {/* ── Onboarding Banner ──────────────────────────────────── */}
-        {!onboardingComplete && (
-          <div className="mb-5 flex items-center justify-between gap-4 rounded-xl border border-blue-700/50 bg-blue-900/20 px-5 py-4">
+        {/* ── Welcome banner (shown once after onboarding completes) ─ */}
+        {justOnboarded && (
+          <OnboardingWelcomeBanner
+            companyName={companyName}
+            seededCounts={seededCounts}
+            extractedEmployees={extractedEmployees}
+          />
+        )}
+
+        {/* ── Onboarding nudge (shown until onboarding is done) ────── */}
+        {!onboardingComplete && !justOnboarded && (
+          <div className="mb-5 flex items-center justify-between gap-4 rounded-xl bg-blue-700 px-5 py-4 shadow-sm">
             <div>
-              <div className="text-sm font-semibold text-blue-200">Complete your company onboarding</div>
-              <div className="mt-0.5 text-xs text-blue-400/80">
-                Set up your company profile, industry scope, safety history, and team to unlock the full SafetyIQ platform.
+              <div className="text-sm font-bold text-white">Complete your company onboarding</div>
+              <div className="mt-0.5 text-xs text-blue-100">
+                Set up your company profile, upload your documents, and let AI seed your platform in minutes.
               </div>
             </div>
             <Link
               href="/onboarding"
-              className="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 transition"
+              className="shrink-0 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 whitespace-nowrap"
             >
               Start Onboarding &rarr;
             </Link>
@@ -457,10 +481,10 @@ export default async function DashboardPage() {
               ))}
               {/* DART benchmark comparison */}
               <div className="px-4 py-3 bg-slate-50/60">
-                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-2.5">DART vs. Industry (R&amp;D Biotech avg 1.8)</div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-2.5">DART vs. Industry (R&amp;D Biotech avg {OSHA_DART_BENCHMARK})</div>
                 {[
-                  { label: tenantName.split(" ")[0], val: parseFloat(dart), color: parseFloat(dart) <= 1.8 ? "bg-emerald-500" : "bg-red-500" },
-                  { label: "Industry", val: 1.8, color: "bg-slate-400" },
+                  { label: tenantName.split(" ")[0], val: parseFloat(dart), color: parseFloat(dart) <= OSHA_DART_BENCHMARK ? "bg-emerald-500" : "bg-red-500" },
+                  { label: "Industry", val: OSHA_DART_BENCHMARK, color: "bg-slate-400" },
                 ].map((row) => (
                   <div key={row.label} className="flex items-center gap-2 mb-1.5">
                     <div className="w-14 text-[10.5px] text-slate-600">{row.label}</div>
@@ -471,7 +495,7 @@ export default async function DashboardPage() {
                   </div>
                 ))}
                 <div className="text-[9px] text-slate-400 mt-1">
-                  {parseFloat(dart) <= 1.8 ? "✓ Below industry average — favorable" : "⚠ Above industry average — monitor"}
+                  {parseFloat(dart) <= OSHA_DART_BENCHMARK ? "✓ Below industry average — favorable" : "⚠ Above industry average — monitor"}
                 </div>
               </div>
             </div>

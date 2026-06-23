@@ -5,6 +5,7 @@ import { Check, Loader2, RotateCcw, Users, MapPin, Bell, Plug, Building2, Shield
 import { PageHeader, Card, CardHeader } from "@/components/ui/primitives";
 import { useDemoUser, DEMO_USERS } from "@/lib/context/demo-user";
 import { MOCK_MODE } from "@/lib/env";
+import type { Profile, Site } from "@/lib/types";
 
 type SettingsTab = "company" | "users" | "sites" | "notifications" | "integrations";
 
@@ -116,7 +117,13 @@ const BIOSTAR_SITES = [
   },
 ];
 
-export function SettingsClient() {
+export function SettingsClient({
+  serverProfiles = [],
+  serverSites    = [],
+}: {
+  serverProfiles?: Profile[];
+  serverSites?:    Site[];
+}) {
   const { user, setUser } = useDemoUser();
   const [tab, setTab] = useState<SettingsTab>("company");
   const [data, setData]         = useState<SettingsData>({
@@ -216,8 +223,18 @@ export function SettingsClient() {
     { id: "integrations",  label: "Integrations",   icon: <Plug className="h-3.5 w-3.5" /> },
   ];
 
-  const tenantUsers = DEMO_USERS.filter((u) => u.tenant_id === user.tenant_id || u.is_reliance === false && u.tenant_id === user.tenant_id);
-  const visibleUsers = DEMO_USERS.filter((u) => u.tenant_id === user.tenant_id);
+  const visibleUsers = MOCK_MODE
+    ? DEMO_USERS.filter(u => u.tenant_id === user.tenant_id)
+    : serverProfiles.map(p => ({
+        id:           p.id,
+        display_name: p.display_name,
+        email:        "",
+        job_title:    p.job_title ?? "—",
+        role:         p.role,
+        tenant_id:    p.tenant_id ?? "",
+        company:      "",
+        is_reliance:  p.tenant_id === null,
+      }));
 
   return (
     <div className="flex h-full flex-col">
@@ -452,7 +469,24 @@ export function SettingsClient() {
         {/* ── Sites tab ── */}
         {tab === "sites" && (
           <div className="space-y-4">
-            {BIOSTAR_SITES.map((site) => (
+            {(MOCK_MODE
+              ? BIOSTAR_SITES.map(s => ({
+                  id:      s.id,
+                  name:    s.name,
+                  address: s.address,
+                  detail1: { label: "Type",         value: s.type    },
+                  detail2: { label: "BSL Level",    value: s.bsl     },
+                  detail3: { label: "Site Contact", value: s.contact },
+                }))
+              : serverSites.map(s => ({
+                  id:      s.id,
+                  name:    s.name,
+                  address: s.address ?? null,
+                  detail1: { label: "Sector",  value: s.sector   ?? s.vertical ?? "—" },
+                  detail2: { label: "Country", value: s.country  ?? "—" },
+                  detail3: { label: "State",   value: s.state    ?? "—" },
+                }))
+            ).map(site => (
               <Card key={site.id}>
                 <div className="p-5">
                   <div className="flex items-start justify-between gap-4 mb-4">
@@ -460,9 +494,9 @@ export function SettingsClient() {
                       <div className="flex items-center gap-2">
                         <MapPin className="h-4 w-4 text-blue-500 shrink-0" />
                         <h3 className="text-base font-bold text-slate-800">{site.name}</h3>
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{site.status}</span>
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Active</span>
                       </div>
-                      <p className="mt-0.5 ml-6 text-sm text-slate-500">{site.address}</p>
+                      {site.address && <p className="mt-0.5 ml-6 text-sm text-slate-500">{site.address}</p>}
                     </div>
                     <button
                       type="button"
@@ -473,13 +507,7 @@ export function SettingsClient() {
                     </button>
                   </div>
                   <div className="grid grid-cols-2 gap-x-8 gap-y-2 ml-6 sm:grid-cols-4">
-                    {[
-                      { label: "Type", value: site.type },
-                      { label: "BSL Level", value: site.bsl },
-                      { label: "Floor Area", value: site.sqft },
-                      { label: "Site Contact", value: site.contact },
-                      { label: "Phone", value: site.phone },
-                    ].map(({ label, value }) => (
+                    {[site.detail1, site.detail2, site.detail3].map(({ label, value }) => (
                       <div key={label}>
                         <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</div>
                         <div className="mt-0.5 text-sm text-slate-700">{value}</div>
@@ -489,6 +517,13 @@ export function SettingsClient() {
                 </div>
               </Card>
             ))}
+            {!MOCK_MODE && serverSites.length === 0 && (
+              <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center">
+                <ShieldCheck className="mx-auto h-6 w-6 text-slate-300" />
+                <p className="mt-2 text-sm font-medium text-slate-400">No sites configured yet</p>
+                <p className="text-xs text-slate-300">Sites are added during onboarding or by your SA</p>
+              </div>
+            )}
             <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center">
               <ShieldCheck className="mx-auto h-6 w-6 text-slate-300" />
               <p className="mt-2 text-sm font-medium text-slate-400">Additional sites are added by Reliance during onboarding</p>

@@ -1,5 +1,5 @@
-﻿import { getCapaActions, getProfiles } from "@/lib/data/ehsRepo";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getCapaActions, getProfiles } from "@/lib/data/ehsRepo";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader, Stat, Card, CardHeader } from "@/components/ui/primitives";
 import { AddCapaButton } from "./AddCapaButton";
@@ -7,7 +7,7 @@ import { CapaExportButton } from "./CapaExportButton";
 import { CapaTable } from "./CapaTable";
 
 export default async function CapaPage() {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
 
   const [capas, profiles] = await Promise.all([getCapaActions(tenantId), getProfiles(tenantId)]);
 
@@ -17,7 +17,7 @@ export default async function CapaPage() {
   const pendingVerification = capas.filter((c) => c.status === "pending_verification").length;
   const closed              = capas.filter((c) => c.status === "closed").length;
 
-  // â”€â”€ Analytics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Analytics ──────────────────────────────────────────────────────────────
   const now         = new Date();
   const activeCapas = capas.filter((c) => c.status !== "closed" && c.status !== "rejected");
   function ageInDays(createdAt: string) {
@@ -25,8 +25,8 @@ export default async function CapaPage() {
   }
   const agingBuckets = [
     { label: "< 7 days",   bar: "bg-emerald-400", count: activeCapas.filter((c) => ageInDays(c.created_at) < 7).length },
-    { label: "7â€“30 days",  bar: "bg-amber-400",   count: activeCapas.filter((c) => { const d = ageInDays(c.created_at); return d >= 7 && d < 30; }).length },
-    { label: "30â€“90 days", bar: "bg-orange-400",  count: activeCapas.filter((c) => { const d = ageInDays(c.created_at); return d >= 30 && d < 90; }).length },
+    { label: "7-30 days",  bar: "bg-amber-400",   count: activeCapas.filter((c) => { const d = ageInDays(c.created_at); return d >= 7 && d < 30; }).length },
+    { label: "30-90 days", bar: "bg-orange-400",  count: activeCapas.filter((c) => { const d = ageInDays(c.created_at); return d >= 30 && d < 90; }).length },
     { label: "> 90 days",  bar: "bg-red-500",     count: activeCapas.filter((c) => ageInDays(c.created_at) >= 90).length },
   ];
   const maxAgeBucket = Math.max(...agingBuckets.map((b) => b.count), 1);
@@ -54,7 +54,7 @@ export default async function CapaPage() {
     <div className="flex h-full flex-col">
       <PageHeader
         title="Corrective Actions"
-        subtitle="Corrective and preventive actions â€” audit findings, incidents, AI flags"
+        subtitle="Corrective and preventive actions — audit findings, incidents, AI flags"
         actions={
           <div className="flex gap-2">
             <CapaExportButton capas={capas} profiles={profiles} />
@@ -77,10 +77,10 @@ export default async function CapaPage() {
         {overdue > 0 && (
           <div className="mb-5 rounded-xl border-l-4 border-red-500 bg-red-50 p-4">
             <div className="text-sm font-semibold text-red-900">
-              {overdue} Overdue CAPA Action{overdue > 1 ? "s" : ""} â€” Immediate Attention Required
+              {overdue} Overdue CAPA Action{overdue > 1 ? "s" : ""} — Immediate Attention Required
             </div>
             <div className="mt-0.5 text-xs text-red-700">
-              {capas.filter((c) => c.status === "overdue").map((c) => c.title).join(" Â· ")}
+              {capas.filter((c) => c.status === "overdue").map((c) => c.title).join(" · ")}
             </div>
           </div>
         )}

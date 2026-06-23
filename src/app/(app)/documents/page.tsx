@@ -1,6 +1,6 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { getDocuments, getProfiles, getChemicals } from "@/lib/data/ehsRepo";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader, Stat, Card, CardHeader, Pill } from "@/components/ui/primitives";
 import { AddDocumentButton } from "./AddDocumentButton";
@@ -37,7 +37,7 @@ export default async function DocumentsPage({
 }: {
   searchParams: Promise<{ view?: string }>;
 }) {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
   const { view } = await searchParams;
   const showLibrary = view === "library";
   const showTracker = view === "tracker";
@@ -55,7 +55,7 @@ export default async function DocumentsPage({
   const reviewDue = docs.filter((d) => d.status === "under_review" || (d.status === "active" && isReviewDue(d.review_date))).length;
   const needsAck  = docs.filter((d) => d.acknowledgment_required && d.status === "active").length;
 
-  // â”€â”€ Review urgency â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Review urgency ────────────────────────────────────────────────────────
   const nowMs = Date.now();
   function daysUntil(s: string) {
     return Math.ceil((new Date(s).getTime() - nowMs) / 86400000);
@@ -101,8 +101,8 @@ export default async function DocumentsPage({
             <div className="px-4 pb-4 space-y-2.5">
               {[
                 { label: "Overdue",       count: reviewOverdue, bar: "bg-red-500",     bg: "text-red-600" },
-                { label: "Due â‰¤ 30 days", count: reviewIn30,    bar: "bg-amber-400",   bg: "text-amber-700" },
-                { label: "Due â‰¤ 90 days", count: reviewIn90,    bar: "bg-blue-400",    bg: "text-blue-700" },
+                { label: "Due ≤ 30 days", count: reviewIn30,    bar: "bg-amber-400",   bg: "text-amber-700" },
+                { label: "Due ≤ 90 days", count: reviewIn90,    bar: "bg-blue-400",    bg: "text-blue-700" },
               ].map((r) => (
                 <div key={r.label} className="flex items-center gap-2">
                   <div className="w-24 shrink-0 text-[10.5px] text-slate-500">{r.label}</div>
@@ -254,14 +254,14 @@ export default async function DocumentsPage({
                           <div className="text-[10px] text-amber-500 font-medium">Due soon</div>
                         )}
                       </td>
-                      <td className=”px-4 py-3 text-xs text-slate-600 dark:text-slate-300”>
-                        {d.owner_id ? (profileMap[d.owner_id] ?? “â€””) : “â€””}
+                      <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
+                        {d.owner_id ? (profileMap[d.owner_id] ?? "—") : "—"}
                       </td>
                       <td className="px-4 py-3 text-center">
                         {d.acknowledgment_required ? (
-                          <span className="text-emerald-600">âœ“</span>
+                          <span className="text-emerald-600">✓</span>
                         ) : (
-                          <span className="text-slate-300">â€”</span>
+                          <span className="text-slate-300">—</span>
                         )}
                       </td>
                       <td className="px-4 py-3">

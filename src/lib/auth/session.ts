@@ -1,8 +1,14 @@
 import "server-only";
 import { MOCK_MODE } from "@/lib/env";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
-import { createSupabaseServerClient, DEMO_SARAH_ID } from "@/lib/supabase/server";
+import { getAuthUser, getAuthProfile, DEMO_SARAH_ID } from "@/lib/supabase/server";
 import type { ServerUser } from "./types";
+
+// The nil UUID. In live mode, any query filtered by this tenant_id/profile_id
+// returns zero rows — a safe "no data" result that never matches a real or demo
+// tenant. Used as the live-mode fallback so an unresolved identity can never
+// surface another tenant's (or the BioStar demo) data.
+export const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 // Returns the authenticated user's tenant_id.
 // MOCK_MODE → reads maco-mock-tenant cookie (set at login); falls back to MOCK_TENANT_ID.
@@ -15,16 +21,19 @@ export async function getServerTenantId(): Promise<string | null> {
     const tenantFromCookie = cookieStore.get("maco-mock-tenant")?.value;
     return tenantFromCookie || MOCK_TENANT_ID;
   }
-  const client = await createSupabaseServerClient();
-  if (!client) return null;
-  const { data: { user }, error: authErr } = await client.auth.getUser();
-  if (authErr || !user) return null;
-  const { data: profile } = await client
-    .from("profiles")
-    .select("tenant_id")
-    .eq("id", user.id)
-    .single();
+  const profile = await getAuthProfile();
   return profile?.tenant_id ?? null;
+}
+
+// Resolves a tenant_id that is ALWAYS safe to pass to a data query.
+// MOCK_MODE → cookie tenant or BioStar demo tenant.
+// Live → the real tenant_id, or NIL_UUID when it can't be resolved (so pages
+// render empty states instead of falling back to the demo tenant). Pages MUST
+// use this rather than `(await getServerTenantId()) ?? MOCK_TENANT_ID`.
+export async function getEffectiveTenantId(): Promise<string> {
+  const id = await getServerTenantId();
+  if (id) return id;
+  return MOCK_MODE ? MOCK_TENANT_ID : NIL_UUID;
 }
 
 // Returns the authenticated user's profile ID.
@@ -35,15 +44,12 @@ export async function getServerProfileId(): Promise<string> {
     const { cookies } = await import("next/headers");
     const cookieStore = await cookies();
     const profileFromCookie = cookieStore.get("maco-mock-profile")?.value;
-    if (profileFromCookie) return profileFromCookie;
-  } else {
-    const client = await createSupabaseServerClient();
-    if (client) {
-      const { data: { user } } = await client.auth.getUser();
-      if (user?.id) return user.id;
-    }
+    return profileFromCookie || DEMO_SARAH_ID;
   }
-  return DEMO_SARAH_ID;
+  // Live: never fall back to the demo profile (DEMO_SARAH_ID is a real UUID that
+  // could match seeded demo rows). Use the nil UUID so queries return nothing.
+  const profile = await getAuthProfile();
+  return profile?.id ?? NIL_UUID;
 }
 
 // Returns a lightweight user object for TopBar display.
@@ -51,18 +57,10 @@ export async function getServerProfileId(): Promise<string> {
 // Live → resolves auth session + profile + tenant name.
 export async function getServerUser(): Promise<ServerUser | null> {
   if (MOCK_MODE) return null;
-  const client = await createSupabaseServerClient();
-  if (!client) return null;
-  const { data: { user }, error: authErr } = await client.auth.getUser();
-  if (authErr || !user) return null;
-  const { data: profile } = await client
-    .from("profiles")
-    .select("id, display_name, role, tenant_id, job_title, tenants(name)")
-    .eq("id", user.id)
-    .single();
+  const profile = await getAuthProfile();
   if (!profile) return null;
-  const tenantArr = profile.tenants as { name: string }[] | null;
-  const company = Array.isArray(tenantArr) ? (tenantArr[0]?.name ?? null) : null;
+  const t = profile.tenants as { name: string } | { name: string }[] | null;
+  const company = Array.isArray(t) ? (t[0]?.name ?? null) : (t?.name ?? null);
   return {
     id: profile.id,
     display_name: profile.display_name,

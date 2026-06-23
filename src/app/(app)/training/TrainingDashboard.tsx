@@ -389,7 +389,7 @@ export function TrainingDashboard({
                 </div>
               </div>
               <p className="mb-3 text-xs text-slate-500">
-                Regulatory positions that must be formally designated for your facility's operating scope.
+                Regulatory positions that must be formally designated for your facility&apos;s operating scope.
               </p>
               <div className="divide-y divide-slate-50">
                 {designations.map((d) => (

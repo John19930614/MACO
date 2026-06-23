@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Download, Filter, X } from "lucide-react";
 import { useDemoUser } from "@/lib/context/demo-user";
+import { oshaRate } from "@/lib/osha";
 import type { CapaAction, Incident, TrainingRecord, LegalRequirement, Chemical } from "@/lib/types";
 
 interface ModuleScore {
@@ -86,7 +87,7 @@ export function ReportsHeaderActions({ capas, incidents, trainingRecs, legal, ch
     const ytdIncidents = incidents.filter((i) => new Date(i.occurred_at).getFullYear() === year);
     const lostTime     = ytdIncidents.filter((i) => (i.lost_time_days ?? 0) > 0);
     const regulatory   = ytdIncidents.filter((i) => i.regulatory_reportable);
-    const trir         = ytdIncidents.length > 0 ? ((ytdIncidents.length / 97760) * 200000).toFixed(2) : "0.00";
+    const trir         = oshaRate(ytdIncidents.length);
     const gaps         = legal.filter((l) => l.status !== "compliant" && l.status !== "not_applicable");
 
     const lines: string[] = [];

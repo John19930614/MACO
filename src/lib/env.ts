@@ -11,6 +11,13 @@
 export const SUPABASE_URL      = process.env.NEXT_PUBLIC_SUPABASE_URL      ?? "";
 export const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
+/** Public origin of the app, used to build absolute auth-redirect URLs
+ *  (invite magic-links, password resets). Falls back to localhost for dev. */
+export const APP_URL =
+  process.env.SAFETYIQ_APP_URL ??
+  process.env.NEXT_PUBLIC_APP_URL ??
+  "http://localhost:3000";
+
 const explicitMock = process.env.NEXT_PUBLIC_SAFETYIQ_MOCK === "true";
 const hasSupabase  = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 

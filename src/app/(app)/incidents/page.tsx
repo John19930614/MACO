@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getIncidents, getProfiles, getCapaActions } from "@/lib/data/ehsRepo";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader, Stat, Card, CardHeader, Pill } from "@/components/ui/primitives";
 import { SeverityBadge } from "@/components/ui/badges";
@@ -29,7 +29,7 @@ function fmt(s: string) {
 }
 
 export default async function IncidentsPage() {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
 
   const [incidents, profiles, capas] = await Promise.all([
     getIncidents(tenantId),

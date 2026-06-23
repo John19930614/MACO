@@ -8,7 +8,7 @@ import type { Severity } from "@/lib/constants";
 import { EditCapaForm } from "./EditCapaForm";
 import { PrintButton } from "@/components/ui/PrintButton";
 import type { PrintReportData } from "@/components/ui/PrintButton";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -41,7 +41,7 @@ function isOverdue(s: string | null, status: string): boolean {
 
 export default async function CapaDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
   const [capa, profiles, findings, incidents] = await Promise.all([
     getCapaById(id),
     getProfiles(tenantId),

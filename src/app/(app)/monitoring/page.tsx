@@ -1,13 +1,15 @@
 import { getEquipment } from "@/lib/data/ehsRepo";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader, Stat } from "@/components/ui/primitives";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Gauge } from "lucide-react";
 import { AddEquipmentButton } from "./AddEquipmentButton";
 import { MonitoringExportButton } from "./MonitoringExportButton";
 import { MonitoringDashboard } from "./MonitoringDashboard";
 
 export default async function MonitoringPage() {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
   const equipment = await getEquipment(tenantId);
 
   const operational    = equipment.filter((e) => e.status === "operational").length;
@@ -29,6 +31,14 @@ export default async function MonitoringPage() {
         }
       />
       <div className="iq-scroll flex-1 overflow-y-auto p-6">
+        {equipment.length === 0 ? (
+          <EmptyState
+            icon={<Gauge className="h-6 w-6" />}
+            title="No equipment registered yet"
+            description="Add monitoring or emergency equipment with the button above. SafetyIQ tracks calibration and inspection schedules and auto-raises CAPAs when they lapse."
+          />
+        ) : (
+          <>
         {/* KPI strip */}
         <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-5">
           <Stat label="Total Equipment"  value={equipment.length} hint="All registered units" />
@@ -39,6 +49,8 @@ export default async function MonitoringPage() {
         </div>
 
         <MonitoringDashboard equipment={equipment} />
+          </>
+        )}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Microscope, AlertTriangle, ShieldCheck, FileText, FlaskConical, Biohazard, CheckSquare, Clock, Plus } from "lucide-react";
 import { PageHeader, Card, CardHeader, Pill } from "@/components/ui/primitives";
 import { getBiosafetyLabs, getBiohazardAgents, getBiosafetyIncidents, getChemicals, getCapaActions } from "@/lib/data/ehsRepo";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { RegisterLabButton } from "./RegisterLabButton";
 import { AddAgentButton } from "./AddAgentButton";
@@ -52,7 +52,7 @@ function incidentDisplayType(incident_type: string, title: string): string {
 }
 
 export default async function BiosafetyPage() {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
 
   const [labs, agents, bslIncidents, chemicals, allCapas] = await Promise.all([
     getBiosafetyLabs(tenantId),

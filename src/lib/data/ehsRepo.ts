@@ -3,7 +3,8 @@ import { cache } from "react";
 import { getStore } from "./store";
 import { MOCK_TENANT_ID, MOCK_SITE_ID } from "./mock";
 import { MOCK_MODE } from "@/lib/env";
-import { createServerSupabase, DEMO_TENANT_ID } from "@/lib/supabase/server";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import type {
   Chemical, LegalRequirement, Audit, AuditFinding, CapaAction,
   TrainingCourse, TrainingRecord, Document, WasteStream, Equipment,
@@ -15,13 +16,13 @@ import type {
 } from "@/lib/types";
 import type { Severity, CapaStatus, AuditStatus, RiskLevel, TrainingDelivery } from "@/lib/constants";
 
-function sb() { return createServerSupabase(); }
+async function sb() { return createSupabaseServerClient(); }
 
 // ── CAPA ─────────────────────────────────────────────────────────────────────
 
 export const getCapaActions = cache(async (tenantId = MOCK_TENANT_ID): Promise<CapaAction[]> => {
   if (MOCK_MODE) return getStore().capaActions.filter((c) => c.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("capa_records")
@@ -56,7 +57,7 @@ export const getCapaActions = cache(async (tenantId = MOCK_TENANT_ID): Promise<C
 
 export const getIncidents = cache(async (tenantId = MOCK_TENANT_ID): Promise<Incident[]> => {
   if (MOCK_MODE) return getStore().incidents.filter((i) => i.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("incidents")
@@ -94,7 +95,7 @@ export const getIncidents = cache(async (tenantId = MOCK_TENANT_ID): Promise<Inc
 
 export const getChemicals = cache(async (tenantId = MOCK_TENANT_ID): Promise<Chemical[]> => {
   if (MOCK_MODE) return getStore().chemicals.filter((c) => c.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("chemical_inventory")
@@ -135,7 +136,7 @@ export const getChemicals = cache(async (tenantId = MOCK_TENANT_ID): Promise<Che
 
 export const getAudits = cache(async (tenantId = MOCK_TENANT_ID): Promise<Audit[]> => {
   if (MOCK_MODE) return getStore().audits.filter((a) => a.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("audits")
@@ -164,7 +165,7 @@ export const getAudits = cache(async (tenantId = MOCK_TENANT_ID): Promise<Audit[
 
 export const getAuditFindings = cache(async (tenantId = MOCK_TENANT_ID): Promise<AuditFinding[]> => {
   if (MOCK_MODE) return getStore().auditFindings.filter((f) => f.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("audit_findings")
@@ -196,7 +197,7 @@ export const getAuditFindings = cache(async (tenantId = MOCK_TENANT_ID): Promise
 
 export const getRiskAssessments = cache(async (tenantId = MOCK_TENANT_ID): Promise<RiskAssessment[]> => {
   if (MOCK_MODE) return getStore().riskAssessments.filter((r) => r.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("risk_assessments")
@@ -235,7 +236,7 @@ export const getRiskAssessments = cache(async (tenantId = MOCK_TENANT_ID): Promi
 
 export const getWasteStreams = cache(async (tenantId = MOCK_TENANT_ID): Promise<WasteStream[]> => {
   if (MOCK_MODE) return getStore().wasteStreams.filter((w) => w.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("waste_streams")
@@ -268,7 +269,7 @@ export const getWasteStreams = cache(async (tenantId = MOCK_TENANT_ID): Promise<
 
 export const getEquipment = cache(async (tenantId = MOCK_TENANT_ID): Promise<Equipment[]> => {
   if (MOCK_MODE) return getStore().equipment.filter((e) => e.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("equipment")
@@ -301,7 +302,7 @@ export const getEquipment = cache(async (tenantId = MOCK_TENANT_ID): Promise<Equ
 
 export const getTrainingCourses = cache(async (tenantId = MOCK_TENANT_ID): Promise<TrainingCourse[]> => {
   if (MOCK_MODE) return getStore().trainingCourses.filter((c) => c.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("training_courses")
@@ -329,7 +330,7 @@ export const getTrainingCourses = cache(async (tenantId = MOCK_TENANT_ID): Promi
 
 export const getTrainingRecords = cache(async (tenantId = MOCK_TENANT_ID): Promise<TrainingRecord[]> => {
   if (MOCK_MODE) return getStore().trainingRecords.filter((r) => r.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("training_records")
@@ -358,7 +359,7 @@ export const getTrainingRecords = cache(async (tenantId = MOCK_TENANT_ID): Promi
 
 export const getLegalRequirements = cache(async (tenantId = MOCK_TENANT_ID): Promise<LegalRequirement[]> => {
   if (MOCK_MODE) return getStore().legalRequirements.filter((l) => l.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("legal_requirements")
@@ -389,7 +390,7 @@ export const getLegalRequirements = cache(async (tenantId = MOCK_TENANT_ID): Pro
 
 export const getDocuments = cache(async (tenantId = MOCK_TENANT_ID): Promise<Document[]> => {
   if (MOCK_MODE) return getStore().documents.filter((d) => d.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("documents")
@@ -410,21 +411,87 @@ export const getDocuments = cache(async (tenantId = MOCK_TENANT_ID): Promise<Doc
     status: r.status as Document["status"],
     owner_id: r.owner_id ?? null,
     acknowledgment_required: r.acknowledgment_required ?? false,
+    regulation_ref: r.regulation_ref ?? null,
     created_at: r.created_at,
     updated_at: r.updated_at,
   }));
 });
 
 export const getComplianceScores = cache(async (tenantId = MOCK_TENANT_ID): Promise<ComplianceScore[]> => {
-  return getStore().complianceScores.filter((s) => s.tenant_id === tenantId);
+  if (MOCK_MODE) return getStore().complianceScores.filter((s) => s.tenant_id === tenantId);
+  const client = await sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("compliance_scores")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("calculated_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? "",
+    module: r.module,
+    score: Number(r.score),
+    max_score: Number(r.max_score),
+    percentage: Number(r.percentage),
+    status: r.status as ComplianceScore["status"],
+    calculated_at: r.calculated_at,
+    details: (r.details ?? {}) as Record<string, unknown>,
+  }));
 });
 
 export const getAiFindings = cache(async (tenantId = MOCK_TENANT_ID): Promise<AiFinding[]> => {
-  return getStore().aiFindings.filter((f) => f.tenant_id === tenantId);
+  if (MOCK_MODE) return getStore().aiFindings.filter((f) => f.tenant_id === tenantId);
+  const client = await sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("ehs_ai_findings")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? null,
+    cell_id: r.cell_id ?? null,
+    job: r.job as AiFinding["job"],
+    source_type: r.source_type ?? undefined,
+    source_id: r.source_id ?? null,
+    model: r.model,
+    prompt_version: r.prompt_version,
+    input_summary: r.input_summary,
+    output: r.output as AiFinding["output"],
+    confidence: Number(r.confidence),
+    review_status: r.review_status as AiFinding["review_status"],
+    human_review_required: r.human_review_required ?? false,
+    created_at: r.created_at,
+  }));
 });
 
 export const getPredictabilityRuns = cache(async (tenantId = MOCK_TENANT_ID): Promise<PredictabilityRun[]> => {
-  return getStore().predictabilityRuns.filter((r) => r.tenant_id === tenantId);
+  if (MOCK_MODE) return getStore().predictabilityRuns.filter((r) => r.tenant_id === tenantId);
+  const client = await sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("predictability_runs")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? "",
+    stage: r.stage as PredictabilityRun["stage"],
+    summary: r.summary,
+    items_scanned: r.items_scanned,
+    signals_found: r.signals_found,
+    actions_proposed: r.actions_proposed,
+    forecast_data: (r.forecast_data ?? null) as PredictabilityRun["forecast_data"],
+    created_at: r.created_at,
+  }));
 });
 
 export const getAuditLog = cache(async (tenantId = MOCK_TENANT_ID): Promise<AuditEntry[]> => {
@@ -437,7 +504,7 @@ export const getProfiles = cache(async (tenantId = MOCK_TENANT_ID): Promise<Prof
       (p) => p.tenant_id === tenantId || p.tenant_id === null,
     );
   }
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("profiles")
@@ -462,7 +529,7 @@ export const getRelianceInsights = cache(async (): Promise<RelianceInsight[]> =>
 
 export const getWorkspaceTasks = cache(async (profileId: string, tenantId = MOCK_TENANT_ID): Promise<WorkspaceTask[]> => {
   if (MOCK_MODE) return getStore().workspaceTasks.filter((t) => t.profile_id === profileId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("workspace_tasks")
@@ -491,7 +558,7 @@ export const getWorkspaceTasks = cache(async (profileId: string, tenantId = MOCK
 
 export const getDocumentAcknowledgments = cache(async (profileId: string, tenantId = MOCK_TENANT_ID): Promise<DocumentAcknowledgment[]> => {
   if (MOCK_MODE) return getStore().documentAcknowledgments.filter((a) => a.profile_id === profileId && a.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("document_acknowledgments")
@@ -536,52 +603,52 @@ export async function latestPredictabilityRun(tenantId = MOCK_TENANT_ID): Promis
 // These reuse the cached list functions, so they don't double-fetch within a render.
 
 export async function getRiskById(id: string): Promise<RiskAssessment | null> {
-  const all = await getRiskAssessments();
+  const all = await getRiskAssessments(await getEffectiveTenantId());
   return all.find((r) => r.id === id) ?? null;
 }
 
 export async function getWasteStreamById(id: string): Promise<WasteStream | null> {
-  const all = await getWasteStreams();
+  const all = await getWasteStreams(await getEffectiveTenantId());
   return all.find((w) => w.id === id) ?? null;
 }
 
 export async function getEquipmentById(id: string): Promise<Equipment | null> {
-  const all = await getEquipment();
+  const all = await getEquipment(await getEffectiveTenantId());
   return all.find((e) => e.id === id) ?? null;
 }
 
 export async function getIncidentById(id: string): Promise<Incident | null> {
-  const all = await getIncidents();
+  const all = await getIncidents(await getEffectiveTenantId());
   return all.find((i) => i.id === id) ?? null;
 }
 
 export async function getCapaById(id: string): Promise<CapaAction | null> {
-  const all = await getCapaActions();
+  const all = await getCapaActions(await getEffectiveTenantId());
   return all.find((c) => c.id === id) ?? null;
 }
 
 export async function getAuditById(id: string): Promise<Audit | null> {
-  const all = await getAudits();
+  const all = await getAudits(await getEffectiveTenantId());
   return all.find((a) => a.id === id) ?? null;
 }
 
 export async function getChemicalById(id: string): Promise<Chemical | null> {
-  const all = await getChemicals();
+  const all = await getChemicals(await getEffectiveTenantId());
   return all.find((c) => c.id === id) ?? null;
 }
 
 export async function getLegalById(id: string): Promise<LegalRequirement | null> {
-  const all = await getLegalRequirements();
+  const all = await getLegalRequirements(await getEffectiveTenantId());
   return all.find((l) => l.id === id) ?? null;
 }
 
 export async function getTrainingRecordById(id: string): Promise<TrainingRecord | null> {
-  const all = await getTrainingRecords();
+  const all = await getTrainingRecords(await getEffectiveTenantId());
   return all.find((r) => r.id === id) ?? null;
 }
 
 export async function getDocumentById(id: string): Promise<Document | null> {
-  const all = await getDocuments();
+  const all = await getDocuments(await getEffectiveTenantId());
   return all.find((d) => d.id === id) ?? null;
 }
 
@@ -589,7 +656,7 @@ export async function getDocumentById(id: string): Promise<Document | null> {
 
 export const getBiosafetyLabs = cache(async (tenantId = MOCK_TENANT_ID): Promise<BiosafetyLab[]> => {
   if (MOCK_MODE) return getStore().biosafetyLabs;
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("biosafety_labs")
@@ -618,7 +685,7 @@ export const getBiosafetyLabs = cache(async (tenantId = MOCK_TENANT_ID): Promise
 
 export const getBiohazardAgents = cache(async (tenantId = MOCK_TENANT_ID): Promise<BiohazardAgent[]> => {
   if (MOCK_MODE) return getStore().biohazardAgents;
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("biohazard_agents")
@@ -653,7 +720,7 @@ export const getBiosafetyIncidents = cache(async (tenantId = MOCK_TENANT_ID): Pr
       i.title?.toLowerCase().includes("exposure")
     );
   }
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("incidents")
@@ -692,7 +759,7 @@ export const getBiosafetyIncidents = cache(async (tenantId = MOCK_TENANT_ID): Pr
 
 export const getErgonomicsWorkstations = cache(async (tenantId = MOCK_TENANT_ID): Promise<ErgonomicsWorkstation[]> => {
   if (MOCK_MODE) return getStore().ergonomicsWorkstations.filter((w) => w.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("ergonomics_workstations")
@@ -721,7 +788,7 @@ export const getErgonomicsWorkstations = cache(async (tenantId = MOCK_TENANT_ID)
 
 export const getErgonomicsJobTasks = cache(async (tenantId = MOCK_TENANT_ID): Promise<ErgonomicsJobTask[]> => {
   if (MOCK_MODE) return getStore().ergonomicsJobTasks.filter((t) => t.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("ergonomics_job_tasks")
@@ -755,7 +822,7 @@ export const getErgonomicsIncidents = cache(async (tenantId = MOCK_TENANT_ID): P
       i.description?.toLowerCase().includes("manual handling")
     );
   }
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("incidents")
@@ -794,7 +861,7 @@ export const getErgonomicsIncidents = cache(async (tenantId = MOCK_TENANT_ID): P
 
 export const getOshaCases = cache(async (tenantId = MOCK_TENANT_ID): Promise<OshaCase[]> => {
   if (MOCK_MODE) return getStore().oshaStore.filter((c) => c.tenant_id === tenantId);
-  const client = sb();
+  const client = await sb();
   if (!client) return [];
   const { data, error } = await client
     .from("osha_cases")

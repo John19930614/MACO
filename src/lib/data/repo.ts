@@ -6,7 +6,7 @@
  */
 import { cache } from "react";
 import { MOCK_MODE } from "@/lib/env";
-import { createServerSupabase } from "@/lib/supabase/server";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { store, nextId, getSessionUserId } from "./store";
 import type {
   CellBundle,
@@ -50,7 +50,7 @@ export interface CellFilter {
 }
 
 async function sb() {
-  return createServerSupabase();
+  return createSupabaseServerClient();
 }
 
 /**

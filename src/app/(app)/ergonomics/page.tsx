@@ -9,7 +9,7 @@ import {
   getErgonomicsIncidents,
   getCapaActions,
 } from "@/lib/data/ehsRepo";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import type { ErgonomicsWorkstation } from "@/lib/types";
 import { ErgonomicsScreening } from "./ErgonomicsScreening";
@@ -69,7 +69,7 @@ function incidentSeverityColor(s: string) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default async function ErgonomicsPage() {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
 
   const [workstations, jobTasks, ergoIncidents, allCapas] = await Promise.all([
     getErgonomicsWorkstations(tenantId),

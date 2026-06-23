@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { getDocumentById, getProfiles } from "@/lib/data/ehsRepo";
 import { PageHeader, Pill } from "@/components/ui/primitives";
 import { EditDocumentForm } from "./EditDocumentForm";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -27,7 +27,7 @@ function fmt(s: string) {
 
 export default async function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
   const [doc, profiles] = await Promise.all([getDocumentById(id), getProfiles(tenantId)]);
   if (!doc) notFound();
 

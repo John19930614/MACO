@@ -6,7 +6,7 @@ import { Pill } from "@/components/ui/primitives";
 import { AuditStatusBadge } from "@/components/ui/badges";
 import { AuditConductForm } from "./AuditConductForm";
 import { AuditReportButton } from "./AuditReportButton";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID, MOCK_TENANTS_ALL } from "@/lib/data/mock";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -30,7 +30,7 @@ function fmt(s: string | null) {
 
 export default async function AuditDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
   const tenantName = MOCK_TENANTS_ALL.find((t) => t.id === tenantId)?.name ?? "Your Company";
   const [audit, profiles, findings] = await Promise.all([
     getAuditById(id),

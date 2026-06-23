@@ -10,7 +10,7 @@ import {
   getWasteStreams, getAuditFindings, getChemicals, getProfiles,
   getOshaCases, getRiskAssessments, getComplianceScores,
 } from "@/lib/data/ehsRepo";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID, MOCK_TENANTS_ALL } from "@/lib/data/mock";
 
 const TREND_BASELINE = [
@@ -78,7 +78,7 @@ export default async function ReportsPage({
 }: {
   searchParams: Promise<{ view?: string }>;
 }) {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
   const tenantName = MOCK_TENANTS_ALL.find((t) => t.id === tenantId)?.name ?? "Your Company";
   const { view } = await searchParams;
   const tab = view ?? "executive";

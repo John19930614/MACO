@@ -3,14 +3,14 @@ import {
   getChemicals, getTrainingCourses, getTrainingRecords, getProfiles,
   getCapaActions, getIncidents, getLegalRequirements, getAudits, getWasteStreams,
 } from "@/lib/data/ehsRepo";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader } from "@/components/ui/primitives";
 import { RunScanButton } from "./RunScanButton";
 import { AmayaDashboard } from "./AmayaDashboard";
 
 export default async function AiPage() {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
   const [
     findings, runs, latestRun,
     chemicals, courses, records, profiles,

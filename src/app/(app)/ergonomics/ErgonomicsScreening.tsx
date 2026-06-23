@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { ShieldCheck, AlertTriangle, Zap, Brain, ChevronRight } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -348,12 +349,12 @@ export function ErgonomicsScreening() {
             <p className="text-[10.5px] text-blue-600 leading-snug">
               Request a Level 2 formal ergonomic assessment through the Audit module. Your EHS Manager will be notified.
             </p>
-            <a
+            <Link
               href="/audits"
               className="mt-2 flex items-center gap-1 text-[10.5px] font-semibold text-blue-700 hover:underline"
             >
               Schedule Level 2 Audit <ChevronRight className="h-3 w-3" />
-            </a>
+            </Link>
           </div>
         )}
       </div>

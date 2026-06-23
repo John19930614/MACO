@@ -1,13 +1,16 @@
-﻿import { getTrainingCourses, getTrainingRecords, getProfiles, getChemicals } from "@/lib/data/ehsRepo";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getTrainingCourses, getTrainingRecords, getProfiles, getChemicals } from "@/lib/data/ehsRepo";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader, Card, CardHeader } from "@/components/ui/primitives";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { GraduationCap } from "lucide-react";
 import { AddTrainingButton } from "./AddTrainingButton";
+import { AddCourseButton } from "./AddCourseButton";
 import { TrainingExportButton } from "./TrainingExportButton";
 import { TrainingDashboard } from "./TrainingDashboard";
 
 export default async function TrainingPage() {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
   const [courses, records, profiles, chemicals] = await Promise.all([
     getTrainingCourses(tenantId),
     getTrainingRecords(tenantId),
@@ -15,7 +18,7 @@ export default async function TrainingPage() {
     getChemicals(tenantId),
   ]);
 
-  // â”€â”€ Analytics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Analytics ────────────────────────────────────────────────────────────────
 
   const activeCourses = courses.filter((c) => c.active);
   const nowMs = Date.now();
@@ -53,7 +56,7 @@ export default async function TrainingPage() {
       cls: "bg-amber-400", txt: "text-amber-700",
     },
     {
-      label: "Expiring 30â€“90d",
+      label: "Expiring 30-90d",
       count: records.filter((r) => {
         if (!r.passed || !r.expiry_date) return false;
         const ms = new Date(r.expiry_date).getTime() - nowMs;
@@ -99,19 +102,28 @@ export default async function TrainingPage() {
         actions={
           <div className="flex gap-2">
             <TrainingExportButton courses={courses} records={records} profiles={profiles} />
+            <AddCourseButton />
             <AddTrainingButton courses={courses} profiles={profiles.filter((p) => p.tenant_id !== null)} />
           </div>
         }
       />
 
       <div className="iq-scroll flex-1 overflow-y-auto p-6">
+        {courses.length === 0 && records.length === 0 ? (
+          <EmptyState
+            icon={<GraduationCap className="h-6 w-6" />}
+            title="No training courses or records yet"
+            description="Add a course or log a training record with the buttons above. SafetyIQ auto-assigns required training from your chemical inventory and tracks certificate expiry."
+          />
+        ) : (
+          <>
 
         {/* Analytics strip */}
         <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
           {/* Pass rate by course */}
           <Card>
-            <CardHeader title="Pass Rate by Course" subtitle="Lowest first Â· active courses" />
+            <CardHeader title="Pass Rate by Course" subtitle="Lowest first · active courses" />
             <div className="space-y-2 px-4 pb-4">
               {courseStats.slice(0, 5).map((c) => (
                 <div key={c.id} className="flex items-center gap-2">
@@ -123,7 +135,7 @@ export default async function TrainingPage() {
                     />
                   </div>
                   <div className={`w-9 text-right text-xs font-bold ${(c.pct ?? 0) >= 80 ? "text-emerald-700" : (c.pct ?? 0) >= 60 ? "text-amber-700" : "text-red-700"}`}>
-                    {c.pct !== null ? `${c.pct}%` : "â€”"}
+                    {c.pct !== null ? `${c.pct}%` : "—"}
                   </div>
                 </div>
               ))}
@@ -148,7 +160,7 @@ export default async function TrainingPage() {
 
           {/* 12-month completion trend */}
           <Card>
-            <CardHeader title="Completions â€” 12 Months" subtitle={`${records.length} total training records`} />
+            <CardHeader title="Completions — 12 Months" subtitle={`${records.length} total training records`} />
             <div className="px-4 pb-4">
               <svg viewBox="0 0 240 56" className="w-full">
                 {months.map((m, i) => {
@@ -177,6 +189,8 @@ export default async function TrainingPage() {
           profiles={profiles}
           chemicals={chemicals}
         />
+          </>
+        )}
       </div>
     </div>
   );

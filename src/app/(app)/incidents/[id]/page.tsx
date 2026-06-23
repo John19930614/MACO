@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { getIncidentById, getCapaActions, getProfiles } from "@/lib/data/ehsRepo";
 import { Card, CardHeader, Pill } from "@/components/ui/primitives";
@@ -38,7 +38,7 @@ function StatusBadge({ s }: { s: string }) {
 
 export default async function IncidentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
 
   const [incident, capas, profiles] = await Promise.all([
     getIncidentById(id),

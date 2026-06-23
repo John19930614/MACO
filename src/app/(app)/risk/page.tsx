@@ -1,10 +1,12 @@
-﻿import {
+import {
   getRiskAssessments, getCapaActions, getComplianceScores,
   getAiFindings, getIncidents, getProfiles, latestPredictabilityRun,
 } from "@/lib/data/ehsRepo";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader, Card, CardHeader } from "@/components/ui/primitives";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ShieldAlert } from "lucide-react";
 import { AddRiskButton } from "./AddRiskButton";
 import { RiskExportButton } from "./RiskExportButton";
 import { RiskDashboard } from "./RiskDashboard";
@@ -21,7 +23,7 @@ function riskBarColor(worstLevel: string): string {
 }
 
 export default async function RiskPage() {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  const tenantId = await getEffectiveTenantId();
   const [assessments, capas, scores, findings, incidents, profiles, latestRun] = await Promise.all([
     getRiskAssessments(tenantId),
     getCapaActions(tenantId),
@@ -32,9 +34,9 @@ export default async function RiskPage() {
     latestPredictabilityRun(tenantId),
   ]);
 
-  // â”€â”€ Analytics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Analytics ────────────────────────────────────────────────────────────────
 
-  // Risk by category â€” count + worst level per category
+  // Risk by category — count + worst level per category
   const byCategory: Record<string, { count: number; worstLevel: string }> = {};
   for (const a of assessments) {
     if (!byCategory[a.category]) byCategory[a.category] = { count: 0, worstLevel: "low" };
@@ -48,17 +50,17 @@ export default async function RiskPage() {
     .sort((a, b) => b.count - a.count);
   const maxCat = Math.max(...catRows.map((r) => r.count), 1);
 
-  // Controls effectiveness â€” assessments with residual scores
+  // Controls effectiveness — assessments with residual scores
   const withResidual = assessments.filter((a) => a.residual_risk_score != null);
   const avgInitial = withResidual.length > 0
     ? Math.round(withResidual.reduce((s, a) => s + a.risk_score, 0) / withResidual.length * 10) / 10 : null;
   const avgResidual = withResidual.length > 0
     ? Math.round(withResidual.reduce((s, a) => s + (a.residual_risk_score ?? 0), 0) / withResidual.length * 10) / 10 : null;
-  const maxScore = 25; // 5Ã—5
+  const maxScore = 25; // 5×5
   const reduction = avgInitial != null && avgResidual != null
     ? Math.round(((avgInitial - avgResidual) / avgInitial) * 100) : null;
 
-  // Owner workload â€” open assessments (active status) by owner
+  // Owner workload — open assessments (active status) by owner
   const profileMap = Object.fromEntries(profiles.map((p) => [p.id, p.display_name]));
   const openByOwner: Record<string, number> = {};
   for (const a of assessments.filter((a) => a.status === "active")) {
@@ -82,13 +84,21 @@ export default async function RiskPage() {
         }
       />
       <div className="iq-scroll flex-1 overflow-y-auto p-6">
+        {assessments.length === 0 ? (
+          <EmptyState
+            icon={<ShieldAlert className="h-6 w-6" />}
+            title="No risk assessments yet"
+            description="Add your first risk assessment with the button above. SafetyIQ scores likelihood × consequence, tracks residual risk after controls, and links high risks to CAPAs."
+          />
+        ) : (
+          <>
 
         {/* Analytics strip */}
         <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
 
           {/* Risk by category */}
           <Card>
-            <CardHeader title="Risk by Category" subtitle="Count Â· worst level shown" />
+            <CardHeader title="Risk by Category" subtitle="Count · worst level shown" />
             <div className="space-y-2 px-4 pb-4">
               {catRows.map((r) => (
                 <div key={r.cat} className="flex items-center gap-2">
@@ -190,6 +200,8 @@ export default async function RiskPage() {
           profiles={profiles}
           latestRun={latestRun}
         />
+          </>
+        )}
       </div>
     </div>
   );
