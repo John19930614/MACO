@@ -8,6 +8,7 @@ import { getServerTenantId, getServerProfileId } from "@/lib/auth/session";
 import { MOCK_MODE, serverSecrets } from "@/lib/env";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { PROGRAM_DEFS, generateProgram, type SourceBlock } from "@/lib/ai/programBuilder";
+import { KIND_DEFS, extractRows, type RowKind } from "@/lib/ai/extractDocuments";
 import type { Severity, IncidentType, CapaStatus, AuditStatus, DocumentStatus } from "@/lib/constants";
 import { COMPLIANCE_STATUS_META, type ComplianceStatus } from "@/lib/constants";
 import type { CapaSourceType, AuditType, Incident, RiskAssessment, WasteStream, Equipment, LegalRequirement, TrainingRecord, OshaCase, AiFinding, Chemical, AiAnalysisOutput } from "@/lib/types";
@@ -1788,4 +1789,100 @@ export async function buildProgramFromDocs(programKey: string) {
   revalidatePath("/documents");
   revalidatePath("/legal");
   return { ok: true as const, title: def.title, sections: sections.length, grounded: sourcePaths.length };
+}
+
+// ── Ongoing Document Import → staging review queue ─────────────────────────────
+// Extracts rows from uploaded files into a staging queue (NOT live tables).
+// Each row is dedup-checked against existing records; a human accepts/rejects.
+
+interface StagedRow {
+  id: string; row_kind: string; candidate: Record<string, unknown>; label: string;
+  source_name: string | null; status: string; dedup_of: string | null; dedup_note: string | null; created_at: string;
+}
+
+export async function getStagedRows(): Promise<StagedRow[]> {
+  if (MOCK_MODE) return [];
+  const ctx = await getCtx();
+  if (!ctx) return [];
+  const { data } = await ctx.client
+    .from("document_staged_rows")
+    .select("id, row_kind, candidate, label, source_name, status, dedup_of, dedup_note, created_at")
+    .eq("tenant_id", ctx.tenantId).eq("status", "staged")
+    .order("created_at", { ascending: false });
+  return (data as StagedRow[] | null) ?? [];
+}
+
+export async function stageDocumentImport(kind: RowKind, files: { name: string; path: string }[]) {
+  if (MOCK_MODE) return { ok: false as const, error: "Import runs in live mode only." };
+  const ctx = await getCtx();
+  if (!ctx) return { ok: false as const, error: "Session expired — please reload." };
+  const def = KIND_DEFS[kind];
+  if (!def) return { ok: false as const, error: "Unknown document type." };
+  const { serviceRoleKey } = serverSecrets();
+  if (!serviceRoleKey) return { ok: false as const, error: "Import needs the service-role key configured." };
+  const svc = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey, { auth: { persistSession: false } });
+
+  // Existing live records → dedup keys
+  const existing = kind === "chemical" ? await getChemicals(ctx.tenantId)
+    : kind === "waste" ? await getWasteStreams(ctx.tenantId)
+    : await getLegalRequirements(ctx.tenantId);
+  const existingKeys = new Map(existing.map((e) => [def.dedupKey(e as unknown as Record<string, unknown>), e.id]));
+
+  const staged: Record<string, unknown>[] = [];
+  let emptyFiles = 0;
+  for (const f of files) {
+    let source: SourceBlock | null = null;
+    try {
+      const { data: blob } = await svc.storage.from("client-documents").download(f.path);
+      if (blob) {
+        if (f.name.toLowerCase().endsWith(".pdf")) source = { name: f.name, base64: Buffer.from(await blob.arrayBuffer()).toString("base64"), mimeType: "application/pdf" };
+        else source = { name: f.name, text: await blob.text() };
+      }
+    } catch { /* unreadable */ }
+    if (!source) { emptyFiles++; continue; }
+    const rows = await extractRows(kind, [source]);
+    if (rows.length === 0) { emptyFiles++; continue; }
+    for (const r of rows) {
+      const dup = existingKeys.get(def.dedupKey(r)) ?? null;
+      staged.push({
+        tenant_id: ctx.tenantId, site_id: ctx.siteId, row_kind: kind, candidate: r, label: def.label(r),
+        source_name: f.name, source_path: f.path, status: "staged",
+        dedup_of: dup, dedup_note: dup ? "Matches an existing record — review before accepting" : null,
+      });
+    }
+  }
+  if (staged.length === 0) {
+    return { ok: true as const, staged: 0, dupes: 0, note: emptyFiles > 0 ? "No rows extracted — files had no readable content." : "No rows found." };
+  }
+  const { error } = await ctx.client.from("document_staged_rows").insert(staged);
+  if (error) return { ok: false as const, error: error.message };
+  revalidatePath("/documents/import");
+  return { ok: true as const, staged: staged.length, dupes: staged.filter((s) => s.dedup_of).length };
+}
+
+export async function approveStagedRow(id: string) {
+  if (MOCK_MODE) return { ok: false as const, error: "Live mode only." };
+  const ctx = await getCtx();
+  if (!ctx) return { ok: false as const, error: "Session expired — please reload." };
+  const { data: row } = await ctx.client.from("document_staged_rows").select("*").eq("id", id).eq("tenant_id", ctx.tenantId).single();
+  if (!row) return { ok: false as const, error: "Row not found." };
+  if (row.status !== "staged") return { ok: false as const, error: "Already reviewed." };
+  const def = KIND_DEFS[row.row_kind as RowKind];
+  if (!def) return { ok: false as const, error: "Unknown document type." };
+  const live = def.toLive(row.candidate as Record<string, unknown>, { tenantId: ctx.tenantId, siteId: ctx.siteId, createdBy: ctx.profileId });
+  const { error } = await ctx.client.from(def.table).insert(live);
+  if (error) return { ok: false as const, error: error.message };
+  await ctx.client.from("document_staged_rows").update({ status: "approved", reviewed_at: new Date().toISOString() }).eq("id", id).eq("tenant_id", ctx.tenantId);
+  revalidatePath("/documents/import");
+  revalidatePath("/chemicals"); revalidatePath("/waste"); revalidatePath("/legal"); revalidatePath("/dashboard");
+  return { ok: true as const };
+}
+
+export async function rejectStagedRow(id: string) {
+  if (MOCK_MODE) return { ok: false as const, error: "Live mode only." };
+  const ctx = await getCtx();
+  if (!ctx) return { ok: false as const, error: "Session expired — please reload." };
+  await ctx.client.from("document_staged_rows").update({ status: "rejected", reviewed_at: new Date().toISOString() }).eq("id", id).eq("tenant_id", ctx.tenantId);
+  revalidatePath("/documents/import");
+  return { ok: true as const };
 }

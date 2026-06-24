@@ -90,6 +90,12 @@ export default async function DocumentsPage({
         actions={
           <div className="flex gap-2">
             <DocumentsExportButton documents={docs} profiles={profiles} />
+            <Link
+              href="/documents/import"
+              className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+            >
+              Import Documents
+            </Link>
             <DocumentGeneratorButton chemicals={chemicals} profiles={profiles} />
             <AddDocumentButton profiles={profiles} />
           </div>
