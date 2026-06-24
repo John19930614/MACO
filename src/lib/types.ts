@@ -53,6 +53,86 @@ export interface Profile {
   active: boolean;
 }
 
+// ── Platform Admin (Reliance superadmin / SA console) ─────────────────────────
+// Backed by the platform tables (RLS = is_reliance_admin() only). A superadmin is
+// a Profile with tenant_id IS NULL.
+
+export interface Subscription {
+  id: string;
+  tenant_id: string;
+  plan: string;
+  status: string;
+  mrr: number;
+  seats: number;
+  started_at: string | null;
+  renews_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SupportTicket {
+  id: string;
+  tenant_id: string;
+  subject: string;
+  body: string;
+  status: string;
+  priority: string;
+  requester: string | null;
+  assignee: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Guardrail {
+  id: string;
+  key: string;
+  label: string;
+  enabled: boolean;
+  threshold: number | null;
+  notes: string | null;
+  updated_at: string;
+}
+
+export interface GlobalLegalItem {
+  id: string;
+  regulation_ref: string;
+  title: string;
+  jurisdiction: string;
+  category: string;
+  description: string | null;
+  applies_to: string[];
+  created_at: string;
+}
+
+export interface ImportJob {
+  id: string;
+  tenant_id: string;
+  kind: string;
+  filename: string;
+  row_count: number;
+  status: string;
+  created_at: string;
+}
+
+export interface TenantSummary {
+  id: string;
+  name: string;
+  slug: string;
+  sector: string;
+  country: string;
+  impl_status: string | null;
+  onboarding_completed_at: string | null;
+  created_at: string;
+}
+
+export interface TenantDetail {
+  tenant: TenantSummary;
+  profiles: Profile[];
+  subscription: Subscription | null;
+  counts: Record<string, number>;
+}
+
 export interface Site {
   id: string;
   tenant_id: string;
