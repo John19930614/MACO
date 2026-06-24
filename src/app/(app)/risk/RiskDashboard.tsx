@@ -743,7 +743,7 @@ export function RiskDashboard({ assessments, capas, scores, findings, incidents,
   const low     = assessments.filter((r) => r.risk_level === "negligible" || r.risk_level === "low").length;
 
   const overall = scores.length > 0
-    ? Math.round(scores.reduce((s, c) => s + c.percentage, 0) / scores.length) : 72;
+    ? Math.round(scores.reduce((s, c) => s + c.percentage, 0) / scores.length) : 0;
   const forecast = latestRun?.forecast_data?.predicted_compliance_score_30d;
   const trend    = latestRun?.forecast_data?.compliance_trend ?? "stable";
 

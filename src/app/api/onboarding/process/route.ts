@@ -763,7 +763,7 @@ async function processSOPs(files: UploadedFile[], tenantId: string) {
 // ── OSHA 300/300A/301 Log processor ──────────────────────────────────────────
 // Parses historical injury/illness logs → incidents table
 
-async function processOshaLogs(files: UploadedFile[], tenantId: string, siteId: string, userId: string) {
+async function processOshaLogs(files: UploadedFile[], tenantId: string, siteId: string | null, userId: string) {
   const schema: Anthropic.Tool.InputSchema = {
     type: "object", required: ["items"], additionalProperties: false,
     properties: {
@@ -881,7 +881,7 @@ async function processOrgChart(files: UploadedFile[], tenantId: string) {
 // ── Equipment Register processor ──────────────────────────────────────────────
 // Parses equipment/calibration spreadsheets → equipment table (monitoring module)
 
-async function processEquipmentRegister(files: UploadedFile[], tenantId: string, siteId: string) {
+async function processEquipmentRegister(files: UploadedFile[], tenantId: string, siteId: string | null) {
   const schema: Anthropic.Tool.InputSchema = {
     type: "object", required: ["items"], additionalProperties: false,
     properties: {
@@ -949,7 +949,7 @@ async function processEquipmentRegister(files: UploadedFile[], tenantId: string,
 // ── Past Audit Reports processor ──────────────────────────────────────────────
 // Parses PDF audit reports → audits + audit_findings (+ triggers CAPA for open items)
 
-async function processAuditReports(files: UploadedFile[], tenantId: string, siteId: string, userId: string) {
+async function processAuditReports(files: UploadedFile[], tenantId: string, siteId: string | null, userId: string) {
   if (files.length === 0) return { audits: 0, findings: 0 };
   if (!hasLiveAi()) return { audits: 0, findings: 0 };
 
@@ -1592,7 +1592,7 @@ async function processIHMonitoring(files: UploadedFile[], tenantId: string) {
 // ── Near-Miss / First-Aid Log processor ──────────────────────────────────────
 // Parses historical near-miss and first-aid logs → incidents table
 
-async function processNearMissLog(files: UploadedFile[], tenantId: string, siteId: string, userId: string) {
+async function processNearMissLog(files: UploadedFile[], tenantId: string, siteId: string | null, userId: string) {
   const schema: Anthropic.Tool.InputSchema = {
     type: "object", required: ["items"], additionalProperties: false,
     properties: {
@@ -1670,7 +1670,7 @@ export async function POST(req: NextRequest) {
   if (!profile?.tenant_id) return NextResponse.json({ error: "no_tenant" }, { status: 403 });
 
   const tenantId = profile.tenant_id as string;
-  const siteId   = (profile.default_site_id as string | null) ?? "";
+  const siteId   = (profile.default_site_id as string | null) ?? null;
   const userId   = user.id;
 
   let uploads: UploadMap;
