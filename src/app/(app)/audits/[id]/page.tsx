@@ -1,13 +1,12 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Calendar, ClipboardCheck } from "lucide-react";
-import { getAuditById, getProfiles, getAuditFindings } from "@/lib/data/ehsRepo";
+import { getAuditById, getProfiles, getAuditFindings, getTenantName } from "@/lib/data/ehsRepo";
 import { Pill } from "@/components/ui/primitives";
 import { AuditStatusBadge } from "@/components/ui/badges";
 import { AuditConductForm } from "./AuditConductForm";
 import { AuditReportButton } from "./AuditReportButton";
 import { getEffectiveTenantId } from "@/lib/auth/session";
-import { MOCK_TENANT_ID, MOCK_TENANTS_ALL } from "@/lib/data/mock";
 
 const TYPE_LABEL: Record<string, string> = {
   internal: "Internal", external: "External", regulatory: "Regulatory",
@@ -31,8 +30,8 @@ function fmt(s: string | null) {
 export default async function AuditDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const tenantId = await getEffectiveTenantId();
-  const tenantName = MOCK_TENANTS_ALL.find((t) => t.id === tenantId)?.name ?? "Your Company";
-  const [audit, profiles, findings] = await Promise.all([
+  const [tenantName, audit, profiles, findings] = await Promise.all([
+    getTenantName(tenantId),
     getAuditById(id),
     getProfiles(tenantId),
     getAuditFindings(tenantId),

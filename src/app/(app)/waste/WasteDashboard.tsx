@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import type { WasteStream, Chemical } from "@/lib/types";
 import { Card, CardHeader, Pill, Stat } from "@/components/ui/primitives";
+import { MOCK_MODE } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -88,7 +89,7 @@ interface StorageArea {
   containers: { id: string; type: string; vol: string; code: string; filled: string }[];
 }
 
-const STORAGE_AREAS: StorageArea[] = [
+const STORAGE_AREAS: StorageArea[] = MOCK_MODE ? [
   {
     id: "sa-001", name: "Chemical SAA — Lab A", room: "Room 112", type: "Satellite Accumulation Area",
     capacity: "55 gal / 208 L", fill: 42, contents: ["F001 Halogenated solvents", "D001 Ignitable waste"],
@@ -121,7 +122,7 @@ const STORAGE_AREAS: StorageArea[] = [
       { id: "CTR-2026-005", type: "5-gal carboy", vol: "3.2 L",  code: "D002", filled: "2026-05-28" },
     ],
   },
-];
+] : [];
 
 // ── Vendor mock data ──────────────────────────────────────────────────────────
 
@@ -135,7 +136,7 @@ interface Vendor {
   disposalCertCount: number;
 }
 
-const VENDORS: Vendor[] = [
+const VENDORS: Vendor[] = MOCK_MODE ? [
   {
     id: "v-001", name: "Clean Harbors", specialty: "Hazardous Waste Disposal",
     license: "NJ-HW-2024-0142", dot: true, contact: "Regional Account Mgr",
@@ -169,7 +170,7 @@ const VENDORS: Vendor[] = [
     restrictions: ["No reactive waste (D003)", "Pre-notification required for pH < 2 aqueous waste"],
     disposalCertCount: 5,
   },
-];
+] : [];
 
 // ── Inspection mock data ──────────────────────────────────────────────────────
 
@@ -187,7 +188,7 @@ interface WasteInspection {
   repeatFindings: string[];
 }
 
-const INSPECTIONS: WasteInspection[] = [
+const INSPECTIONS: WasteInspection[] = MOCK_MODE ? [
   {
     id: "INS-2026-022", area: "Chemical SAA — Lab A", areaType: "SAA",
     date: "2026-06-18", inspector: "Maria Lopez",
@@ -251,19 +252,19 @@ const INSPECTIONS: WasteInspection[] = [
     photoCount: 4,
     repeatFindings: ["Secondary containment deficiency previously noted in INS-2025-015 — repeat finding, escalated to major"],
   },
-];
+] : [];
 
 // ── Compliance / Training mock data ───────────────────────────────────────────
 
-const WASTE_TRAINING = [
+const WASTE_TRAINING = MOCK_MODE ? [
   { role: "EHS Manager",            modules: ["RCRA Overview", "Waste Determination", "Manifest / LDR", "DOT Hazmat", "CAPA & Inspections"], status: "current", due: "2027-03-15" },
   { role: "Lab Supervisor",         modules: ["SAA/CAA Rules", "Labeling Requirements", "Spill Response", "Compatibility Matrix"], status: "current", due: "2027-01-10" },
   { role: "Generator (Lab Staff)",  modules: ["SAA Awareness", "Container Labeling", "Spill Kit Use"], status: "gap", due: "2026-07-30" },
   { role: "Facilities / Dock",      modules: ["DOT Hazmat Shipping", "Manifest Handling", "Emergency Response"], status: "current", due: "2026-11-20" },
   { role: "Procurement",            modules: ["Waste Vendor Approval", "Manifest Chain of Custody"], status: "gap", due: "2026-08-01" },
-];
+] : [];
 
-const COMPLIANCE_TASKS = [
+const COMPLIANCE_TASKS = MOCK_MODE ? [
   { title: "Weekly SAA Inspection",             due: "2026-06-27", freq: "Weekly",   status: "scheduled", authority: "EPA 40 CFR §262.16",  submissionStatus: "pending"   as const, evidenceRequired: "Signed inspection checklist on file" },
   { title: "Large Generator Annual Inspection", due: "2026-07-15", freq: "Annual",   status: "overdue",   authority: "EPA 40 CFR §262.41",  submissionStatus: "pending"   as const, evidenceRequired: "Inspector report + CAPA resolution evidence" },
   { title: "Annual WMP Review",                 due: "2026-12-31", freq: "Annual",   status: "scheduled", authority: "Internal",             submissionStatus: "scheduled" as const, evidenceRequired: "Leadership sign-off document (all 3 reviewers)" },
@@ -274,15 +275,15 @@ const COMPLIANCE_TASKS = [
   { title: "TRI Form R Annual Submission",       due: "2027-07-01", freq: "Annual",   status: "scheduled", authority: "EPCRA §313",           submissionStatus: "scheduled" as const, evidenceRequired: "EPA TRI-ME e-submission ID" },
   { title: "HMBP Update — Hazardous Materials Business Plan", due: "2026-09-30", freq: "Annual", status: "scheduled", authority: "NJ Admin. Code 7:1E", submissionStatus: "scheduled" as const, evidenceRequired: "Certified program submission to CUPA / OES" },
   { title: "CUPA Biennial Compliance Inspection Report",      due: "2026-08-31", freq: "Biennial", status: "scheduled", authority: "NJ DEP",  submissionStatus: "scheduled" as const, evidenceRequired: "CUPA inspection report and signed attestation letter" },
-];
+] : [];
 
 // ── Spill kit and EPCRA threshold data (BL-WMP-12) ──────────────────────────
 
-const SPILL_KIT_AREAS = [
+const SPILL_KIT_AREAS = MOCK_MODE ? [
   { area: "Chemical SAA — Lab A",               kit: "Chemical Spill Kit (small)", location: "Lab A corridor, outside Room 112", lastInspected: "2026-06-18", status: "ok"        as const },
   { area: "Biosafety SAA — Lab B",              kit: "Biohazard Spill Kit",        location: "Lab B Room 205, cabinet B-3",       lastInspected: "2026-06-15", status: "ok"        as const },
   { area: "Central Accumulation — Loading Dock", kit: "Large Chemical Spill Kit",  location: "Loading Dock Bay 1, wall mount N",  lastInspected: "2026-06-10", status: "attention" as const },
-];
+] : [];
 
 const EPCRA_THRESHOLDS = [
   { chemical: "Chloroform (F001 component)",       cas: "67-66-3",   qty: "~5 kg",  threshold: "10 lbs / ~4.5 kg",         program: "TRI (EPCRA §313)",    flagged: true  },
@@ -301,7 +302,7 @@ interface StreamDetail {
   versions: StreamVersion[];
 }
 
-const STREAM_DETAILS: StreamDetail[] = [
+const STREAM_DETAILS: StreamDetail[] = MOCK_MODE ? [
   {
     code: "F001", sourceProcess: "Column chromatography solvent recovery — Lab A",
     owner: "Dr. Kim Park — Lab Supervisor", location: "Lab A, Room 112",
@@ -351,9 +352,9 @@ const STREAM_DETAILS: StreamDetail[] = [
       { version: "v1.0", date: "2026-06-01", reviewer: null, change: "AI draft — EHS review required before approval" },
     ],
   },
-];
+] : [];
 
-const RETIRED_STREAMS = [
+const RETIRED_STREAMS = MOCK_MODE ? [
   {
     name: "Spent Acetone Waste", code: "F003-PRIOR", retiredDate: "2026-03-01",
     supersededBy: "Non-Halogenated Solvents Waste (F003)" as string | null,
@@ -364,7 +365,7 @@ const RETIRED_STREAMS = [
     supersededBy: null as string | null,
     reason: "Pilot study concluded. Waste stream closed — no ongoing generation confirmed.",
   },
-];
+] : [];
 
 // ── Labels & Compatibility mock data (BL-WMP-07 + BL-WMP-08) ─────────────────
 
@@ -377,7 +378,7 @@ interface LabelContainer {
   photoCount: number;
 }
 
-const LABEL_CONTAINERS: LabelContainer[] = [
+const LABEL_CONTAINERS: LabelContainer[] = MOCK_MODE ? [
   {
     id: "CTR-2026-001", area: "Chemical SAA — Lab A", code: "F001",
     contents: "Halogenated Solvents", hazards: ["Flammable", "Harmful"],
@@ -415,7 +416,7 @@ const LABEL_CONTAINERS: LabelContainer[] = [
     missing: ["Contents description not present", "Hazard class not displayed", "Generator information missing"],
     condition: "damaged", photoCount: 1,
   },
-];
+] : [];
 
 interface CompatPair {
   a: string; classA: string; b: string; classB: string;
@@ -464,7 +465,7 @@ interface Capa {
   evidence: string | null; notes: string;
 }
 
-const CAPAS: Capa[] = [
+const CAPAS: Capa[] = MOCK_MODE ? [
   {
     id: "CAP-2026-041",
     title: "CTR-2026-001 — Accumulation start date missing from physical label",
@@ -497,7 +498,7 @@ const CAPAS: Capa[] = [
     status: "in_progress", evidence: null,
     notes: "Auto-generated from SPL-2026-001. Secondary containment performed correctly — no release to environment. Action: update SAA handling SOP and schedule Lab A spill response refresher training.",
   },
-];
+] : [];
 
 // ── Profile Pipeline mock data (BL-WMP-04 + BL-WMP-05) ──────────────────────
 
@@ -508,13 +509,13 @@ interface ProfileReviewItem {
   version: string; aiGenerated: boolean; confidence: number | null;
 }
 
-const PROFILE_PIPELINE: ProfileReviewItem[] = [
+const PROFILE_PIPELINE: ProfileReviewItem[] = MOCK_MODE ? [
   { streamId: "ws-1", name: "Halogenated Solvents Waste",       code: "F001", state: "active",     reviewer: "Maria Lopez",  submittedDate: "2026-04-01", approvedDate: "2026-04-02", version: "v2.1", aiGenerated: true,  confidence: 94 },
   { streamId: "ws-2", name: "Ignitable Waste — Lab A",           code: "D001", state: "approved",   reviewer: "Maria Lopez",  submittedDate: "2026-05-18", approvedDate: "2026-05-19", version: "v1.0", aiGenerated: true,  confidence: 88 },
   { streamId: "ws-3", name: "Biohazardous / Infectious Waste",   code: "BW-001", state: "active",   reviewer: "Dr. Kim Park", submittedDate: "2026-06-08", approvedDate: "2026-06-09", version: "v1.2", aiGenerated: false, confidence: null },
   { streamId: "ws-4", name: "Non-Halogenated Solvents Waste",    code: "F003", state: "ehs_review", reviewer: "Maria Lopez",  submittedDate: "2026-06-15", approvedDate: null,          version: "v1.1", aiGenerated: true,  confidence: 81 },
   { streamId: "ws-5", name: "Corrosive Waste — Loading Dock",    code: "D002", state: "draft",      reviewer: null,           submittedDate: null,          approvedDate: null,          version: "v1.0", aiGenerated: true,  confidence: 76 },
-];
+] : [];
 
 // ── Pickup Requests + Readiness mock data (BL-WMP-10) ────────────────────────
 
@@ -1368,6 +1369,13 @@ export function WasteDashboard({
                       </td>
                     </tr>
                   ))}
+                  {PROFILE_PIPELINE.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-400">
+                        No waste profiles in review — draft a profile to populate this pipeline.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1561,6 +1569,13 @@ export function WasteDashboard({
                       <td className="px-4 py-3 text-xs text-slate-500">{r.reason}</td>
                     </tr>
                   ))}
+                  {RETIRED_STREAMS.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-400">
+                        No retired or superseded streams.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

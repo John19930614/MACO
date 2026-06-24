@@ -3,20 +3,21 @@
 import { useState } from "react";
 import { DarkPageHeader, DarkCard, DarkCardHeader, Pill } from "@/components/ui/primitives";
 import { CreditCard, Building2, TrendingUp, DollarSign, Download, Plus, X } from "lucide-react";
+import { MOCK_MODE } from "@/lib/env";
 
 interface Subscription {
   company: string; plan: string; users: number; mrr: number;
   status: string; next_billing: string; start: string;
 }
 
-const INITIAL_SUBS: Subscription[] = [
+const MOCK_SUBS: Subscription[] = [
   { company: "BioStar Research Inc.",  plan: "Professional", users: 14, mrr: 1400, status: "active", next_billing: "2026-07-01", start: "2026-03-01" },
   { company: "Nexgen Pharma Ltd.",     plan: "Enterprise",   users: 22, mrr: 2850, status: "active", next_billing: "2026-07-01", start: "2025-11-15" },
   { company: "LabCore Diagnostics",    plan: "Starter",      users: 8,  mrr: 590,  status: "active", next_billing: "2026-07-01", start: "2026-05-01" },
   { company: "MedTech Solutions",      plan: "Professional", users: 11, mrr: 1100, status: "trial",  next_billing: "2026-07-10", start: "2026-06-10" },
 ];
 
-const INITIAL_TXN = [
+const MOCK_TXN = [
   { company: "Nexgen Pharma Ltd.",    amount: 2850, date: "2026-06-01", type: "Monthly", status: "paid" },
   { company: "BioStar Research Inc.", amount: 1400, date: "2026-06-01", type: "Monthly", status: "paid" },
   { company: "LabCore Diagnostics",   amount: 590,  date: "2026-06-01", type: "Monthly", status: "paid" },
@@ -169,7 +170,7 @@ function ManageModal({ sub, onClose, onSave }: { sub: Subscription; onClose: () 
   );
 }
 
-function exportCSV(transactions: typeof INITIAL_TXN) {
+function exportCSV(transactions: typeof MOCK_TXN) {
   const rows = [
     ["Company", "Amount", "Date", "Type", "Status"],
     ...transactions.map(t => [t.company, t.amount > 0 ? `$${t.amount}` : "—", t.date, t.type, t.status]),
@@ -182,8 +183,9 @@ function exportCSV(transactions: typeof INITIAL_TXN) {
 }
 
 export default function BillingPage() {
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>(INITIAL_SUBS);
-  const [transactions, setTransactions]   = useState(INITIAL_TXN);
+  // No billing backend yet — demo data only in MOCK_MODE; empty in production.
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>(MOCK_MODE ? MOCK_SUBS : []);
+  const [transactions, setTransactions]   = useState<typeof MOCK_TXN>(MOCK_MODE ? MOCK_TXN : []);
   const [showAddClient, setShowAddClient] = useState(false);
   const [managing, setManaging]           = useState<Subscription | null>(null);
   const [toast, setToast]                 = useState("");
@@ -228,7 +230,7 @@ export default function BillingPage() {
       <div className="flex-1 overflow-y-auto p-5">
         <div className="mb-5 grid grid-cols-4 gap-4">
           {[
-            { label: "Monthly Recurring Revenue", value: `$${totalMrr.toLocaleString()}`, sub: "+$590 from LabCore", color: "text-emerald-400", bg: "bg-emerald-900/20 border-emerald-800/50" },
+            { label: "Monthly Recurring Revenue", value: `$${totalMrr.toLocaleString()}`, sub: "Active subscriptions", color: "text-emerald-400", bg: "bg-emerald-900/20 border-emerald-800/50" },
             { label: "Active Clients", value: String(subscriptions.filter(s => s.status === "active").length), sub: `${subscriptions.filter(s => s.status === "trial").length} on trial`, color: "text-blue-400", bg: "bg-blue-900/20 border-blue-800/50" },
             { label: "Total Users Billed", value: totalUsers.toString(), sub: "Across all plans", color: "text-purple-300", bg: "bg-purple-900/20 border-purple-800/50" },
             { label: "ARR (Projected)", value: `$${(totalMrr * 12).toLocaleString()}`, sub: "Based on current MRR", color: "text-amber-400", bg: "bg-amber-900/20 border-amber-800/50" },
@@ -255,6 +257,13 @@ export default function BillingPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
+                    {subscriptions.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">
+                          No subscriptions yet — this view will populate once billing is connected.
+                        </td>
+                      </tr>
+                    )}
                     {subscriptions.map(s => (
                       <tr key={s.company} className="hover:bg-white/4">
                         <td className="px-4 py-2.5 text-xs font-medium text-white">{s.company}</td>
@@ -298,6 +307,13 @@ export default function BillingPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
+                    {transactions.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-400">
+                          No transactions yet.
+                        </td>
+                      </tr>
+                    )}
                     {transactions.map((t, i) => (
                       <tr key={i} className="hover:bg-white/4">
                         <td className="px-4 py-2.5 text-xs text-slate-200">{t.company}</td>

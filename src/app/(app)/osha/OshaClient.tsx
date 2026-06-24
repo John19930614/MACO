@@ -6,22 +6,20 @@ import { PageHeader, Card, CardHeader, Stat, Pill } from "@/components/ui/primit
 import { X, Download, AlertTriangle, Printer, ChevronDown, ChevronUp, ExternalLink, Plus } from "lucide-react";
 import type { OshaCase, OshaClassification, OshaInjuryType, Incident } from "@/lib/types";
 import { addOshaCaseToStore } from "@/lib/actions/ehs";
-import { useDemoUser } from "@/lib/context/demo-user";
 import { OSHA_FTE, OSHA_HOURS_WORKED, OSHA_DART_BENCHMARK } from "@/lib/osha";
 
-const EST_DEFAULTS = {
-  ein:       "47-1234567",
-  street:    "1200 Discovery Drive",
-  city:      "Biopark",
-  state:     "CA",
-  zip:       "94103",
-  naics:     "541711",
-  industry:  "R&D Biotechnology",
-  employees: OSHA_FTE,
-  hours:     OSHA_HOURS_WORKED,
-  benchDart: OSHA_DART_BENCHMARK,
+// OSHA recordkeeping rate constants are real; establishment identity comes from the
+// live tenant/onboarding profile. Fields with no live source render blank (user fills).
+type EstInfo = {
+  name: string; ein: string; street: string; city: string; state: string; zip: string;
+  naics: string; industry: string; employees: number; hours: number; benchDart: number;
+  ehsContact: string;
 };
-type EstInfo = typeof EST_DEFAULTS & { name: string };
+interface EstablishmentProp {
+  name: string; industry: string | null; siteName: string | null; state: string | null;
+  country: string | null; contactName: string | null; contactTitle: string | null;
+  contactEmail: string | null; contactPhone: string | null;
+}
 
 const CLASS_LABEL: Record<OshaClassification, string> = {
   days_away:        "Days Away",
@@ -395,9 +393,9 @@ function Report301({ c, onClose, est: EST }: { c: OshaCase; onClose: () => void;
             <div className="grid grid-cols-2 gap-3">
               {[
                 { label: "Establishment Name", value: EST.name },
-                { label: "Address", value: `${EST.street}, ${EST.city}, ${EST.state} ${EST.zip}` },
-                { label: "NAICS", value: `${EST.naics} — ${EST.industry}` },
-                { label: "EHS Contact", value: "Sarah Mitchell, EHS Manager" },
+                { label: "Address", value: [EST.street, EST.city, EST.state, EST.zip].filter(Boolean).join(", ") || "—" },
+                { label: "NAICS", value: [EST.naics, EST.industry].filter(Boolean).join(" — ") || "—" },
+                { label: "EHS Contact", value: EST.ehsContact },
               ].map(f => (
                 <div key={f.label} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5">
                   <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{f.label}</div>
@@ -1020,8 +1018,8 @@ function TrendsTab({ cases, incidents }: { cases: OshaCase[]; incidents: Inciden
   const erCases          = cases.filter(c => c.treatmentER).length;
   const hospitalCases    = cases.filter(c => c.treatmentHospitalized).length;
   const severeCases      = cases.filter(c => c.isSevereInjury).length;
-  const dart = (((cases.filter(c => c.classification === "days_away" || c.classification === "restricted").length) / EST_DEFAULTS.hours) * 200000);
-  const trir = ((cases.length / EST_DEFAULTS.hours) * 200000);
+  const dart = (((cases.filter(c => c.classification === "days_away" || c.classification === "restricted").length) / OSHA_HOURS_WORKED) * 200000);
+  const trir = ((cases.length / OSHA_HOURS_WORKED) * 200000);
 
   return (
     <div className="space-y-5">
@@ -1029,7 +1027,7 @@ function TrendsTab({ cases, incidents }: { cases: OshaCase[]; incidents: Inciden
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
           { label: "TRIR", value: trir.toFixed(2), hint: "Total Recordable Incident Rate per 100 FTE" },
-          { label: "DART Rate", value: dart.toFixed(2), hint: `Days Away, Restricted, Transfer per 100 FTE · Industry avg ${EST_DEFAULTS.benchDart}` },
+          { label: "DART Rate", value: dart.toFixed(2), hint: `Days Away, Restricted, Transfer per 100 FTE · Industry avg ${OSHA_DART_BENCHMARK}` },
           { label: "Total Lost Days", value: String(daysAwayTotal + daysRestTotal), hint: `${daysAwayTotal} away + ${daysRestTotal} restricted` },
           { label: "Severe Injuries", value: String(severeCases), hint: `${erCases} ER · ${hospitalCases} hospitalized` },
         ].map(s => (
@@ -1198,9 +1196,21 @@ function TrendsTab({ cases, incidents }: { cases: OshaCase[]; incidents: Inciden
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function OshaClient({ initialCases, incidents = [] }: { initialCases: OshaCase[]; incidents?: Incident[] }) {
-  const { user } = useDemoUser();
-  const EST: EstInfo = { name: user.company, ...EST_DEFAULTS };
+export function OshaClient({ initialCases, incidents = [], establishment, tenantId }: { initialCases: OshaCase[]; incidents?: Incident[]; establishment: EstablishmentProp; tenantId: string }) {
+  const EST: EstInfo = {
+    name:      establishment.name,
+    ein:       "",
+    street:    "",
+    city:      establishment.siteName ?? "",
+    state:     establishment.state ?? "",
+    zip:       "",
+    naics:     "",
+    industry:  establishment.industry ?? "",
+    employees: OSHA_FTE,
+    hours:     OSHA_HOURS_WORKED,
+    benchDart: OSHA_DART_BENCHMARK,
+    ehsContact: [establishment.contactName, establishment.contactTitle].filter(Boolean).join(", ") || "—",
+  };
 
   const [cases, setCases]           = useState(initialCases);
   const [showModal, setShowModal]   = useState(false);
@@ -1253,7 +1263,7 @@ export function OshaClient({ initialCases, incidents = [] }: { initialCases: Osh
           onClose={() => setShowModal(false)}
           onAdd={handleAdd}
           nextNo={cases.length + 1}
-          tenantId={user.tenant_id ?? "t-biostar-001"}
+          tenantId={tenantId}
         />
       )}
       {toast && (

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { DarkPageHeader, DarkCard, DarkCardHeader, DarkStat, Pill } from "@/components/ui/primitives";
 import { RefreshCw, CheckCircle, AlertTriangle } from "lucide-react";
+import { MOCK_MODE } from "@/lib/env";
 
 interface ModulePrediction {
   module: string;
@@ -13,7 +14,7 @@ interface ModulePrediction {
   riskSignals: number;
 }
 
-const INITIAL_PREDICTIONS: ModulePrediction[] = [
+const MOCK_PREDICTIONS: ModulePrediction[] = [
   { module: "Chemical Management", current: 74, predicted30d: 71, trend: "down",   confidence: 87, riskSignals: 4 },
   { module: "Legal Register",      current: 63, predicted30d: 68, trend: "up",     confidence: 82, riskSignals: 2 },
   { module: "CAPA",                current: 68, predicted30d: 65, trend: "down",   confidence: 91, riskSignals: 5 },
@@ -24,7 +25,7 @@ const INITIAL_PREDICTIONS: ModulePrediction[] = [
   { module: "Incidents",           current: 90, predicted30d: 88, trend: "down",   confidence: 80, riskSignals: 3 },
 ];
 
-const MODEL_VERSIONS = [
+const MOCK_MODEL_VERSIONS = [
   { version: "v3.2.1", date: "2026-06-10", accuracy: 91.4, status: "active"   },
   { version: "v3.1.0", date: "2026-05-22", accuracy: 88.7, status: "retired"  },
   { version: "v3.0.3", date: "2026-04-15", accuracy: 85.2, status: "retired"  },
@@ -54,15 +55,18 @@ function fmt(d: string) {
 }
 
 export default function SAPredictivePage() {
-  const [predictions, setPredictions] = useState<ModulePrediction[]>(INITIAL_PREDICTIONS);
+  // No live forecasting backend yet — demo data only in MOCK_MODE; empty in prod.
+  const [predictions, setPredictions] = useState<ModulePrediction[]>(MOCK_MODE ? MOCK_PREDICTIONS : []);
+  const modelVersions                 = MOCK_MODE ? MOCK_MODEL_VERSIONS : [];
   const [running, setRunning]         = useState(false);
   const [toast, setToast]             = useState("");
-  const [lastRun, setLastRun]         = useState("2026-06-17T09:22:00");
+  const [lastRun, setLastRun]         = useState<string | null>(MOCK_MODE ? "2026-06-17T09:22:00" : null);
 
-  const avgCurrent    = Math.round(predictions.reduce((s, p) => s + p.current, 0) / predictions.length);
-  const avg30d        = Math.round(predictions.reduce((s, p) => s + p.predicted30d, 0) / predictions.length);
+  const n             = predictions.length;
+  const avgCurrent    = n ? Math.round(predictions.reduce((s, p) => s + p.current, 0) / n) : 0;
+  const avg30d        = n ? Math.round(predictions.reduce((s, p) => s + p.predicted30d, 0) / n) : 0;
   const totalSignals  = predictions.reduce((s, p) => s + p.riskSignals, 0);
-  const avgConfidence = Math.round(predictions.reduce((s, p) => s + p.confidence, 0) / predictions.length);
+  const avgConfidence = n ? Math.round(predictions.reduce((s, p) => s + p.confidence, 0) / n) : 0;
 
   function runModel() {
     setRunning(true);
@@ -106,9 +110,14 @@ export default function SAPredictivePage() {
         <div className="mb-5 flex items-center gap-3 rounded-xl border bg-violet-900/20 border-violet-800/50 px-4 py-3">
           <CheckCircle className="h-4 w-4 text-violet-400 shrink-0" />
           <div className="text-xs text-violet-300">
-            <span className="font-semibold">Last run:</span>{" "}
-            {new Date(lastRun).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-            {" · "}Model v3.2.1 · BioStar Research Inc.
+            {lastRun ? (
+              <>
+                <span className="font-semibold">Last run:</span>{" "}
+                {new Date(lastRun).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+              </>
+            ) : (
+              <span className="font-semibold">No predictive runs yet — this view will populate once the forecasting engine is connected.</span>
+            )}
           </div>
         </div>
 
@@ -124,7 +133,7 @@ export default function SAPredictivePage() {
         <DarkCard className="mb-5">
           <DarkCardHeader
             title="30-Day Compliance Forecast by Module"
-            subtitle="BioStar Research Inc. — active tenant"
+            subtitle="Per-module risk predictions"
           />
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -139,6 +148,13 @@ export default function SAPredictivePage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
+                {predictions.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-400">
+                      No forecasts yet — this view will populate once the forecasting engine is connected.
+                    </td>
+                  </tr>
+                )}
                 {predictions.map(p => (
                   <tr key={p.module} className="hover:bg-white/4">
                     <td className="px-4 py-3 font-medium text-white">{p.module}</td>
@@ -191,7 +207,14 @@ export default function SAPredictivePage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {MODEL_VERSIONS.map(v => (
+                {modelVersions.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-10 text-center text-sm text-slate-400">
+                      No model releases recorded yet.
+                    </td>
+                  </tr>
+                )}
+                {modelVersions.map(v => (
                   <tr key={v.version} className="hover:bg-white/4">
                     <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-200">{v.version}</td>
                     <td className="px-4 py-3 text-xs tabular-nums text-slate-300">{fmt(v.date)}</td>

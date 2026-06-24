@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { PageHeader } from "@/components/ui/primitives";
+import { MOCK_MODE } from "@/lib/env";
 import {
   Plus, Search, CheckCircle2, AlertCircle, Clock, RefreshCw,
   ChevronRight, MessageSquare, X, Send, ArrowRight,
@@ -47,7 +48,7 @@ interface QaCheck {
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
 
-const INITIAL_TICKETS: Ticket[] = [
+const MOCK_TICKETS: Ticket[] = [
   {
     id: "TKT-2026-041",
     company: "BioStar Research Inc.",
@@ -151,7 +152,7 @@ const INITIAL_TICKETS: Ticket[] = [
   },
 ];
 
-const INITIAL_QA: QaCheck[] = [
+const MOCK_QA: QaCheck[] = [
   { id: "qa1",  check: "AI Engine (Amaya) uptime (30d)",      category: "Engine",    status: "pass", detail: "99.97% uptime · last restart 18d ago",                       last_run: "2026-06-19" },
   { id: "qa2",  check: "EHS record referential integrity",     category: "Data",      status: "pass", detail: "0 orphaned CAPA/incident/audit references across all tenants", last_run: "2026-06-19" },
   { id: "qa3",  check: "AI hazard flag false-positive rate",   category: "Engine",    status: "pass", detail: "2.1% (target < 5%) · 48 chemical flags reviewed",            last_run: "2026-06-18" },
@@ -164,7 +165,8 @@ const INITIAL_QA: QaCheck[] = [
   { id: "qa10", check: "TypeScript build — zero errors",       category: "Build",     status: "pass", detail: "Build clean · 1 836 modules compiled",                       last_run: "2026-06-19" },
 ];
 
-const COMPANIES = ["BioStar Research Inc.", "Nexgen Pharma Ltd.", "LabCore Diagnostics", "MedTech Solutions", "NovaChem Solutions"];
+// Demo tenant names for the new-ticket form picker — only offered in MOCK_MODE.
+const COMPANIES = MOCK_MODE ? ["BioStar Research Inc.", "Nexgen Pharma Ltd.", "LabCore Diagnostics", "MedTech Solutions", "NovaChem Solutions"] : [];
 const ASSIGNEES = ["Maria Lopez", "Dev Team", "Support", "Unassigned"];
 const CATEGORIES = ["Bug", "Feature Request", "Documentation", "Access", "Performance"];
 
@@ -200,7 +202,7 @@ function qaStatusStyle(s: QaStatus) {
 // ── New Ticket Modal ──────────────────────────────────────────────────────────
 
 function NewTicketModal({ onClose, onAdd }: { onClose: () => void; onAdd: (t: Ticket) => void }) {
-  const [company, setCompany]   = useState(COMPANIES[0]);
+  const [company, setCompany]   = useState(COMPANIES[0] ?? "");
   const [subject, setSubject]   = useState("");
   const [desc, setDesc]         = useState("");
   const [priority, setPriority] = useState<Priority>("medium");
@@ -214,7 +216,7 @@ function NewTicketModal({ onClose, onAdd }: { onClose: () => void; onAdd: (t: Ti
     setSaving(true);
     const today = new Date().toISOString().slice(0, 10);
     const now   = new Date().toISOString().slice(0, 16).replace("T", " ");
-    const n     = 42 + INITIAL_TICKETS.length;
+    const n     = 42 + MOCK_TICKETS.length;
     setTimeout(() => {
       onAdd({
         id: `TKT-2026-0${n}`, company, subject: subject.trim(), description: desc.trim(),
@@ -448,6 +450,11 @@ function QaPanel({ checks, onRun }: { checks: QaCheck[]; onRun: () => void }) {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto px-5 py-3 space-y-4">
+        {checks.length === 0 && (
+          <div className="px-2 py-10 text-center text-xs text-slate-400">
+            No QA checks yet — this view will populate once platform quality checks are connected.
+          </div>
+        )}
         {categories.map(cat => (
           <div key={cat}>
             <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">{cat}</div>
@@ -469,9 +476,11 @@ function QaPanel({ checks, onRun }: { checks: QaCheck[]; onRun: () => void }) {
           </div>
         ))}
       </div>
-      <div className="shrink-0 border-t border-slate-100 px-5 py-3 text-[11px] text-slate-400">
-        Last full run: 2026-06-19 08:30 UTC
-      </div>
+      {checks.length > 0 && (
+        <div className="shrink-0 border-t border-slate-100 px-5 py-3 text-[11px] text-slate-400">
+          Last full run: 2026-06-19 08:30 UTC
+        </div>
+      )}
     </div>
   );
 }
@@ -481,8 +490,9 @@ function QaPanel({ checks, onRun }: { checks: QaCheck[]; onRun: () => void }) {
 type RightPanel = "ticket" | "qa";
 
 export default function SupportQAPage() {
-  const [tickets, setTickets]           = useState<Ticket[]>(INITIAL_TICKETS);
-  const [qaChecks, setQaChecks]         = useState<QaCheck[]>(INITIAL_QA);
+  // No support/QA backend yet — demo data only in MOCK_MODE; empty in production.
+  const [tickets, setTickets]           = useState<Ticket[]>(MOCK_MODE ? MOCK_TICKETS : []);
+  const [qaChecks, setQaChecks]         = useState<QaCheck[]>(MOCK_MODE ? MOCK_QA : []);
   const [selectedId, setSelectedId]     = useState<string | null>(null);
   const [rightPanel, setRightPanel]     = useState<RightPanel>("qa");
   const [search, setSearch]             = useState("");
@@ -566,7 +576,7 @@ export default function SupportQAPage() {
         {[
           { label: "Open",          value: open,       color: "text-red-600",     sub: `${tickets.filter(t=>t.priority==="high"&&t.status==="open").length} high priority` },
           { label: "In progress",   value: inProgress, color: "text-blue-600",    sub: "active work items" },
-          { label: "Resolved (30d)",value: resolved,   color: "text-emerald-600", sub: "avg 2.1 day SLA" },
+          { label: "Resolved (30d)",value: resolved,   color: "text-emerald-600", sub: "closed tickets" },
           { label: "QA failures",   value: qaFailing,  color: qaFailing > 0 ? "text-red-600" : "text-emerald-600", sub: `${qaChecks.length} checks total` },
         ].map(s => (
           <div key={s.label} className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">

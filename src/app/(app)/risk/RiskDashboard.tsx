@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle, BarChart3, Bell, Clock, Grid3x3, ShieldAlert, Sparkles,
@@ -92,36 +92,6 @@ const CATEGORY_COLOR: Record<string, string> = {
   ergonomic:  "bg-violet-100 text-violet-700",
   fire:       "bg-red-100 text-red-700",
 };
-
-// ── Simulated monthly trend data ───────────────────────────────────────────────
-// Uses latest compliance scores as the baseline and simulates 6 months of data
-function buildTrendData(scores: ComplianceScore[]) {
-  const overall = scores.length > 0
-    ? Math.round(scores.reduce((s, c) => s + c.percentage, 0) / scores.length)
-    : 72;
-
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
-  const deltas  = [-4, -2, 1, -1, 2, 0]; // simulate slight fluctuation leading to current
-  return months.map((month, i) => {
-    const base = overall + deltas.slice(i).reduce((a, b) => a + b, 0);
-    return { month, score: Math.min(100, Math.max(40, base)) };
-  });
-}
-
-// Simulates month-over-month deltas per module using realistic EHS patterns
-function buildModuleTrendData(scores: ComplianceScore[]) {
-  const DELTAS: Record<string, number> = {
-    chemical: -3, legal: 2, audits: 1, waste: -2, equipment: 3,
-    capa: -4, training: 1, incidents: -1, ergonomics: 0, risk: 2, documents: 1,
-  };
-  return [...scores]
-    .sort((a, b) => a.percentage - b.percentage)
-    .map((s) => {
-      const delta = DELTAS[s.module] ?? 0;
-      const prev  = Math.min(100, Math.max(0, s.percentage - delta));
-      return { ...s, prev, delta };
-    });
-}
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 
@@ -345,12 +315,15 @@ function TrendAnalysis({
   incidents: Incident[];
   latestRun: PredictabilityRun | null;
 }) {
-  const trendData   = useMemo(() => buildTrendData(scores), [scores]);
   const overall     = scores.length > 0
-    ? Math.round(scores.reduce((s, c) => s + c.percentage, 0) / scores.length) : 72;
-  const forecast    = latestRun?.forecast_data?.predicted_compliance_score_30d;
+    ? Math.round(scores.reduce((s, c) => s + c.percentage, 0) / scores.length) : 0;
+  const forecast    = latestRun?.forecast_data?.predicted_compliance_score_30d ?? null;
   const trend       = latestRun?.forecast_data?.compliance_trend ?? "stable";
-  const maxScore    = Math.max(...trendData.map((d) => d.score), forecast ?? 0, 100);
+  // Real points only: the live overall score, plus the P-Engine 30-day projection when a run exists.
+  const chartPoints = [
+    { label: "Current", score: overall, color: overall >= 80 ? "#10b981" : overall >= 65 ? "#d97706" : "#dc2626" },
+    ...(forecast != null ? [{ label: "30-Day Forecast", score: forecast, color: "#7c3aed" }] : []),
+  ];
 
   // Incident breakdown by severity
   const incBySev = ["critical", "high", "medium", "low"].map((sev) => ({
@@ -374,8 +347,8 @@ function TrendAnalysis({
         <div className="col-span-2 rounded-2xl border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Compliance Score — 6-Month Trend</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Overall score across all EHS modules</p>
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Compliance Score — Current &amp; Forecast</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Live overall score vs P-Engine 30-day projection</p>
             </div>
             {trend === "improving" && (
               <div className="flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
@@ -394,55 +367,38 @@ function TrendAnalysis({
             )}
           </div>
 
-          {/* SVG trend chart */}
-          <svg viewBox="0 0 560 160" className="w-full" style={{ overflow: "visible" }}>
-            {/* Grid lines */}
-            {[0, 25, 50, 75, 100].map((v) => {
-              const y = 140 - (v / 100) * 120;
-              return (
-                <g key={v}>
-                  <line x1="40" y1={y} x2="540" y2={y} stroke="#f1f5f9" strokeWidth="1" />
-                  <text x="32" y={y + 3} textAnchor="end" fontSize="8" fill="#94a3b8">{v}%</text>
-                </g>
-              );
-            })}
-
-            {/* Bars */}
-            {trendData.map((d, i) => {
-              const x   = 60 + i * 80;
-              const h   = (d.score / 100) * 120;
-              const y   = 140 - h;
-              const col = d.score >= 80 ? "#10b981" : d.score >= 65 ? "#d97706" : "#dc2626";
-              return (
-                <g key={d.month}>
-                  <rect x={x - 18} y={y} width={36} height={h} rx="4" fill={col} opacity="0.8" />
-                  <text x={x} y={y - 4} textAnchor="middle" fontSize="9" fontWeight="600" fill={col}>{d.score}%</text>
-                  <text x={x} y={155} textAnchor="middle" fontSize="9" fill="#94a3b8">{d.month}</text>
-                </g>
-              );
-            })}
-
-            {/* Forecast point */}
-            {forecast != null && (
-              <g>
-                {/* dashed connector from last bar */}
-                <line
-                  x1={60 + 5 * 80}
-                  y1={140 - (trendData[5].score / 100) * 120}
-                  x2={60 + 6 * 80}
-                  y2={140 - (forecast / 100) * 120}
-                  stroke="#7c3aed"
-                  strokeWidth="1.5"
-                  strokeDasharray="4 3"
-                />
-                <circle cx={60 + 6 * 80} cy={140 - (forecast / 100) * 120} r="6" fill="#7c3aed" />
-                <text x={60 + 6 * 80} y={140 - (forecast / 100) * 120 - 10} textAnchor="middle" fontSize="9" fontWeight="600" fill="#7c3aed">
-                  {forecast}% (30d)
-                </text>
-                <text x={60 + 6 * 80} y={155} textAnchor="middle" fontSize="9" fill="#7c3aed">Forecast</text>
-              </g>
-            )}
-          </svg>
+          {/* Real bars only: current live score + (when available) the 30-day forecast */}
+          {scores.length === 0 ? (
+            <div className="flex h-40 items-center justify-center text-center text-xs text-slate-400">
+              No compliance scores yet. Run a P-Engine scan from the AI page to generate scores and a 30-day forecast.
+            </div>
+          ) : (
+            <svg viewBox="0 0 560 160" className="w-full" style={{ overflow: "visible" }}>
+              {/* Grid lines */}
+              {[0, 25, 50, 75, 100].map((v) => {
+                const y = 140 - (v / 100) * 120;
+                return (
+                  <g key={v}>
+                    <line x1="40" y1={y} x2="540" y2={y} stroke="#f1f5f9" strokeWidth="1" />
+                    <text x="32" y={y + 3} textAnchor="end" fontSize="8" fill="#94a3b8">{v}%</text>
+                  </g>
+                );
+              })}
+              {chartPoints.map((d, i) => {
+                const step = 480 / chartPoints.length;
+                const cx   = 60 + step * i + step / 2;
+                const h    = (d.score / 100) * 120;
+                const y    = 140 - h;
+                return (
+                  <g key={d.label}>
+                    <rect x={cx - 20} y={y} width={40} height={h} rx="4" fill={d.color} opacity="0.85" />
+                    <text x={cx} y={y - 4} textAnchor="middle" fontSize="10" fontWeight="600" fill={d.color}>{d.score}%</text>
+                    <text x={cx} y={155} textAnchor="middle" fontSize="9" fill="#94a3b8">{d.label}</text>
+                  </g>
+                );
+              })}
+            </svg>
+          )}
         </div>
 
         {/* P-Engine forecast card */}
@@ -523,58 +479,6 @@ function TrendAnalysis({
             );
           })}
         </div>
-      </div>
-
-      {/* Module trend table — month-over-month */}
-      <div className="rounded-2xl border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm overflow-hidden">
-        <div className="border-b border-slate-100 dark:border-slate-700 px-5 py-3.5">
-          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Module Trends — Month over Month</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Compliance score change since last P-Engine run</p>
-        </div>
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-slate-50 dark:border-slate-700 text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
-              <th className="px-5 py-2 text-left">Module</th>
-              <th className="px-4 py-2 text-center">Prev</th>
-              <th className="px-4 py-2 text-center">Current</th>
-              <th className="px-4 py-2 text-center">Change</th>
-              <th className="px-4 py-2 text-left">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
-            {buildModuleTrendData(scores).map((s) => {
-              const col = s.percentage >= 80 ? "#10b981" : s.percentage >= 65 ? "#d97706" : "#dc2626";
-              const isUp = s.delta > 0;
-              const isDown = s.delta < 0;
-              return (
-                <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
-                  <td className="px-5 py-2.5 font-medium text-slate-700 dark:text-slate-200">{MODULE_LABEL[s.module] ?? s.module}</td>
-                  <td className="px-4 py-2.5 text-center text-slate-400">{s.prev}%</td>
-                  <td className="px-4 py-2.5 text-center font-bold" style={{ color: col }}>{s.percentage}%</td>
-                  <td className="px-4 py-2.5 text-center">
-                    {s.delta === 0 ? (
-                      <span className="text-slate-400">—</span>
-                    ) : (
-                      <span className={`flex items-center justify-center gap-0.5 font-semibold ${isUp ? "text-emerald-600" : "text-red-500"}`}>
-                        {isUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                        {isUp ? "+" : ""}{s.delta}%
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                      s.percentage >= 80 ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400" :
-                      s.percentage >= 65 ? "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400" :
-                      "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400"
-                    }`}>
-                      {s.percentage >= 80 ? "Compliant" : s.percentage >= 65 ? "Minor Gap" : "Major Gap"}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
       </div>
 
       {/* Incident breakdown */}

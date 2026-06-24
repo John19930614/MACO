@@ -37,9 +37,9 @@ const DEFAULT_NOTIFS: Record<string, boolean> = {
 
 const DEFAULT_SETTINGS: Omit<SettingsData, "notifs"> = {
   companyName:      "Your Company",
-  industry:         "Pharmaceutical / Biotechnology",
-  primarySite:      "Main Campus",
-  jurisdiction:     "Federal US, New Jersey",
+  industry:         "",
+  primarySite:      "",
+  jurisdiction:     "",
   ehsManager:       "",
   qualifiedEhs:     "",
   biosafetyOfficer: "",
@@ -53,19 +53,17 @@ const BIOSTAR_DEFAULTS = {
   emergencyCoord:   "Tom Reed",
 };
 
+// Platform-level configuration (true for every tenant) — not tenant-specific data.
 const CONFIG_ROWS = [
-  { label: "PROMPT_VERSION",   value: "safetyiq-ehs-2026-06-17" },
   { label: "P-Engine Mode",    value: "Auto — runs daily at 02:00 UTC" },
   { label: "AI Provider",      value: "Anthropic Claude" },
   { label: "AI Model",         value: "claude-sonnet-4-6" },
   { label: "Compliance Basis", value: "Federal OSHA, EPA, NFPA, ANSI" },
-  { label: "Waste Generator",  value: "Small Quantity Generator (SQG)" },
-  { label: "BSL Level",        value: "BSL-1 and BSL-2" },
   { label: "Training Cycle",   value: "Annual + role-based triggers" },
 ];
 
 const INTEGRATIONS = [
-  { name: "Supabase (Database)",   status: "Demo mode", color: "bg-amber-100 text-amber-700",    action: false },
+  { name: "Supabase (Database)",   status: MOCK_MODE ? "Demo mode" : "Connected", color: MOCK_MODE ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700", action: false },
   { name: "Anthropic Claude API",  status: "Connected", color: "bg-emerald-100 text-emerald-700", action: false },
   { name: "SDS Management (SDS+)", status: "Not set up",color: "bg-slate-100 text-slate-500",    action: true  },
   { name: "LIMS Integration",      status: "Not set up",color: "bg-slate-100 text-slate-500",    action: true  },

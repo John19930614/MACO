@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { DarkPageHeader, DarkCard, DarkCardHeader, Pill } from "@/components/ui/primitives";
 import { X, Upload } from "lucide-react";
+import { MOCK_MODE } from "@/lib/env";
 
 interface Import {
   id: string; tenant: string; type: string; records: number; status: string; date: string;
 }
 
-const INITIAL: Import[] = [
+const MOCK_IMPORTS: Import[] = [
   { id: "imp-001", tenant: "BioStar Research Inc.", type: "Chemical Inventory", records: 8,  status: "complete",     date: "2026-06-10" },
   { id: "imp-002", tenant: "BioStar Research Inc.", type: "Training Records",   records: 14, status: "complete",     date: "2026-06-10" },
   { id: "imp-003", tenant: "BioStar Research Inc.", type: "Legal Requirements", records: 6,  status: "complete",     date: "2026-06-10" },
@@ -23,7 +24,8 @@ const STATUS_STYLE: Record<string, string> = {
   failed:      "bg-red-900/50 text-red-300",
 };
 
-const TENANTS   = ["BioStar Research Inc.", "NovaChem Solutions", "GenTech Biopharma", "Meridian Diagnostics", "PharmaLink Corp"];
+// Demo tenant names for the import-form picker — only offered in MOCK_MODE.
+const TENANTS   = MOCK_MODE ? ["BioStar Research Inc.", "NovaChem Solutions", "GenTech Biopharma", "Meridian Diagnostics", "PharmaLink Corp"] : [];
 const DATA_TYPES = ["Chemical Inventory", "Training Records", "Legal Requirements", "SDS Documents", "Waste Streams", "Inspection Records", "CAPA Records"];
 
 function fmt(s: string) {
@@ -31,7 +33,7 @@ function fmt(s: string) {
 }
 
 function NewImportModal({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Import) => void }) {
-  const [tenant, setTenant]   = useState(TENANTS[0]);
+  const [tenant, setTenant]   = useState(TENANTS[0] ?? "");
   const [type, setType]       = useState(DATA_TYPES[0]);
   const [fileName, setFileName] = useState("");
   const [saving, setSaving]   = useState(false);
@@ -104,7 +106,8 @@ function NewImportModal({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Im
 }
 
 export default function SAImportsPage() {
-  const [imports, setImports] = useState<Import[]>(INITIAL);
+  // No import-pipeline backend yet — demo data only in MOCK_MODE; empty in prod.
+  const [imports, setImports] = useState<Import[]>(MOCK_MODE ? MOCK_IMPORTS : []);
   const [showModal, setShowModal] = useState(false);
   const [toast, setToast]         = useState("");
 
@@ -146,6 +149,13 @@ export default function SAImportsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
+                {imports.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-400">
+                      No imports yet — this view will populate once data ingestion is connected.
+                    </td>
+                  </tr>
+                )}
                 {imports.map(i => (
                   <tr key={i.id} className="hover:bg-white/4">
                     <td className="px-4 py-3 font-medium text-white">{i.tenant}</td>

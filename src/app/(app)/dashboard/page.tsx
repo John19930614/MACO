@@ -2,11 +2,10 @@ import Link from "next/link";
 import {
   getChemicals, getCapaActions, getAiFindings, getTrainingRecords,
   getEquipment, getComplianceScores, getAudits, getIncidents,
-  getOshaCases, overallComplianceScore, latestPredictabilityRun,
+  getOshaCases, overallComplianceScore, latestPredictabilityRun, getTenantName,
 } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
 import { oshaRate, OSHA_DART_BENCHMARK } from "@/lib/osha";
-import { MOCK_TENANT_ID, MOCK_TENANTS_ALL } from "@/lib/data/mock";
 import { MOCK_MODE } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PageHeader, Stat, Card, CardHeader } from "@/components/ui/primitives";
@@ -28,7 +27,7 @@ export default async function DashboardPage({
   const justOnboarded = params.onboarding === "complete";
 
   const tenantId   = await getEffectiveTenantId();
-  const tenantName = MOCK_TENANTS_ALL.find((t) => t.id === tenantId)?.name ?? "Your Company";
+  const tenantName = await getTenantName(tenantId);
 
   // Check onboarding status and fetch welcome-banner data (live mode only)
   let onboardingComplete   = true;

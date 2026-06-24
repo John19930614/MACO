@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import type { ServerUser } from "@/lib/auth/types";
+import { MOCK_MODE } from "@/lib/env";
 
 export type DemoRole =
   | "viewer"
@@ -106,6 +107,14 @@ export const DEMO_USERS: DemoProfile[] = [
 const LS_KEY      = "maco-demo-user";
 const DEFAULT_USER = DEMO_USERS[0];
 
+// Live mode with no resolved session → a neutral placeholder, NEVER the demo persona.
+const NEUTRAL_USER: DemoProfile = {
+  id: "", display_name: "—", role: "viewer", tenant_id: null,
+  job_title: "", is_reliance: false, company: "Your Company", email: "",
+};
+const initialUser = (su?: ServerUser | null): DemoProfile =>
+  su ? profileFromServerUser(su) : (MOCK_MODE ? DEFAULT_USER : NEUTRAL_USER);
+
 // Build a DemoProfile from the real server session (live mode) so client
 // components (incl. all exports) show the actual tenant — not the demo default.
 function profileFromServerUser(su: ServerUser): DemoProfile {
@@ -132,9 +141,7 @@ const Ctx = createContext<DemoUserCtx>({
 });
 
 export function DemoUserProvider({ children, serverUser }: { children: ReactNode; serverUser?: ServerUser | null }) {
-  const [user, setUserState] = useState<DemoProfile>(
-    serverUser ? profileFromServerUser(serverUser) : DEFAULT_USER,
-  );
+  const [user, setUserState] = useState<DemoProfile>(initialUser(serverUser));
 
   useEffect(() => {
     // Live mode: the context is seeded from the real session — ignore demo localStorage.
@@ -142,6 +149,8 @@ export function DemoUserProvider({ children, serverUser }: { children: ReactNode
       setUserState(profileFromServerUser(serverUser));
       return;
     }
+    // Outside mock mode, never load a demo persona from localStorage.
+    if (!MOCK_MODE) { setUserState(NEUTRAL_USER); return; }
     try {
       const saved = localStorage.getItem(LS_KEY);
       if (saved) {

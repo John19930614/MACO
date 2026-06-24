@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useDemoUser } from "@/lib/context/demo-user";
+import { MOCK_MODE } from "@/lib/env";
 import {
   Globe, Activity, AlertTriangle, Shield,
   Zap, CheckCircle2, Users, Database, Volume2, VolumeX,
@@ -156,9 +157,11 @@ export function GusStatusBriefing() {
     return ctx;
   }
 
-  // Show on every login (each time the user identity switches to Maria Lopez)
+  // Show on every login (each time the user identity switches to Maria Lopez).
+  // The briefing's clients/stats are fabricated demo theater — only ever show it
+  // in MOCK_MODE so production never renders fake client health/CAPA numbers.
   useEffect(() => {
-    if (!user.is_reliance) return;
+    if (!MOCK_MODE || !user.is_reliance) return;
     // Clean up any in-progress audio/speech from a prior showing
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -260,7 +263,7 @@ export function GusStatusBriefing() {
     setTimeout(() => setDone(true), 850);
   }
 
-  if (!visible || done) return null;
+  if (!MOCK_MODE || !visible || done) return null;
 
   const timeStr = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
 

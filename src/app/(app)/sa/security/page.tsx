@@ -1,7 +1,8 @@
 import { DarkPageHeader, DarkCard, DarkCardHeader, Pill } from "@/components/ui/primitives";
 import { Lock, ShieldCheck, Users, Key, AlertTriangle, CheckCircle2, Clock, Globe } from "lucide-react";
+import { MOCK_MODE } from "@/lib/env";
 
-const AUDIT_LOG = [
+const MOCK_AUDIT_LOG = [
   { event: "User login", user: "Sarah Chen", company: "BioStar Research Inc.", ip: "203.0.113.45", time: "2026-06-17 09:14", status: "success" },
   { event: "Document export", user: "Sarah Chen", company: "BioStar Research Inc.", ip: "203.0.113.45", time: "2026-06-17 09:02", status: "success" },
   { event: "Failed login (3x)", user: "unknown", company: "Nexgen Pharma Ltd.", ip: "198.51.100.22", time: "2026-06-16 23:41", status: "blocked" },
@@ -10,11 +11,38 @@ const AUDIT_LOG = [
   { event: "Password reset", user: "Dr. Kim Park", company: "BioStar Research Inc.", ip: "203.0.113.45", time: "2026-06-15 11:05", status: "success" },
 ];
 
-const TENANTS_STATUS = [
+const MOCK_TENANTS_STATUS = [
   { name: "BioStar Research Inc.", mfa: true, sso: false, last_login: "2026-06-17", users: 14, status: "active" },
   { name: "Nexgen Pharma Ltd.",    mfa: true, sso: true,  last_login: "2026-06-16", users: 22, status: "active" },
   { name: "LabCore Diagnostics",   mfa: false, sso: false, last_login: "2026-06-14", users: 8,  status: "active" },
   { name: "MedTech Solutions",     mfa: true, sso: false, last_login: "2026-06-10", users: 11, status: "active" },
+];
+
+// No security-telemetry backend yet — demo data only in MOCK_MODE; empty in prod.
+const AUDIT_LOG      = MOCK_MODE ? MOCK_AUDIT_LOG : [];
+const TENANTS_STATUS = MOCK_MODE ? MOCK_TENANTS_STATUS : [];
+
+// Live KPIs are derived from the (possibly empty) telemetry above; in production
+// these read 0 until a real audit/security feed is wired in.
+const mfaPct        = TENANTS_STATUS.length
+  ? Math.round((TENANTS_STATUS.filter(t => t.mfa).length / TENANTS_STATUS.length) * 100)
+  : 0;
+const ssoCount      = TENANTS_STATUS.filter(t => t.sso).length;
+const blockedEvents = AUDIT_LOG.filter(e => e.status === "blocked").length;
+
+const MOCK_API_KEYS = [
+  { name: "Supabase — Main DB", status: "configured", last: "Jun 10" },
+  { name: "Anthropic / AI Engine (Claude)", status: "configured", last: "Jun 5" },
+  { name: "SendGrid (Email)", status: "error", last: "Jun 16" },
+  { name: "AWS S3 (Documents)", status: "configured", last: "May 28" },
+];
+const API_KEYS = MOCK_MODE ? MOCK_API_KEYS : [];
+
+const SECURITY_KPIS = [
+  { label: "Active Tenants",      value: String(TENANTS_STATUS.length), sub: TENANTS_STATUS.length ? "All healthy" : "No data", color: "text-emerald-400", bg: "bg-emerald-900/20 border-emerald-800/50" },
+  { label: "MFA Enabled",         value: `${mfaPct}%`,                  sub: `${TENANTS_STATUS.filter(t => t.mfa).length} of ${TENANTS_STATUS.length} tenants`, color: "text-blue-400", bg: "bg-blue-900/20 border-blue-800/50" },
+  { label: "Blocked Events",      value: String(blockedEvents),         sub: "From audit log",     color: "text-red-400",    bg: "bg-red-900/20 border-red-800/50" },
+  { label: "SSO Tenants",         value: String(ssoCount),              sub: "SSO/SAML enabled",   color: "text-purple-300", bg: "bg-purple-900/20 border-purple-800/50" },
 ];
 
 function eventColor(s: string) {
@@ -34,12 +62,7 @@ export default function SecurityPage() {
       <div className="flex-1 overflow-y-auto p-5">
         {/* KPIs */}
         <div className="mb-5 grid grid-cols-4 gap-4">
-          {[
-            { label: "Active Tenants",      value: "4",   sub: "All healthy",         color: "text-emerald-400", bg: "bg-emerald-900/20 border-emerald-800/50" },
-            { label: "MFA Enabled",         value: "75%", sub: "3 of 4 tenants",      color: "text-blue-400",    bg: "bg-blue-900/20 border-blue-800/50" },
-            { label: "Failed Logins (24h)", value: "3",   sub: "1 IP blocked",        color: "text-red-400",     bg: "bg-red-900/20 border-red-800/50" },
-            { label: "SSO Tenants",         value: "1",   sub: "Nexgen Pharma",       color: "text-purple-300",  bg: "bg-purple-900/20 border-purple-800/50" },
-          ].map((s) => (
+          {SECURITY_KPIS.map((s) => (
             <div key={s.label} className={`rounded-xl border p-3 ${s.bg}`}>
               <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{s.label}</div>
               <div className={`mt-1 text-3xl font-extrabold ${s.color}`}>{s.value}</div>
@@ -63,6 +86,13 @@ export default function SecurityPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
+                    {AUDIT_LOG.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-400">
+                          No audit events yet — this view will populate once a security audit feed is connected.
+                        </td>
+                      </tr>
+                    )}
                     {AUDIT_LOG.map((e, i) => (
                       <tr key={i} className="hover:bg-white/4">
                         <td className="px-4 py-2.5 text-xs font-medium text-white">{e.event}</td>
@@ -91,6 +121,13 @@ export default function SecurityPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
+                    {TENANTS_STATUS.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-400">
+                          No tenant security data yet.
+                        </td>
+                      </tr>
+                    )}
                     {TENANTS_STATUS.map((t) => (
                       <tr key={t.name} className="hover:bg-white/4">
                         <td className="px-4 py-2.5 text-xs font-medium text-white">{t.name}</td>
@@ -142,12 +179,12 @@ export default function SecurityPage() {
             <DarkCard>
               <DarkCardHeader title="API Keys" subtitle="Platform integrations" right={<Key className="h-4 w-4 text-slate-400" />} />
               <div className="divide-y divide-white/5">
-                {[
-                  { name: "Supabase — Main DB", status: "configured", last: "Jun 10" },
-                  { name: "Anthropic / AI Engine (Claude)", status: "configured", last: "Jun 5" },
-                  { name: "SendGrid (Email)", status: "error", last: "Jun 16" },
-                  { name: "AWS S3 (Documents)", status: "configured", last: "May 28" },
-                ].map((k) => (
+                {API_KEYS.length === 0 && (
+                  <div className="px-4 py-8 text-center text-xs text-slate-400">
+                    No integration status yet — this view will populate once integration health checks are connected.
+                  </div>
+                )}
+                {API_KEYS.map((k) => (
                   <div key={k.name} className="flex items-center gap-2.5 px-3 py-2.5">
                     <Key className={`h-4 w-4 shrink-0 ${k.status === "error" ? "text-red-400" : "text-emerald-400"}`} />
                     <div className="flex-1 min-w-0">

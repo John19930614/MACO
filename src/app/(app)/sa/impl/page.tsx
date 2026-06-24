@@ -1,4 +1,5 @@
 import { DarkPageHeader } from "@/components/ui/primitives";
+import { MOCK_MODE } from "@/lib/env";
 
 interface KanbanItem {
   name: string;
@@ -14,7 +15,9 @@ interface KanbanCol {
   items: KanbanItem[];
 }
 
-const KANBAN: KanbanCol[] = [
+// Demo pipeline data — only shown in MOCK_MODE. Live mode keeps the column
+// structure but renders no fabricated clients (each column shows its empty state).
+const MOCK_KANBAN: KanbanCol[] = [
   {
     stage: "Prospect",
     color: "bg-slate-700/60",
@@ -95,6 +98,11 @@ const KANBAN: KanbanCol[] = [
     ],
   },
 ];
+
+// In live mode, preserve the column scaffold but strip all fabricated clients.
+const KANBAN: KanbanCol[] = MOCK_MODE
+  ? MOCK_KANBAN
+  : MOCK_KANBAN.map((col) => ({ ...col, items: [] }));
 
 function completionPct(checks: string[]) {
   const done = checks.filter(c => c.endsWith("✓")).length;

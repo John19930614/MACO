@@ -26,42 +26,6 @@ export interface PlatformAnalysisDashboardProps {
   chemicals:        Chemical[];
 }
 
-// ── Static mock data for tenants not yet live ─────────────────────────────────
-
-const MERIDIAN_MODULES = [
-  { module: "Chemical Management",   score: 91 },
-  { module: "Waste Management",      score: 87 },
-  { module: "Training",              score: 90 },
-  { module: "Regulatory Compliance", score: 85 },
-  { module: "Incident Management",   score: 93 },
-  { module: "Risk Assessment",       score: 86 },
-  { module: "Document Control",      score: 89 },
-  { module: "Audits",                score: 83 },
-];
-
-const TENANTS_META = [
-  {
-    id: "t-biostar-001", name: "BioStar Research Inc.", sector: "Pharmaceutical Research",
-    live: true,  contract: "Enterprise",    onboarded: "2025-11-15", users: null,
-    capasMeridian: null, incidentsMeridian: null,
-  },
-  {
-    id: "t-meridian-001", name: "Meridian Diagnostics", sector: "Medical Diagnostics",
-    live: true,  contract: "Professional",  onboarded: "2025-09-01", users: 5,
-    capasMeridian: 2, incidentsMeridian: 0,
-  },
-  {
-    id: "t-novachem-001", name: "NovaChem Solutions", sector: "Chemical Manufacturing",
-    live: false, contract: "Enterprise",    onboarded: null,          users: null,
-    capasMeridian: null, incidentsMeridian: null,
-  },
-  {
-    id: "t-gentech-001", name: "GenTech Biopharma", sector: "Biopharmaceutical",
-    live: false, contract: "Professional",  onboarded: null,          users: null,
-    capasMeridian: null, incidentsMeridian: null,
-  },
-];
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmt(s: string) {
@@ -97,7 +61,7 @@ function severityColor(s: string) {
 
 function buildGusInsight(props: PlatformAnalysisDashboardProps): string {
   const { overall, capas, incidents, moduleScores, runs, aiFindings, trainingRecords } = props;
-  const avgCompliance = Math.round((overall + 88) / 2);
+  const avgCompliance = Math.round(overall);
   const overdueCapas = capas.filter((c) => c.status === "overdue").length;
   const criticalInc  = incidents.filter((i) => i.severity === "critical" && i.status !== "closed").length;
   const pendingAI    = aiFindings.filter((f) => f.review_status === "pending").length;
@@ -112,7 +76,7 @@ function buildGusInsight(props: PlatformAnalysisDashboardProps): string {
     : null;
   const { label } = healthGrade(avgCompliance);
 
-  let text = `Platform health is ${label.toLowerCase()} at ${avgCompliance}% average compliance across 2 active clients. `;
+  let text = `Tenant compliance is ${label.toLowerCase()} at ${avgCompliance}%. `;
 
   if (overdueCapas > 0)
     text += `${overdueCapas} CAPA${overdueCapas > 1 ? "s are" : " is"} overdue and require immediate escalation. `;
@@ -127,13 +91,12 @@ function buildGusInsight(props: PlatformAnalysisDashboardProps): string {
     text += `${pendingAI} AI finding${pendingAI > 1 ? "s" : ""} pending human review — accuracy unverified until reviewed. `;
 
   if (expiringCerts > 0)
-    text += `${expiringCerts} training certification${expiringCerts > 1 ? "s" : ""} expiring within 30 days across active clients. `;
+    text += `${expiringCerts} training certification${expiringCerts > 1 ? "s" : ""} expiring within 30 days. `;
 
   if (latestRun)
     text += `P-Engine at Stage ${latestRun.stage.toUpperCase()} — ${latestRun.signals_found} active signals across ${latestRun.items_scanned} scanned items. `;
 
-  text += `NovaChem Solutions and GenTech Biopharma are pending onboarding — pre-assessment packages recommended for Q3 2026.`;
-  return text;
+  return text.trim();
 }
 
 // ── Dark card wrapper ─────────────────────────────────────────────────────────
@@ -174,7 +137,7 @@ function ModuleBar({ label, score }: { label: string; score: number }) {
 
 function OverviewTab(props: PlatformAnalysisDashboardProps) {
   const { overall, capas, incidents, aiFindings, profiles } = props;
-  const avgCompliance = Math.round((overall + 88) / 2);
+  const avgCompliance = Math.round(overall);
   const g = healthGrade(avgCompliance);
   const openCapas = capas.filter((c) => ["open","in_progress","overdue"].includes(c.status)).length;
   const openIncidents = incidents.filter((i) => i.status !== "closed").length;
@@ -197,7 +160,7 @@ function OverviewTab(props: PlatformAnalysisDashboardProps) {
           </div>
           <div className={`font-mono text-sm font-bold ${g.color}`}>{g.label}</div>
           <div className="font-mono text-2xl font-black text-white mt-1">{avgCompliance}%</div>
-          <div className="font-mono text-[11px] text-slate-400 mt-1">2-tenant average</div>
+          <div className="font-mono text-[11px] text-slate-400 mt-1">Tenant compliance</div>
         </DCard>
 
         {/* GUS insight */}
@@ -216,10 +179,10 @@ function OverviewTab(props: PlatformAnalysisDashboardProps) {
       {/* KPI strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: "Active Clients",  value: "2 / 4", sub: "2 pending",    icon: Globe,         color: "text-cyan-300"  },
-          { label: "Open CAPAs",      value: openCapas,sub: "BioStar",     icon: Shield,        color: "text-amber-400" },
-          { label: "Open Incidents",  value: openIncidents, sub: "BioStar",icon: AlertTriangle, color: "text-red-400"   },
-          { label: "AI Findings",     value: pendingAI, sub: "Pending review",icon: Cpu,         color: "text-violet-400"},
+          { label: "Compliance",      value: `${avgCompliance}%`, sub: g.label,           icon: Globe,         color: "text-cyan-300"  },
+          { label: "Open CAPAs",      value: openCapas,           sub: "This tenant",      icon: Shield,        color: "text-amber-400" },
+          { label: "Open Incidents",  value: openIncidents,       sub: "This tenant",      icon: AlertTriangle, color: "text-red-400"   },
+          { label: "AI Findings",     value: pendingAI,           sub: "Pending review",   icon: Cpu,           color: "text-violet-400"},
         ].map((s) => (
           <DCard key={s.label} className="p-3">
             <s.icon className={`h-3.5 w-3.5 ${s.color} mb-2`} />
@@ -230,38 +193,24 @@ function OverviewTab(props: PlatformAnalysisDashboardProps) {
         ))}
       </div>
 
-      {/* Client health cards */}
+      {/* Selected tenant health (live data) */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {TENANTS_META.map((t) => {
-          const score = t.id === "t-biostar-001" ? overall : t.id === "t-meridian-001" ? 88 : null;
-          return (
-            <DCard key={t.id} className="p-3">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <div className="text-xs font-semibold text-slate-200 leading-tight">{t.name}</div>
-                  <div className="font-mono text-[11px] text-slate-400 mt-0.5">{t.sector}</div>
-                </div>
-                <span className={`font-mono text-[11px] font-bold tracking-wide px-1.5 py-0.5 rounded-full border ${
-                  t.live ? "border-emerald-500/40 text-emerald-400 bg-emerald-400/10"
-                         : "border-slate-600/40 text-slate-400 bg-slate-700/20"
-                }`}>
-                  {t.live ? "LIVE" : "PENDING"}
-                </span>
-              </div>
-              {score !== null ? (
-                <>
-                  <div className={`font-mono text-2xl font-black mb-1 ${textColor(score)}`}>{score}%</div>
-                  <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden mb-2">
-                    <div className={`h-full rounded-full ${barColor(score)}`} style={{ width: `${score}%` }} />
-                  </div>
-                  <div className="font-mono text-[11px] text-slate-400">{t.contract} · since {t.onboarded}</div>
-                </>
-              ) : (
-                <div className="font-mono text-[11px] text-slate-400 mt-2">Onboarding Q3 2026<br />{t.contract} contract</div>
-              )}
-            </DCard>
-          );
-        })}
+        <DCard className="p-3">
+          <div className="flex items-start justify-between mb-2">
+            <div>
+              <div className="text-xs font-semibold text-slate-200 leading-tight">Selected Tenant</div>
+              <div className="font-mono text-[11px] text-slate-400 mt-0.5">{profiles.length} user{profiles.length === 1 ? "" : "s"}</div>
+            </div>
+            <span className="font-mono text-[11px] font-bold tracking-wide px-1.5 py-0.5 rounded-full border border-emerald-500/40 text-emerald-400 bg-emerald-400/10">
+              LIVE
+            </span>
+          </div>
+          <div className={`font-mono text-2xl font-black mb-1 ${textColor(avgCompliance)}`}>{avgCompliance}%</div>
+          <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden mb-2">
+            <div className={`h-full rounded-full ${barColor(avgCompliance)}`} style={{ width: `${avgCompliance}%` }} />
+          </div>
+          <div className="font-mono text-[11px] text-slate-400">Live compliance score</div>
+        </DCard>
       </div>
 
       {/* Priority actions */}
@@ -305,11 +254,11 @@ function ClientsTab(props: PlatformAnalysisDashboardProps) {
 
   return (
     <div className="space-y-4">
-      {/* BioStar */}
+      {/* Selected tenant — live data */}
       <DCard>
         <DCardHead
-          title="BioStar Research Inc."
-          sub="Pharmaceutical Research · Enterprise · Live since 2025-11-15"
+          title="Selected Tenant"
+          sub="Live compliance for the tenant in this session"
           right={
             <span className="font-mono text-[11px] font-bold tracking-wide px-2 py-0.5 rounded-full border border-emerald-500/40 text-emerald-400 bg-emerald-400/10">
               ● LIVE
@@ -331,72 +280,15 @@ function ClientsTab(props: PlatformAnalysisDashboardProps) {
         </div>
         <div className="p-4">
           <div className="font-mono text-[11px] font-bold tracking-widest text-slate-400 uppercase mb-2">Module Scores — sorted lowest first</div>
-          {biostarModules.map((m) => (
-            <ModuleBar key={m.module} label={m.module} score={m.score} />
-          ))}
-        </div>
-        <div className="border-t border-slate-700/30 px-4 py-2.5">
-          <div className="font-mono text-[11px] text-slate-400">
-            <span className="text-amber-400 font-bold">⚠ Watch:</span> Formaldehyde (H350 carcinogen) CAPA overdue — OSHA 1910.1048 compliance gap. P-Engine forecasts declining trend if unresolved by 2026-07-30.
-          </div>
-        </div>
-      </DCard>
-
-      {/* Meridian */}
-      <DCard>
-        <DCardHead
-          title="Meridian Diagnostics"
-          sub="Medical Diagnostics · Professional · Live since 2025-09-01"
-          right={
-            <span className="font-mono text-[11px] font-bold tracking-wide px-2 py-0.5 rounded-full border border-emerald-500/40 text-emerald-400 bg-emerald-400/10">
-              ● LIVE
-            </span>
-          }
-        />
-        <div className="p-4 grid grid-cols-2 gap-4 sm:grid-cols-4 border-b border-slate-700/30">
-          {[
-            { label: "Compliance",  value: "88%", color: textColor(88) },
-            { label: "Open CAPAs",  value: 2,     color: "text-slate-300" },
-            { label: "Overdue",     value: 0,     color: "text-emerald-400" },
-            { label: "Users",       value: 5,     color: "text-slate-300" },
-          ].map((s) => (
-            <div key={s.label}>
-              <div className={`font-mono text-2xl font-black ${s.color}`}>{s.value}</div>
-              <div className="font-mono text-[11px] text-slate-400 uppercase tracking-wide mt-0.5">{s.label}</div>
-            </div>
-          ))}
-        </div>
-        <div className="p-4">
-          <div className="font-mono text-[11px] font-bold tracking-widest text-slate-400 uppercase mb-2">Module Scores — sorted lowest first</div>
-          {[...MERIDIAN_MODULES].sort((a,b) => a.score - b.score).map((m) => (
-            <ModuleBar key={m.module} label={m.module} score={m.score} />
-          ))}
-        </div>
-        <div className="border-t border-slate-700/30 px-4 py-2.5">
-          <div className="font-mono text-[11px] text-slate-400">
-            <span className="text-emerald-400 font-bold">✓ Status:</span> Above platform average. Audits module (83%) is lowest — Q3 internal audit scheduled 2026-08-15.
-          </div>
+          {biostarModules.length === 0 ? (
+            <div className="font-mono text-xs text-slate-400">No module scores yet for this tenant.</div>
+          ) : (
+            biostarModules.map((m) => (
+              <ModuleBar key={m.module} label={m.module} score={m.score} />
+            ))
+          )}
         </div>
       </DCard>
-
-      {/* Pending clients */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {TENANTS_META.filter((t) => !t.live).map((t) => (
-          <DCard key={t.id} className="p-4 opacity-80">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="font-mono text-[11px] px-1.5 py-0.5 rounded-full border border-slate-600 text-slate-400 bg-slate-700/30">
-                ○ PENDING ONBOARD
-              </span>
-              <span className="font-mono text-[11px] text-slate-400">{t.contract}</span>
-            </div>
-            <div className="text-sm font-semibold text-slate-400">{t.name}</div>
-            <div className="font-mono text-[11px] text-slate-400 mt-0.5">{t.sector}</div>
-            <div className="mt-3 font-mono text-[11px] text-slate-400">
-              Target activation: Q3 2026<br />Pre-assessment package: not dispatched
-            </div>
-          </DCard>
-        ))}
-      </div>
     </div>
   );
 }
@@ -434,7 +326,7 @@ function RiskTab(props: PlatformAnalysisDashboardProps) {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Open CAPAs */}
         <DCard>
-          <DCardHead title={`Open CAPAs — ${openCapas.length}`} sub="BioStar Research Inc. · all statuses" />
+          <DCardHead title={`Open CAPAs — ${openCapas.length}`} sub="Selected tenant · all statuses" />
           {openCapas.length === 0 ? (
             <div className="p-4 font-mono text-xs text-slate-400">No open CAPAs.</div>
           ) : (
@@ -458,7 +350,7 @@ function RiskTab(props: PlatformAnalysisDashboardProps) {
 
         {/* Open Incidents */}
         <DCard>
-          <DCardHead title={`Open Incidents — ${openIncidents.length}`} sub="BioStar Research Inc." />
+          <DCardHead title={`Open Incidents — ${openIncidents.length}`} sub="Selected tenant" />
           {openIncidents.length === 0 ? (
             <div className="p-4 font-mono text-xs text-emerald-400">✓ No open incidents.</div>
           ) : (
@@ -731,7 +623,7 @@ function UsersTab({ profiles }: { profiles: Profile[] }) {
 
         {/* User list */}
         <DCard className="col-span-1 lg:col-span-2">
-          <DCardHead title={`Platform Users — ${profiles.length}`} sub="BioStar Research Inc. · live tenant" />
+          <DCardHead title={`Platform Users — ${profiles.length}`} sub="Selected tenant · live data" />
           <div className="divide-y divide-slate-700/30 max-h-80 overflow-y-auto">
             {profiles.map((p) => (
               <div key={p.id} className="flex items-center gap-3 px-4 py-2.5">
@@ -748,12 +640,6 @@ function UsersTab({ profiles }: { profiles: Profile[] }) {
                 <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${p.active ? "bg-emerald-400" : "bg-slate-600"}`} />
               </div>
             ))}
-          </div>
-          {/* Meridian stub */}
-          <div className="border-t border-slate-700/30 px-4 py-3">
-            <div className="font-mono text-[11px] text-slate-400">
-              + 5 users on <span className="text-slate-400">Meridian Diagnostics</span> — data not accessible from this session (cross-tenant isolation)
-            </div>
           </div>
         </DCard>
       </div>

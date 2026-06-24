@@ -11,6 +11,7 @@ import type { Equipment } from "@/lib/types";
 import { Pill } from "@/components/ui/primitives";
 import { addCapa } from "@/lib/actions/ehs";
 import { updateEquipment } from "@/lib/actions/ehs";
+import { MOCK_MODE } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -249,7 +250,7 @@ const SPILL_PROCEDURES = [
   },
 ];
 
-// ── Seed mock exposure readings ───────────────────────────────────────────────
+// ── Demo-only exposure readings (no live exposure table yet; empty in live mode) ─
 
 const SEED_READINGS: ExposureReading[] = [
   { id: "exp-001", chemical: "Formaldehyde", type: "TWA",  value: 0.42, unit: "ppm", location: "Lab 3", date: "2026-06-10", monitor: "PAM-02" },
@@ -497,7 +498,7 @@ function InspectionCard({
 // ── Exposure Monitoring Component ─────────────────────────────────────────────
 
 function ExposureMonitoring() {
-  const [readings, setReadings] = useState<ExposureReading[]>(SEED_READINGS);
+  const [readings, setReadings] = useState<ExposureReading[]>(MOCK_MODE ? SEED_READINGS : []);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     chemical: "Formaldehyde",

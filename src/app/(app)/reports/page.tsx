@@ -8,18 +8,10 @@ import {
   getCapaActions, getIncidents, getTrainingRecords, getTrainingCourses,
   getLegalRequirements, getDocuments, getBiosafetyLabs, getEquipment,
   getWasteStreams, getAuditFindings, getChemicals, getProfiles,
-  getOshaCases, getRiskAssessments, getComplianceScores,
+  getOshaCases, getRiskAssessments, getComplianceScores, getTenantName,
 } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
-import { MOCK_TENANT_ID, MOCK_TENANTS_ALL } from "@/lib/data/mock";
-
-const TREND_BASELINE = [
-  { month: "Jan", score: 71 },
-  { month: "Feb", score: 74 },
-  { month: "Mar", score: 73 },
-  { month: "Apr", score: 78 },
-  { month: "May", score: 82 },
-];
+import { MOCK_MODE } from "@/lib/env";
 
 function scoreColor(s: number) {
   if (s >= 85) return "text-emerald-600";
@@ -79,7 +71,7 @@ export default async function ReportsPage({
   searchParams: Promise<{ view?: string }>;
 }) {
   const tenantId = await getEffectiveTenantId();
-  const tenantName = MOCK_TENANTS_ALL.find((t) => t.id === tenantId)?.name ?? "Your Company";
+  const tenantName = await getTenantName(tenantId);
   const { view } = await searchParams;
   const tab = view ?? "executive";
 
@@ -116,13 +108,14 @@ export default async function ReportsPage({
   const lastTrainingDate  = latestDate(trainingRecs.map((r) => r.created_at));
   const lastChemicalDate  = latestDate(chemicals.map((c) => c.updated_at));
 
-  const SAVED_REPORTS = [
+  // No saved-reports backend yet — empty in live mode (the panel shows an empty state).
+  const SAVED_REPORTS = MOCK_MODE ? [
     { name: "Q2 2026 EHS Compliance Summary",    type: "Compliance", generated: today,           pages: 12 },
     { name: "Chemical Inventory Audit Report",    type: "Chemical",   generated: lastChemicalDate, pages: 8  },
     { name: "CAPA Aging Analysis — June",         type: "CAPA",       generated: lastCapaDate,     pages: 5  },
     { name: "Training Completion Rate — H1 2026", type: "Training",   generated: lastTrainingDate, pages: 6  },
     { name: "Incident Root Cause Analysis Q2",    type: "Incidents",  generated: lastIncidentDate, pages: 9  },
-  ];
+  ] : [];
 
   const scoreByModule = Object.fromEntries(complianceScores.map((s) => [s.module, s.percentage]));
   function liveScore(key: string, fallback: number) { return scoreByModule[key] ?? fallback; }
@@ -135,29 +128,25 @@ export default async function ReportsPage({
   const totalCourses = courses.length;
   const trainingPct  = trainingRecs.length > 0 ? Math.round((passedRecs / trainingRecs.length) * 100) : 0;
 
+  // Scores come from the latest P-Engine scan (compliance_scores). No live score → 0
+  // (run a scan to populate). No real month-over-month source, so no trend/delta.
   const MODULE_SCORES = [
-    { module: "Chemical Management",    score: liveScore("chemical",   91), trend: "up",   delta: "+4",  openIssues: chemicals.filter((c) => !c.sds_url).length,              issueLabel: "missing SDS"   },
-    { module: "Training & Competency",  score: liveScore("training",   88), trend: "up",   delta: "+6",  openIssues: Math.max(0, totalCourses - passedRecs),                  issueLabel: "courses uncovered" },
-    { module: "Audits & Assessments",   score: liveScore("audits",     83), trend: "up",   delta: "+2",  openIssues: auditFindings.filter((f) => f.status === "open" || f.status === "in_progress").length, issueLabel: "open findings" },
-    { module: "Biosafety & Lab Safety", score: liveScore("biosafety",  82), trend: "up",   delta: "+1",  openIssues: labs.filter((l) => l.status !== "compliant").length,      issueLabel: "non-compliant labs" },
-    { module: "CAPA Management",        score: liveScore("capa",       79), trend: "up",   delta: "+3",  openIssues: openCapas,                                                issueLabel: "open CAPAs"    },
-    { module: "Legal & Compliance",     score: liveScore("legal",      76), trend: "down", delta: "−2",  openIssues: legal.filter((l) => l.status !== "compliant" && l.status !== "not_applicable").length, issueLabel: "gaps" },
-    { module: "Documents & Programs",   score: liveScore("documents",  85), trend: "flat", delta: "0",   openIssues: docs.filter((d) => d.status !== "active").length,         issueLabel: "inactive"      },
-    { module: "Waste Management",       score: liveScore("waste",      74), trend: "up",   delta: "+5",  openIssues: waste.filter((w) => w.status === "pending").length,       issueLabel: "pending disposal" },
-    { module: "Monitoring & Equipment", score: liveScore("equipment",  69), trend: "down", delta: "−4",  openIssues: equipment.filter((e) => e.status !== "operational").length, issueLabel: "not operational" },
-    { module: "Ergonomics & MSD",       score: liveScore("ergonomics", 65), trend: "up",   delta: "+2",  openIssues: 3,                                                        issueLabel: "MSD risk assessments pending" },
-    { module: "OSHA Recordkeeping",     score: liveScore("osha",       78), trend: "flat", delta: "0",   openIssues: oshaCases.filter((c) => c.date.startsWith("2026")).length, issueLabel: "recordable cases YTD" },
-    { module: "Risk Intelligence",      score: liveScore("risk",       72), trend: "up",   delta: "+3",  openIssues: riskItems.filter((r) => r.risk_level === "high" || r.risk_level === "extreme").length, issueLabel: "high/extreme risks open" },
-    { module: "Incident Management",    score: liveScore("incidents",  80), trend: "up",   delta: "+5",  openIssues: incidents.filter((i) => i.status === "reported" || i.status === "under_investigation").length, issueLabel: "incidents under investigation" },
+    { module: "Chemical Management",    score: liveScore("chemical",   0), trend: "flat", delta: "", openIssues: chemicals.filter((c) => !c.sds_url).length,              issueLabel: "missing SDS"   },
+    { module: "Training & Competency",  score: liveScore("training",   0), trend: "flat", delta: "", openIssues: Math.max(0, totalCourses - passedRecs),                  issueLabel: "courses uncovered" },
+    { module: "Audits & Assessments",   score: liveScore("audits",     0), trend: "flat", delta: "", openIssues: auditFindings.filter((f) => f.status === "open" || f.status === "in_progress").length, issueLabel: "open findings" },
+    { module: "Biosafety & Lab Safety", score: liveScore("biosafety",  0), trend: "flat", delta: "", openIssues: labs.filter((l) => l.status !== "compliant").length,      issueLabel: "non-compliant labs" },
+    { module: "CAPA Management",        score: liveScore("capa",       0), trend: "flat", delta: "", openIssues: openCapas,                                                issueLabel: "open CAPAs"    },
+    { module: "Legal & Compliance",     score: liveScore("legal",      0), trend: "flat", delta: "", openIssues: legal.filter((l) => l.status !== "compliant" && l.status !== "not_applicable").length, issueLabel: "gaps" },
+    { module: "Documents & Programs",   score: liveScore("documents",  0), trend: "flat", delta: "", openIssues: docs.filter((d) => d.status !== "active").length,         issueLabel: "inactive"      },
+    { module: "Waste Management",       score: liveScore("waste",      0), trend: "flat", delta: "", openIssues: waste.filter((w) => w.status === "pending").length,       issueLabel: "pending disposal" },
+    { module: "Monitoring & Equipment", score: liveScore("equipment",  0), trend: "flat", delta: "", openIssues: equipment.filter((e) => e.status !== "operational").length, issueLabel: "not operational" },
+    { module: "Ergonomics & MSD",       score: liveScore("ergonomics", 0), trend: "flat", delta: "", openIssues: 0,                                                        issueLabel: "MSD risk assessments pending" },
+    { module: "OSHA Recordkeeping",     score: liveScore("osha",       0), trend: "flat", delta: "", openIssues: oshaCases.filter((c) => c.date.startsWith("2026")).length, issueLabel: "recordable cases YTD" },
+    { module: "Risk Intelligence",      score: liveScore("risk",       0), trend: "flat", delta: "", openIssues: riskItems.filter((r) => r.risk_level === "high" || r.risk_level === "extreme").length, issueLabel: "high/extreme risks open" },
+    { module: "Incident Management",    score: liveScore("incidents",  0), trend: "flat", delta: "", openIssues: incidents.filter((i) => i.status === "reported" || i.status === "under_investigation").length, issueLabel: "incidents under investigation" },
   ];
 
   const overallScore = Math.round(MODULE_SCORES.reduce((s, m) => s + m.score, 0) / MODULE_SCORES.length);
-
-  const currentMonth = new Date().toLocaleString("en-US", { month: "short" });
-  const COMPLIANCE_TREND = [
-    ...TREND_BASELINE,
-    { month: currentMonth, score: overallScore },
-  ];
 
   const MODULE_LINKS: Record<string, string> = {
     "Chemical Management":    "/chemicals",
@@ -174,16 +163,6 @@ export default async function ReportsPage({
     "Risk Intelligence":      "/risk",
     "Incident Management":    "/incidents",
   };
-
-  const minS = Math.min(...COMPLIANCE_TREND.map((t) => t.score));
-  const maxS = Math.max(...COMPLIANCE_TREND.map((t) => t.score));
-  const cW = 280, cH = 80, pX = 30, pY = 10;
-  const iH = cH - pY * 2, iW = cW - pX * 2;
-  const pts = COMPLIANCE_TREND.map((d, i) => {
-    const x = pX + (i / (COMPLIANCE_TREND.length - 1)) * iW;
-    const y = pY + (1 - (d.score - minS + 5) / (maxS - minS + 10)) * iH;
-    return [x, y] as [number, number];
-  });
 
   const printDate = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
@@ -324,46 +303,16 @@ export default async function ReportsPage({
                 <div className="col-span-2 flex flex-col gap-5">
                   <Card>
                     <CardHeader
-                      title="Compliance Score Trend"
-                      subtitle="Overall EHS compliance — last 6 months"
-                      right={<Pill className="bg-emerald-100 text-emerald-700">▲ +15 pts YTD</Pill>}
+                      title="Overall Compliance"
+                      subtitle="Live average across module assessments"
                     />
-                    <div className="px-4 py-4">
-                      <svg viewBox={`0 0 ${cW} ${cH}`} className="w-full overflow-visible" style={{ height: "100px" }}>
-                        <defs>
-                          <linearGradient id="cg2" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.15" />
-                            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.01" />
-                          </linearGradient>
-                        </defs>
-                        {[60, 70, 80, 90].map((v) => {
-                          const y = pY + (1 - (v - minS + 5) / (maxS - minS + 10)) * iH;
-                          return (
-                            <g key={v}>
-                              <line x1={pX} y1={y} x2={pX + iW} y2={y} stroke="#e2e8f0" strokeWidth="0.5" />
-                              <text x={pX - 4} y={y + 3} textAnchor="end" fontSize="7" fill="#94a3b8">{v}</text>
-                            </g>
-                          );
-                        })}
-                        <polygon
-                          points={`${pX},${pY + iH} ${pts.map(([x, y]) => `${x},${y}`).join(" ")} ${pX + iW},${pY + iH}`}
-                          fill="url(#cg2)"
-                        />
-                        <polyline
-                          points={pts.map(([x, y]) => `${x},${y}`).join(" ")}
-                          fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinejoin="round"
-                        />
-                        {COMPLIANCE_TREND.map((d, i) => {
-                          const [x, y] = pts[i];
-                          return (
-                            <g key={d.month}>
-                              <circle cx={x} cy={y} r="3" fill="#3b82f6" stroke="white" strokeWidth="1.5" />
-                              <text x={x} y={y - 6} textAnchor="middle" fontSize="8" fontWeight="600" fill="#1e40af">{d.score}%</text>
-                              <text x={x} y={cH - 2} textAnchor="middle" fontSize="7" fill="#94a3b8">{d.month}</text>
-                            </g>
-                          );
-                        })}
-                      </svg>
+                    <div className="px-4 py-6 text-center">
+                      <div className={`text-5xl font-extrabold ${scoreColor(overallScore)}`}>{overallScore}%</div>
+                      <div className="mt-2 text-xs text-slate-400">
+                        {complianceScores.length > 0
+                          ? `Based on ${complianceScores.length} module assessment${complianceScores.length !== 1 ? "s" : ""} from the latest P-Engine scan.`
+                          : "Run a P-Engine scan from the AI page to generate compliance scores."}
+                      </div>
                     </div>
                   </Card>
 

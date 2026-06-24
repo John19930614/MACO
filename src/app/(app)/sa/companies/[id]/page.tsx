@@ -11,6 +11,7 @@ import {
 import { DarkCard, DarkCardHeader, DarkStat, Pill } from "@/components/ui/primitives";
 import { EHS_MODULES, MODULE_META } from "@/lib/constants";
 import type { EhsModule } from "@/lib/constants";
+import { MOCK_MODE } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -218,13 +219,14 @@ function TabButton({ label, active, onClick, count }: { label: string; active: b
 export default function CompanyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
 
-  const company = COMPANIES[id] ?? COMPANIES["t-001"];
-  const users   = USERS[id]    ?? [];
-  const sites   = SITES[id]    ?? [];
-  const events  = ACTIVITY[id] ?? [];
+  // No live per-tenant detail backend yet — demo records only render in mock mode.
+  const company = MOCK_MODE ? (COMPANIES[id] ?? COMPANIES["t-001"]) : undefined;
+  const users   = MOCK_MODE ? (USERS[id]    ?? []) : [];
+  const sites   = MOCK_MODE ? (SITES[id]    ?? []) : [];
+  const events  = MOCK_MODE ? (ACTIVITY[id] ?? []) : [];
 
   const [tab,     setTab]     = useState<"overview" | "users" | "modules" | "activity">("overview");
-  const [modules, setModules] = useState<Record<string, boolean>>(defaultModules(company.plan));
+  const [modules, setModules] = useState<Record<string, boolean>>(defaultModules(company?.plan ?? "Starter"));
   const [toast,   setToast]   = useState("");
 
   function showToast(msg: string) {
@@ -235,9 +237,19 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ id: st
   function toggleModule(mod: string) {
     setModules(prev => {
       const next = { ...prev, [mod]: !prev[mod] };
-      showToast(`${MODULE_META[mod as EhsModule]?.label ?? mod} ${next[mod] ? "enabled" : "disabled"} for ${company.name}`);
+      showToast(`${MODULE_META[mod as EhsModule]?.label ?? mod} ${next[mod] ? "enabled" : "disabled"} for ${company?.name ?? "this tenant"}`);
       return next;
     });
+  }
+
+  if (!company) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 bg-slate-950 text-center text-slate-400">
+        <Building2 className="h-8 w-8 text-slate-600" />
+        <div className="text-sm">Per-tenant detail isn’t available in live mode yet.</div>
+        <Link href="/sa/companies" className="text-xs text-blue-400 hover:underline">← Back to Companies &amp; Tenants</Link>
+      </div>
+    );
   }
 
   const enabledCount  = Object.values(modules).filter(Boolean).length;

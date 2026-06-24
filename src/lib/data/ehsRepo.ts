@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { getStore } from "./store";
-import { MOCK_TENANT_ID, MOCK_SITE_ID } from "./mock";
+import { MOCK_TENANT_ID, MOCK_SITE_ID, MOCK_TENANTS_ALL } from "./mock";
 import { MOCK_MODE } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getEffectiveTenantId } from "@/lib/auth/session";
@@ -17,6 +17,54 @@ import type {
 import type { Severity, CapaStatus, AuditStatus, RiskLevel, TrainingDelivery } from "@/lib/constants";
 
 async function sb() { return createSupabaseServerClient(); }
+
+// ── Tenant / establishment identity (live tenant + onboarding profile) ─────────
+
+export interface EstablishmentInfo {
+  name: string;
+  industry: string | null;
+  siteName: string | null;
+  state: string | null;
+  country: string | null;
+  contactName: string | null;
+  contactTitle: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+}
+
+export const getTenantName = cache(async (tenantId = MOCK_TENANT_ID): Promise<string> => {
+  if (MOCK_MODE) return MOCK_TENANTS_ALL.find((t) => t.id === tenantId)?.name ?? "Your Company";
+  const client = await sb();
+  if (!client) return "Your Company";
+  const { data } = await client.from("tenants").select("name, onboarding_data").eq("id", tenantId).single();
+  const legal = (data?.onboarding_data as Record<string, unknown> | null)?.legalName;
+  return (typeof legal === "string" && legal.trim()) ? legal.trim() : (data?.name ?? "Your Company");
+});
+
+export const getEstablishment = cache(async (tenantId = MOCK_TENANT_ID): Promise<EstablishmentInfo> => {
+  const empty: EstablishmentInfo = {
+    name: "Your Company", industry: null, siteName: null, state: null, country: null,
+    contactName: null, contactTitle: null, contactEmail: null, contactPhone: null,
+  };
+  if (MOCK_MODE) return { ...empty, name: MOCK_TENANTS_ALL.find((t) => t.id === tenantId)?.name ?? "Your Company" };
+  const client = await sb();
+  if (!client) return empty;
+  const { data } = await client.from("tenants").select("name, onboarding_data").eq("id", tenantId).single();
+  if (!data) return empty;
+  const obd = (data.onboarding_data ?? {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  return {
+    name: str(obd.legalName) ?? data.name ?? "Your Company",
+    industry: str(obd.industry),
+    siteName: str(obd.siteName),
+    state: str(obd.siteState),
+    country: str(obd.siteCountry),
+    contactName: str(obd.contactName),
+    contactTitle: str(obd.contactTitle),
+    contactEmail: str(obd.contactEmail),
+    contactPhone: str(obd.contactPhone),
+  };
+});
 
 // ── CAPA ─────────────────────────────────────────────────────────────────────
 

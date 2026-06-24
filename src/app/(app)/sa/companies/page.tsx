@@ -5,6 +5,7 @@ import Link from "next/link";
 import { DarkPageHeader, DarkCard, DarkCardHeader, Pill, DarkStat } from "@/components/ui/primitives";
 import { Modal, Field, Input, Select as FormSelect, SubmitRow } from "@/components/modals/Modal";
 import { createClient } from "@/lib/supabase/client";
+import { MOCK_MODE } from "@/lib/env";
 import {
   Search, Download, Building2, Users, Rocket, TrendingUp,
   Pencil, Trash2, ChevronUp, ChevronDown, ExternalLink,
@@ -28,9 +29,9 @@ interface Company {
 
 type SortKey = "name" | "plan" | "users" | "status" | "implStatus" | "created_at";
 
-// ── Mock seed data ─────────────────────────────────────────────────────────────
+// ── Mock seed data (demo only — never used as a live fallback) ──────────────────
 
-const INITIAL: Company[] = [
+const MOCK_COMPANIES: Company[] = [
   { id: "t-001", name: "BioStar Research Inc.",  industry: "Pharma / Biotech",  plan: "Professional", users: 12, status: "active",   implStatus: "live",        contact: "Sarah Chen",    contact_email: "s.chen@biostar.com",        mrr: 1100, created_at: "2026-01-15" },
   { id: "t-002", name: "NovaChem Solutions",     industry: "Chemical Mfg",      plan: "Enterprise",   users: 34, status: "active",   implStatus: "onboarding",  contact: "James Okafor",  contact_email: "j.okafor@novachem.com",     mrr: 2850, created_at: "2026-02-01" },
   { id: "t-003", name: "GenTech Biopharma",      industry: "Biotech",           plan: "Professional", users: 8,  status: "active",   implStatus: "onboarding",  contact: "Mei Tanaka",    contact_email: "m.tanaka@gentech.com",      mrr: 1100, created_at: "2026-03-10" },
@@ -222,7 +223,9 @@ function CompanyModal({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SACompaniesPage() {
-  const [companies,    setCompanies]    = useState<Company[]>(INITIAL);
+  // Live mode starts empty and is filled from the real `tenants` table below.
+  // Mock mode seeds the demo fixtures so the screen is explorable offline.
+  const [companies,    setCompanies]    = useState<Company[]>(MOCK_MODE ? MOCK_COMPANIES : []);
   const [editing,      setEditing]      = useState<Company | null>(null);
   const [addingNew,    setAddingNew]    = useState(false);
   const [search,       setSearch]       = useState("");
@@ -232,7 +235,7 @@ export default function SACompaniesPage() {
   const [sortDir,      setSortDir]      = useState<"asc" | "desc">("asc");
   const [toast,        setToast]        = useState("");
 
-  // Load from Supabase when available; falls back to INITIAL in mock mode.
+  // Load real tenants from Supabase in live mode. Mock mode keeps the fixtures.
   useEffect(() => {
     const sb = createClient();
     if (!sb) return;
@@ -240,7 +243,8 @@ export default function SACompaniesPage() {
       .select("id, name, slug, sector, active, created_at")
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
-        if (error || !data?.length) return;
+        // Live mode: always reflect the real table (even when empty → empty state).
+        if (error || !data) return;
         setCompanies(data.map(t => ({
           id:            t.id,
           name:          t.name,
