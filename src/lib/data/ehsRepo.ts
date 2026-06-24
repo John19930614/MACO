@@ -12,7 +12,7 @@ import type {
   PredictabilityRun, AuditEntry, RelianceInsight, Profile,
   WorkspaceTask, BiosafetyLab, BiohazardAgent, CapaSourceType,
   DocumentAcknowledgment, OshaCase,
-  ErgonomicsWorkstation, ErgonomicsJobTask,
+  ErgonomicsWorkstation, ErgonomicsJobTask, ExposureReading,
 } from "@/lib/types";
 import type { Severity, CapaStatus, AuditStatus, RiskLevel, TrainingDelivery } from "@/lib/constants";
 
@@ -905,6 +905,33 @@ export const getErgonomicsIncidents = cache(async (tenantId = MOCK_TENANT_ID): P
     regulatory_report_date: r.regulatory_report_date ?? null,
     created_at: r.created_at,
     updated_at: r.updated_at,
+  }));
+});
+
+// ── Exposure Readings (industrial hygiene monitoring) ─────────────────────────
+
+export const getExposureReadings = cache(async (tenantId = MOCK_TENANT_ID): Promise<ExposureReading[]> => {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("exposure_readings")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("reading_date", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? MOCK_SITE_ID,
+    chemical: r.chemical ?? "",
+    reading_type: r.reading_type ?? "TWA",
+    value: Number(r.value) || 0,
+    unit: r.unit ?? "ppm",
+    location: r.location ?? "",
+    reading_date: r.reading_date,
+    monitor: r.monitor ?? "",
+    created_at: r.created_at,
   }));
 });
 

@@ -252,6 +252,7 @@ export default async function ReportsPage({
           <ReportsHeaderActions
             capas={capas}
             incidents={incidents}
+            oshaCases={oshaCases}
             trainingRecs={trainingRecs}
             legal={legal}
             chemicals={chemicals}
@@ -966,6 +967,7 @@ export default async function ReportsPage({
                   <QuickReportsPanel
                     capas={capas}
                     incidents={incidents}
+                    oshaCases={oshaCases}
                     trainingRecs={trainingRecs}
                     courseMap={courseMap}
                     profileMap={profileMap}
@@ -981,6 +983,7 @@ export default async function ReportsPage({
                     reports={SAVED_REPORTS}
                     capas={capas}
                     incidents={incidents}
+                    oshaCases={oshaCases}
                     trainingRecs={trainingRecs}
                     chemicals={chemicals}
                     moduleScores={MODULE_SCORES}

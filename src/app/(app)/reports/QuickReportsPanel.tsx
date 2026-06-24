@@ -2,7 +2,8 @@
 
 import { BarChart3, PieChart, FileText, Download } from "lucide-react";
 import { useDemoUser } from "@/lib/context/demo-user";
-import type { CapaAction, Incident, TrainingRecord, LegalRequirement, Chemical } from "@/lib/types";
+import { oshaRate } from "@/lib/osha";
+import type { CapaAction, Incident, OshaCase, TrainingRecord, LegalRequirement, Chemical } from "@/lib/types";
 
 interface ModuleScore {
   module: string;
@@ -16,6 +17,7 @@ interface ModuleScore {
 interface Props {
   capas: CapaAction[];
   incidents: Incident[];
+  oshaCases: OshaCase[];
   trainingRecs: TrainingRecord[];
   courseMap: Record<string, string>;
   profileMap: Record<string, string>;
@@ -95,7 +97,7 @@ function downloadCSV(filename: string, csv: string) {
 
 // ── Export functions ──────────────────────────────────────────────────────────
 
-export function QuickReportsPanel({ capas, incidents, trainingRecs, courseMap, profileMap, legal, chemicals, moduleScores }: Props) {
+export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, courseMap, profileMap, legal, chemicals, moduleScores }: Props) {
   const { user } = useDemoUser();
 
   function exportComplianceSummary() {
@@ -197,7 +199,8 @@ export function QuickReportsPanel({ capas, incidents, trainingRecs, courseMap, p
         ["Lost-Time Events", lostTime.length],
         ["Total Lost Days", totalLostDays],
         ["Critical/High Severity", ytd.filter((i) => i.severity === "critical" || i.severity === "high").length],
-        ["TRIR (per 100 FTE, 87,360 hrs)", ((ytd.length / 87360) * 200000).toFixed(2)],
+        ["TRIR (per 100 FTE)", oshaRate(oshaCases.length)],
+        ["Incident Rate (all incidents, per 100 FTE)", oshaRate(ytd.length)],
       ],
       companyName: user.company,
     });

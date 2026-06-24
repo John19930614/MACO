@@ -336,6 +336,20 @@ export interface ErgonomicsJobTask {
   updated_at: string;
 }
 
+export interface ExposureReading {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  chemical: string;
+  reading_type: string;              // e.g. "TWA", "STEL", "Ceiling"
+  value: number;
+  unit: string;                      // e.g. "ppm", "mg/m³"
+  location: string;
+  reading_date: string;
+  monitor: string;                   // person/instrument that took the reading
+  created_at: string;
+}
+
 export interface DocumentAcknowledgment {
   id: string;
   tenant_id: string;

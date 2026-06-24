@@ -31,35 +31,41 @@ function fmtDate(s: string | null | undefined) {
   return new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+// Canonical risk bands — must match riskLevel() in src/lib/actions/ehs.ts:
+// score ≥20 extreme, ≥15 high, ≥10 medium, ≥5 low, else negligible.
 function riskColor(score: number): string {
   if (score >= 20) return "#dc2626"; // extreme — red
-  if (score >= 12) return "#ea580c"; // high — orange
-  if (score >= 6)  return "#d97706"; // medium — amber
-  return "#16a34a";                   // low — green
+  if (score >= 15) return "#ea580c"; // high — orange
+  if (score >= 10) return "#d97706"; // medium — amber
+  if (score >= 5)  return "#16a34a"; // low — green
+  return "#94a3b8";                   // negligible — slate
 }
 
 function cellColor(l: number, c: number): string {
   const s = l * c;
   if (s >= 20) return "bg-red-100 border-red-200";
-  if (s >= 12) return "bg-orange-100 border-orange-200";
-  if (s >= 6)  return "bg-amber-50 border-amber-200";
-  return "bg-emerald-50 border-emerald-200";
+  if (s >= 15) return "bg-orange-100 border-orange-200";
+  if (s >= 10) return "bg-amber-50 border-amber-200";
+  if (s >= 5)  return "bg-emerald-50 border-emerald-200";
+  return "bg-slate-50 border-slate-200";
 }
 
 function cellLabel(l: number, c: number): string {
   const s = l * c;
   if (s >= 20) return "Extreme";
-  if (s >= 12) return "High";
-  if (s >= 6)  return "Medium";
-  return "Low";
+  if (s >= 15) return "High";
+  if (s >= 10) return "Medium";
+  if (s >= 5)  return "Low";
+  return "Negligible";
 }
 
 function cellTextColor(l: number, c: number): string {
   const s = l * c;
   if (s >= 20) return "text-red-700";
-  if (s >= 12) return "text-orange-700";
-  if (s >= 6)  return "text-amber-700";
-  return "text-emerald-700";
+  if (s >= 15) return "text-orange-700";
+  if (s >= 10) return "text-amber-700";
+  if (s >= 5)  return "text-emerald-700";
+  return "text-slate-600";
 }
 
 const JOB_LABEL: Record<string, string> = {

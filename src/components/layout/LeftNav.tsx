@@ -8,6 +8,7 @@ import { useDemoUser, type DemoProfile } from "@/lib/context/demo-user";
 import { MOCK_MODE } from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
 import type { ServerUser } from "@/lib/auth/types";
+import { ROLE_META, canCoordinate, type Role } from "@/lib/constants";
 
 // ── Nav types ─────────────────────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ const BASE_COMPANY_NAV: NavSection[] = [
   {
     group: "Insights",
     items: [
-      { href: "/ai",         label: "Amaya AI Assistant",      description: "Ask anything about your EHS",   icon: "🤖" },
+      { href: "/ai",         label: "SafetyIQ AI Assistant",   description: "Ask anything about your EHS",   icon: "🤖" },
       { href: "/reports",    label: "Reports & Analytics",     description: "Dashboards & exports",           icon: "📊" },
     ],
   },
@@ -156,24 +157,25 @@ const SA_NAV: NavSection[] = [
   },
 ];
 
+// Field-tier roles get the field-focused subset (no admin section).
+const FIELD_ROLES: readonly Role[] = ["field_officer", "contributor"];
+
 function getNav(user: DemoProfile): NavSection[] {
   if (user.is_reliance) return SA_NAV;
-  if (user.role === "viewer") return VIEWER_NAV;
-  if (user.role === "field_officer") return FIELD_OFFICER_NAV;
-  if (user.role === "admin") return [...BASE_COMPANY_NAV, ...COMPANY_ADMIN_EXTRA];
+  const role = user.role as Role;
+  if (role === "viewer") return VIEWER_NAV;
+  if (FIELD_ROLES.includes(role)) return FIELD_OFFICER_NAV;
+  // Management roles (ehs_coordinator, supervisor, safety_manager, ehs_manager,
+  // admin) get the full company nav INCLUDING the Admin section. Derived from
+  // constants COORDINATOR_ROLES via canCoordinate so the list never drifts.
+  if (canCoordinate(role)) return [...BASE_COMPANY_NAV, ...COMPANY_ADMIN_EXTRA];
+  // Unknown / non-management company roles fall through to the base nav.
   return BASE_COMPANY_NAV;
 }
 
 function getRoleBadge(user: DemoProfile): string {
   if (user.is_reliance) return "Platform Admin";
-  const map: Record<string, string> = {
-    admin:           "Company Admin",
-    ehs_manager:     "EHS Manager",
-    ehs_coordinator: "EHS Coordinator",
-    field_officer:   "Field Officer",
-    viewer:          "Viewer",
-  };
-  return map[user.role] ?? user.role;
+  return ROLE_META[user.role as Role]?.label ?? user.role;
 }
 
 // ── Badge ─────────────────────────────────────────────────────────────────────

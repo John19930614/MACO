@@ -3,7 +3,8 @@
 import { FileText, Download } from "lucide-react";
 import { useDemoUser } from "@/lib/context/demo-user";
 import { Pill } from "@/components/ui/primitives";
-import type { CapaAction, Incident, TrainingRecord, Chemical } from "@/lib/types";
+import { oshaRate } from "@/lib/osha";
+import type { CapaAction, Incident, OshaCase, TrainingRecord, Chemical } from "@/lib/types";
 
 interface ModuleScore {
   module: string;
@@ -18,6 +19,7 @@ interface Props {
   reports: Array<{ name: string; type: string; generated: string; pages: number }>;
   capas: CapaAction[];
   incidents: Incident[];
+  oshaCases: OshaCase[];
   trainingRecs: TrainingRecord[];
   chemicals: Chemical[];
   moduleScores: ModuleScore[];
@@ -249,7 +251,7 @@ function exportTrainingReport(
   downloadCSV(`${companyName.split(" ")[0]}-Training-Report-${isoDate}.csv`, csv);
 }
 
-function exportIncidentAnalysis(incidents: Incident[], companyName: string) {
+function exportIncidentAnalysis(incidents: Incident[], oshaCases: OshaCase[], companyName: string) {
   const now     = new Date();
   const isoDate = now.toISOString().slice(0, 10);
   const ytd         = incidents.filter((i) => new Date(i.occurred_at).getFullYear() === now.getFullYear());
@@ -282,7 +284,8 @@ function exportIncidentAnalysis(incidents: Incident[], companyName: string) {
       ["Regulatory Reportable", regulatory.length],
       ["Lost-Time Events", lostTime.length],
       ["Total Lost Days", totalLostDays],
-      ["TRIR (per 100 FTE, 87,360 hrs)", ((ytd.length / 87360) * 200000).toFixed(2)],
+      ["TRIR (per 100 FTE)", oshaRate(oshaCases.length)],
+      ["Incident Rate (all incidents, per 100 FTE)", oshaRate(ytd.length)],
     ],
     companyName,
   });
@@ -302,7 +305,7 @@ const TYPE_COLOR: Record<string, string> = {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function SavedReportsPanel({
-  reports, capas, incidents, trainingRecs, chemicals, moduleScores, courseMap, profileMap,
+  reports, capas, incidents, oshaCases, trainingRecs, chemicals, moduleScores, courseMap, profileMap,
 }: Props) {
   const { user } = useDemoUser();
   function handleDownload(type: string) {
@@ -312,7 +315,7 @@ export function SavedReportsPanel({
       case "Chemical":   exportChemicalInventory(chemicals, co); break;
       case "CAPA":       exportCapaStatus(capas, co); break;
       case "Training":   exportTrainingReport(trainingRecs, courseMap, profileMap, co); break;
-      case "Incidents":  exportIncidentAnalysis(incidents, co); break;
+      case "Incidents":  exportIncidentAnalysis(incidents, oshaCases, co); break;
     }
   }
 

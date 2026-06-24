@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Download, Filter, X } from "lucide-react";
 import { useDemoUser } from "@/lib/context/demo-user";
 import { oshaRate } from "@/lib/osha";
-import type { CapaAction, Incident, TrainingRecord, LegalRequirement, Chemical } from "@/lib/types";
+import type { CapaAction, Incident, OshaCase, TrainingRecord, LegalRequirement, Chemical } from "@/lib/types";
 
 interface ModuleScore {
   module: string;
@@ -18,6 +18,7 @@ interface ModuleScore {
 interface Props {
   capas: CapaAction[];
   incidents: Incident[];
+  oshaCases: OshaCase[];
   trainingRecs: TrainingRecord[];
   legal: LegalRequirement[];
   chemicals: Chemical[];
@@ -71,7 +72,7 @@ const FILTER_OPTIONS = [
   { key: "chemical", label: "Chemical Only" },
 ];
 
-export function ReportsHeaderActions({ capas, incidents, trainingRecs, legal, chemicals, moduleScores, overallScore }: Props) {
+export function ReportsHeaderActions({ capas, incidents, oshaCases, trainingRecs, legal, chemicals, moduleScores, overallScore }: Props) {
   const { user } = useDemoUser();
   const [filterOpen, setFilterOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState("all");
@@ -87,7 +88,7 @@ export function ReportsHeaderActions({ capas, incidents, trainingRecs, legal, ch
     const ytdIncidents = incidents.filter((i) => new Date(i.occurred_at).getFullYear() === year);
     const lostTime     = ytdIncidents.filter((i) => (i.lost_time_days ?? 0) > 0);
     const regulatory   = ytdIncidents.filter((i) => i.regulatory_reportable);
-    const trir         = oshaRate(ytdIncidents.length);
+    const trir         = oshaRate(oshaCases.length);
     const gaps         = legal.filter((l) => l.status !== "compliant" && l.status !== "not_applicable");
 
     const lines: string[] = [];

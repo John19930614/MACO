@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   FlaskConical,
   Calendar,
@@ -29,6 +30,9 @@ import {
 import type { WasteStream, Chemical } from "@/lib/types";
 import { Card, CardHeader, Pill, Stat } from "@/components/ui/primitives";
 import { MOCK_MODE } from "@/lib/env";
+import { addWorkspaceTask } from "@/lib/actions/ehs";
+import { Modal, Field, Input, Select, Textarea, SubmitRow } from "@/components/modals/Modal";
+import { playCreateSound } from "@/lib/sounds";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1116,6 +1120,106 @@ function ManifestArchive({ streams }: { streams: WasteStream[] }) {
   );
 }
 
+// ── Schedule Task button (creates a real tracked workspace task) ──────────────
+// Used by inspection/pickup "schedule" actions — these map to addWorkspaceTask,
+// which inserts a row into workspace_tasks. Disabled labels are used for
+// workflows that have no backing table yet (see "Coming soon" buttons below).
+
+function ScheduleTaskButton({
+  label,
+  title,
+  defaultTitle,
+  defaultType,
+  defaultDue,
+  className,
+}: {
+  label: string;
+  title: string;
+  defaultTitle: string;
+  defaultType: string;
+  defaultDue?: string | null;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const router = useRouter();
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setPending(true);
+    const res = await addWorkspaceTask(null, new FormData(e.currentTarget));
+    if (res.ok) { playCreateSound(); setOpen(false); router.refresh(); }
+    setPending(false);
+  }
+
+  const dueValue = defaultDue ? defaultDue.slice(0, 10) : "";
+
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className={className}>
+        {label}
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title={title}>
+        <form onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-4 px-6 py-5">
+            <Field label="Task Title" required>
+              <Input name="title" defaultValue={defaultTitle} required />
+            </Field>
+            <Field label="Notes">
+              <Textarea name="notes" placeholder="Additional context or instructions…" />
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Type">
+                <Select name="type" defaultValue={defaultType}>
+                  <option value="Waste">Waste</option>
+                  <option value="Audit">Audit</option>
+                  <option value="General">General</option>
+                </Select>
+              </Field>
+              <Field label="Priority">
+                <Select name="priority" defaultValue="medium">
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </Select>
+              </Field>
+            </div>
+            <Field label="Due Date">
+              <Input name="due_date" type="date" defaultValue={dueValue} />
+            </Field>
+          </div>
+          <SubmitRow onClose={() => setOpen(false)} submitting={pending} />
+        </form>
+      </Modal>
+    </>
+  );
+}
+
+// ── Disabled "not yet available" button — honest placeholder for workflows
+// that have no backing table/action yet (QR labels, signage, posters, vendor
+// management, profile-approval pipeline, iCal export, report packages). ────────
+
+function ComingSoonButton({
+  label,
+  className,
+  note = "Not yet available",
+}: {
+  label: string;
+  className?: string;
+  note?: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled
+      title={note}
+      className={`cursor-not-allowed opacity-60 ${className ?? ""}`}
+    >
+      {label}
+    </button>
+  );
+}
+
 // ── WasteDashboard (main export) ──────────────────────────────────────────────
 
 export function WasteDashboard({
@@ -1298,9 +1402,11 @@ export function WasteDashboard({
               title="Waste Profile Review Pipeline"
               subtitle="BL-WMP-04 / BL-WMP-05 · Draft → EHS Review → Approved → Active · Reviewer approval locks profile for container assignment"
               right={
-                <button type="button" onClick={() => alert("AI Profile Draft: Select a chemical from the SDS library to auto-generate a waste profile. EHS reviewer is notified on submission.")} className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors">
-                  <Zap className="h-3 w-3" /> AI Draft Profile
-                </button>
+                <ComingSoonButton
+                  label="AI Draft Profile (coming soon)"
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white"
+                  note="AI profile drafting is not yet available"
+                />
               }
             />
             <div className="overflow-x-auto">
@@ -1351,14 +1457,16 @@ export function WasteDashboard({
                       </td>
                       <td className="px-4 py-3">
                         {p.state === "draft" && (
-                          <button type="button" onClick={() => alert(`Submit ${p.name} (${p.version}) for EHS review — reviewer will be notified.`)} className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700 hover:bg-amber-100 transition-colors">
-                            Submit for Review
-                          </button>
+                          <ComingSoonButton
+                            label="Submit for Review"
+                            className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700"
+                            note="Profile approval pipeline is not yet available"
+                          />
                         )}
                         {p.state === "ehs_review" && (
                           <div className="flex gap-1.5">
-                            <button type="button" onClick={() => alert(`Approve ${p.name} — profile moves to Approved state.`)} className="rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-emerald-700 transition-colors">Approve</button>
-                            <button type="button" onClick={() => alert(`Reject ${p.name} — returned to Draft with comments.`)} className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 hover:bg-red-100 transition-colors">Reject</button>
+                            <ComingSoonButton label="Approve" className="rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-semibold text-white" note="Profile approval pipeline is not yet available" />
+                            <ComingSoonButton label="Reject" className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700" note="Profile approval pipeline is not yet available" />
                           </div>
                         )}
                         {(p.state === "approved" || p.state === "active") && (
@@ -1493,12 +1601,12 @@ export function WasteDashboard({
                                   <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">SDS Documents</div>
                                   <div className="flex flex-wrap gap-2">
                                     {detail.sdsLinks.map((s) => (
-                                      <button key={s.number} type="button"
-                                        onClick={() => alert(`Open SDS: ${s.title} (${s.number})`)}
-                                        className="rounded border border-blue-200 bg-white px-2 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50"
+                                      <span key={s.number}
+                                        title="SDS document link not yet available"
+                                        className="cursor-not-allowed rounded border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-400"
                                       >
                                         {s.title} · {s.number}
-                                      </button>
+                                      </span>
                                     ))}
                                   </div>
                                 </div>
@@ -1842,13 +1950,11 @@ export function WasteDashboard({
             </div>
             <div className="flex items-center justify-between gap-4 border-t border-slate-50 bg-slate-50/50 px-5 py-3">
               <span className="text-[10.5px] text-slate-400">BL-WMP-14 · Retention rules apply — do-not-delete status on regulated records · All exports include company, site, record ID, version, generated date, and evidence index</span>
-              <button
-                type="button"
-                onClick={() => alert("Export compliance calendar as iCal / PDF — includes all obligations, due dates, evidence requirements, and regulatory citations.")}
-                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-              >
-                <Download className="h-3 w-3" /> Export Calendar
-              </button>
+              <ComingSoonButton
+                label="Export Calendar (coming soon)"
+                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600"
+                note="Calendar export (iCal / PDF) is not yet available"
+              />
             </div>
           </Card>
 
@@ -1973,13 +2079,11 @@ export function WasteDashboard({
                         </Pill>
                       </td>
                       <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => alert(`Generate Emergency Poster for ${k.area} — includes spill kit location, emergency contacts, waste codes, and nearest eyewash station.`)}
-                          className="rounded border border-slate-200 px-2 py-1 text-[10px] font-medium text-slate-600 hover:bg-slate-50"
-                        >
-                          Generate Poster
-                        </button>
+                        <ComingSoonButton
+                          label="Generate Poster"
+                          className="rounded border border-slate-200 px-2 py-1 text-[10px] font-medium text-slate-600"
+                          note="Emergency poster generation is not yet available"
+                        />
                       </td>
                     </tr>
                   ))}
@@ -2246,20 +2350,12 @@ export function WasteDashboard({
                   {capa.notes && <div className="mb-4 text-xs text-slate-500">{capa.notes}</div>}
 
                   <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => alert(`Upload evidence for ${capa.id} — attach photo, document, or work order confirmation.`)}
-                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
-                    >
-                      Upload Evidence
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => alert(`Submit ${capa.id} for verification — independent reviewer required before closure.`)}
+                    <Link
+                      href="/capa"
                       className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
                     >
-                      Submit for Verification
-                    </button>
+                      Manage in CAPA Module
+                    </Link>
                   </div>
                 </div>
               </Card>
@@ -2382,20 +2478,16 @@ export function WasteDashboard({
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">
-                          <button
-                            type="button"
-                            onClick={() => alert(`QR / Print label for ${c.id} — links to approved profile ${c.code}. Place printed label on container.`)}
-                            className="whitespace-nowrap rounded border border-slate-200 px-2 py-1 text-[10px] font-medium text-slate-600 hover:bg-slate-50"
-                          >
-                            QR / Print
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => alert(`Attach photo evidence to ${c.id} — inspection photo or condition record.`)}
-                            className="whitespace-nowrap rounded border border-blue-200 px-2 py-1 text-[10px] font-medium text-blue-600 hover:bg-blue-50"
-                          >
-                            + Photo
-                          </button>
+                          <ComingSoonButton
+                            label="QR / Print"
+                            className="whitespace-nowrap rounded border border-slate-200 px-2 py-1 text-[10px] font-medium text-slate-600"
+                            note="Container label / QR generation is not yet available"
+                          />
+                          <ComingSoonButton
+                            label="+ Photo"
+                            className="whitespace-nowrap rounded border border-blue-200 px-2 py-1 text-[10px] font-medium text-blue-600"
+                            note="Photo evidence upload is not yet available"
+                          />
                         </div>
                       </td>
                     </tr>
@@ -2469,9 +2561,13 @@ export function WasteDashboard({
               title="Pickup Requests &amp; Shipment Readiness"
               subtitle="BL-WMP-10 · Submit → confirm → readiness check → release · Shipment blocked until all items confirmed"
               right={
-                <button type="button" onClick={() => alert("New Pickup Request — select vendor, waste streams, and preferred date. Readiness checklist auto-populates based on waste type.")} className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors">
-                  + New Request
-                </button>
+                <ScheduleTaskButton
+                  label="+ New Request"
+                  title="New Pickup Request"
+                  defaultTitle="Arrange waste pickup with disposal contractor"
+                  defaultType="Waste"
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors"
+                />
               }
             />
             <div className="space-y-4 p-4">
@@ -2742,20 +2838,19 @@ export function WasteDashboard({
                 </div>
 
                 <div className="mt-4 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => alert(`Signage Package for ${area.name} — generates hazard class, emergency contact, SAA/CAA identification, and waste code postings per 40 CFR §265.173.`)}
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
-                  >
-                    Signage Package
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alert(`Schedule next inspection for ${area.name} — owner: ${area.owner}. Next due: ${fmt(area.nextInspection)}.`)}
+                  <ComingSoonButton
+                    label="Signage Package"
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600"
+                    note="Signage package generation is not yet available"
+                  />
+                  <ScheduleTaskButton
+                    label="Schedule Inspection"
+                    title={`Schedule Inspection — ${area.name}`}
+                    defaultTitle={`Inspect ${area.name} (${area.room})`}
+                    defaultType="Audit"
+                    defaultDue={area.nextInspection}
                     className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-600 transition hover:bg-blue-50"
-                  >
-                    Schedule Inspection
-                  </button>
+                  />
                 </div>
               </div>
             </Card>
@@ -2875,27 +2970,27 @@ export function WasteDashboard({
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => alert(`Schedule a pickup with ${v.name} — contact ${v.phone} or ${v.email}`)}
+                  <ScheduleTaskButton
+                    label="Schedule Pickup"
+                    title={`Schedule Pickup — ${v.name}`}
+                    defaultTitle={`Schedule waste pickup with ${v.name}`}
+                    defaultType="Waste"
+                    defaultDue={v.nextPickup}
                     className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
-                  >
-                    Schedule Pickup
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alert(`Evidence Package for ${v.name}: license, TSDF permit, insurance certificate, DOT registration, and ${v.disposalCertCount} disposal certificates. Download as ZIP.`)}
-                    className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
-                  >
-                    Evidence Package
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alert(`Vendor record editing is managed by Reliance. Contact your SA to update vendor details.`)}
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
-                  >
-                    Edit Record
-                  </button>
+                  />
+                  <ComingSoonButton
+                    label="Evidence Package"
+                    className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-medium text-emerald-700"
+                    note="Vendor evidence package export is not yet available"
+                  />
+                  {v.email && (
+                    <a
+                      href={`mailto:${v.email}`}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                    >
+                      Contact Vendor
+                    </a>
+                  )}
                 </div>
               </div>
             </Card>
@@ -2940,20 +3035,12 @@ export function WasteDashboard({
                 </div>
                 <button
                   type="button"
-                  onClick={() =>
-                    r.ready
-                      ? alert(`${r.title} — Export includes company, site, record IDs, version, generated date, reviewer, and evidence index.`)
-                      : undefined
-                  }
-                  disabled={!r.ready}
-                  className={`flex items-center gap-1.5 self-start rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                    r.ready
-                      ? "border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-                      : "cursor-not-allowed border border-slate-200 bg-slate-50 text-slate-400"
-                  }`}
+                  disabled
+                  title="Report package export is not yet available"
+                  className="flex cursor-not-allowed items-center gap-1.5 self-start rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-400"
                 >
                   <Download className="h-3 w-3" />
-                  {r.ready ? "Export Package" : "Not Yet Available"}
+                  Export — coming soon
                 </button>
               </div>
             ))}
@@ -2986,13 +3073,11 @@ export function WasteDashboard({
                   {rev.signed ? (
                     <div className="mt-2 text-[10px] font-semibold text-emerald-600">Signed {fmt(rev.signedDate)}</div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => alert(`${rev.name} — acknowledge all 10 program sections before signing. Section 10 (Minimization Goals) is still pending review.`)}
-                      className="mt-2 w-full rounded-lg border border-amber-300 bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-700 hover:bg-amber-200 transition-colors"
-                    >
-                      Pending Sign-Off →
-                    </button>
+                    <ComingSoonButton
+                      label="Pending Sign-Off"
+                      className="mt-2 w-full rounded-lg border border-amber-300 bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-700"
+                      note="Leadership sign-off workflow is not yet available"
+                    />
                   )}
                 </div>
               ))}

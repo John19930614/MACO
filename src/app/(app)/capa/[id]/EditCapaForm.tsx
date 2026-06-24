@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Field, Input, Select } from "@/components/modals/Modal";
-import { updateCapa } from "@/lib/actions/ehs";
+import { updateCapa, createTriggeredCapaActions } from "@/lib/actions/ehs";
 import { useDemoUser } from "@/lib/context/demo-user";
 import type { CapaAction, Profile } from "@/lib/types";
 import { playCompleteSound, playAdvanceSound } from "@/lib/sounds";
@@ -296,12 +296,15 @@ function AiRcaPanel({
   const [creating, setCreating]         = useState(false);
   const [allCreated, setAllCreated]     = useState(false);
   const [createdCount, setCreatedCount] = useState(0);
+  const [createError, setCreateError]   = useState<string | null>(null);
+  const router = useRouter();
 
   function runAnalysis() {
     setState("loading");
     setApplied(false);
     setAllCreated(false);
     setCreatedCount(0);
+    setCreateError(null);
     setActions([]);
     setTimeout(() => {
       const result = generateRca(title, description, source);
@@ -324,18 +327,54 @@ function AiRcaPanel({
     setActions((prev) => prev.map((a) => a.id === id ? { ...a, enabled: !a.enabled } : a));
   }
 
-  function createAllActions() {
-    const enabled = actions.filter((a) => a.enabled);
+  async function createAllActions() {
+    const enabled = actions.filter((a) => a.enabled && !a.created);
     if (!enabled.length) return;
     setCreating(true);
-    setCreatedCount(0);
-    enabled.forEach((a, i) => {
-      setTimeout(() => {
-        setActions((prev) => prev.map((p) => p.id === a.id ? { ...p, created: true } : p));
-        setCreatedCount(i + 1);
-        if (i === enabled.length - 1) { setCreating(false); setAllCreated(true); }
-      }, 400 * (i + 1));
+    setCreateError(null);
+
+    // Default due date: 30 days out.
+    const due = new Date();
+    due.setDate(due.getDate() + 30);
+    const dueDate = due.toISOString().slice(0, 10);
+
+    const payload = enabled.map((a) => {
+      const haystack = `${a.badge} ${a.text}`.toLowerCase();
+      const kind: "corrective" | "preventive" =
+        haystack.includes("preventive") ? "preventive" : "corrective";
+      const severity =
+        a.module === "Risk Intelligence" || a.module === "OSHA Logs"
+          ? "high"
+          : a.module === "Legal Register"
+          ? "medium"
+          : "medium";
+      return {
+        title: `${a.module}: ${a.badge}`,
+        description: a.text,
+        kind,
+        severity,
+        due_date: dueDate,
+      };
     });
+
+    try {
+      const fd = new FormData();
+      fd.set("actions", JSON.stringify(payload));
+      const res = await createTriggeredCapaActions(null, fd);
+      if (res.ok) {
+        const enabledIds = new Set(enabled.map((a) => a.id));
+        setActions((prev) => prev.map((p) => enabledIds.has(p.id) ? { ...p, created: true } : p));
+        setCreatedCount(res.created);
+        setAllCreated(true);
+        router.refresh();
+      } else {
+        setCreateError(res.error || "Failed to create actions.");
+      }
+    } catch {
+      setCreateError("Something went wrong creating the actions.");
+    } finally {
+      setCreating(false);
+    }
   }
 
   const enabledActions = actions.filter((a) => a.enabled);
@@ -488,16 +527,18 @@ function AiRcaPanel({
                       <button type="button" onClick={createAllActions} disabled={creating || enabledActions.length === 0}
                         className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-2 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50 transition-colors">
                         {creating
-                          ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Creating actions… ({createdCount}/{enabledActions.length})</>
+                          ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Creating {enabledActions.length} action{enabledActions.length !== 1 ? "s" : ""}…</>
                           : <><Zap className="h-3.5 w-3.5" /> Create {enabledActions.length} Triggered Action{enabledActions.length !== 1 ? "s" : ""} Across System</>}
                       </button>
-                      <p className="mt-1.5 text-center text-[10px] text-amber-600">Toggle actions off to skip — all others will be created automatically</p>
+                      {createError
+                        ? <p className="mt-1.5 text-center text-[10px] font-semibold text-red-600">{createError}</p>
+                        : <p className="mt-1.5 text-center text-[10px] text-amber-600">Toggle actions off to skip — all others will be created automatically</p>}
                     </div>
                   )}
                   {allCreated && (
                     <div className="border-t border-emerald-200 bg-emerald-50 px-3 py-2.5 rounded-b-xl">
                       <p className="text-center text-xs font-semibold text-emerald-700">
-                        ✓ {createdActions.length} actions created across {new Set(createdActions.map((a) => a.module)).size} modules — this RCA is now tracked system-wide
+                        ✓ {createdCount} action{createdCount !== 1 ? "s" : ""} created across {new Set(createdActions.map((a) => a.module)).size} modules — this RCA is now tracked system-wide
                       </p>
                     </div>
                   )}

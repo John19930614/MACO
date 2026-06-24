@@ -11,7 +11,7 @@ import { PROGRAM_DEFS, generateProgram, type SourceBlock } from "@/lib/ai/progra
 import { KIND_DEFS, extractRows, type RowKind } from "@/lib/ai/extractDocuments";
 import type { Severity, IncidentType, CapaStatus, AuditStatus, DocumentStatus } from "@/lib/constants";
 import { COMPLIANCE_STATUS_META, type ComplianceStatus } from "@/lib/constants";
-import type { CapaSourceType, AuditType, Incident, RiskAssessment, WasteStream, Equipment, LegalRequirement, TrainingRecord, OshaCase, AiFinding, Chemical, AiAnalysisOutput } from "@/lib/types";
+import type { CapaSourceType, AuditType, Incident, RiskAssessment, WasteStream, Equipment, LegalRequirement, TrainingRecord, OshaCase, AiFinding, Chemical, AiAnalysisOutput, BiosafetyLab, BiohazardAgent, ErgonomicsWorkstation, ErgonomicsJobTask } from "@/lib/types";
 import { analyzeChemical, analyzeComplianceGap, buildPredictabilityForecast } from "@/lib/ai/engine";
 import {
   getChemicals, getLegalRequirements, getTrainingRecords, getTrainingCourses, getCapaActions,
@@ -100,7 +100,7 @@ export async function updateCapa(id: string, formData: FormData) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      await ctx.client.from("capa_records").update({
+      const { error } = await ctx.client.from("capa_records").update({
         title:               (formData.get("title") as string) || "Untitled CAPA",
         description:         (formData.get("description") as string) || "",
         kind:                (formData.get("kind") as string) || "corrective",
@@ -115,6 +115,7 @@ export async function updateCapa(id: string, formData: FormData) {
         closed_at:           isClosing ? now : null,
         updated_at:          now,
       }).eq("id", id).eq("tenant_id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -206,7 +207,7 @@ export async function updateIncident(id: string, formData: FormData) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      await ctx.client.from("incidents").update({
+      const { error } = await ctx.client.from("incidents").update({
         title:       (formData.get("title") as string) || "Untitled Incident",
         description: (formData.get("description") as string) || "",
         incident_type: (formData.get("incident_type") as string) || "near_miss",
@@ -217,6 +218,7 @@ export async function updateIncident(id: string, formData: FormData) {
         root_cause:  (formData.get("root_cause") as string) || null,
         updated_at:  now,
       }).eq("id", id).eq("tenant_id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -421,7 +423,7 @@ export async function updateAudit(id: string, formData: FormData) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      await ctx.client.from("audits").update({
+      const { error } = await ctx.client.from("audits").update({
         title:          (formData.get("title") as string) || "Untitled Audit",
         type:           (formData.get("type") as string) || "internal",
         scheduled_date: (formData.get("scheduled_date") as string) || null,
@@ -430,6 +432,7 @@ export async function updateAudit(id: string, formData: FormData) {
         notes:          (formData.get("notes") as string) || null,
         updated_at:     now,
       }).eq("id", id).eq("tenant_id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -476,12 +479,13 @@ export async function submitAuditConduct(
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      await ctx.client.from("audits").update({
+      const { error } = await ctx.client.from("audits").update({
         status:         "completed",
         completed_date: data.conductDate || now.slice(0, 10),
         notes:          notesJson,
         updated_at:     now,
       }).eq("id", id).eq("tenant_id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -585,7 +589,7 @@ export async function updateRisk(id: string, formData: FormData) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      await ctx.client.from("risk_assessments").update({
+      const { error } = await ctx.client.from("risk_assessments").update({
         title:       (formData.get("title") as string) || "Untitled Risk",
         description: (formData.get("description") as string) || "",
         category:    (formData.get("category") as string) || "physical",
@@ -598,6 +602,7 @@ export async function updateRisk(id: string, formData: FormData) {
         review_date: (formData.get("review_date") as string) || null,
         updated_at:  now,
       }).eq("id", id).eq("tenant_id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -679,7 +684,7 @@ export async function updateWasteStream(id: string, formData: FormData) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      await ctx.client.from("waste_streams").update({
+      const { error } = await ctx.client.from("waste_streams").update({
         waste_name:          (formData.get("waste_name") as string) || "Unnamed Waste",
         waste_code:          (formData.get("waste_code") as string) || null,
         classification:      (formData.get("classification") as string) || "hazardous",
@@ -691,6 +696,7 @@ export async function updateWasteStream(id: string, formData: FormData) {
         manifest_number:     (formData.get("manifest_number") as string) || null,
         disposal_date:       (formData.get("disposal_date") as string) || null,
       }).eq("id", id).eq("tenant_id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -771,7 +777,7 @@ export async function updateEquipment(id: string, formData: FormData) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      await ctx.client.from("equipment").update({
+      const { error } = await ctx.client.from("equipment").update({
         name:                     (formData.get("name") as string) || "Unnamed Equipment",
         type:                     (formData.get("type") as string) || "other",
         serial_number:            (formData.get("serial_number") as string) || null,
@@ -784,6 +790,7 @@ export async function updateEquipment(id: string, formData: FormData) {
         notes:                    (formData.get("notes") as string) || null,
         updated_at:               now,
       }).eq("id", id).eq("tenant_id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -866,7 +873,7 @@ export async function updateLegalRequirement(id: string, formData: FormData) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      await ctx.client.from("legal_requirements").update({
+      const { error } = await ctx.client.from("legal_requirements").update({
         regulation_ref:   (formData.get("regulation_ref") as string) || "",
         title:            (formData.get("title") as string) || "Untitled Requirement",
         description:      (formData.get("description") as string) || "",
@@ -878,6 +885,7 @@ export async function updateLegalRequirement(id: string, formData: FormData) {
         evidence_url:     (formData.get("evidence_url") as string) || null,
         updated_at:       now,
       }).eq("id", id).eq("tenant_id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -982,7 +990,7 @@ export async function updateTrainingRecord(id: string, formData: FormData) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      await ctx.client.from("training_records").update({
+      const { error } = await ctx.client.from("training_records").update({
         profile_id:      (formData.get("profile_id") as string) || ctx.profileId,
         course_id:       (formData.get("course_id") as string) || "",
         completed_date:  (formData.get("completed_date") as string) || now.slice(0, 10),
@@ -992,6 +1000,7 @@ export async function updateTrainingRecord(id: string, formData: FormData) {
         passed,
         notes:           (formData.get("notes") as string) || null,
       }).eq("id", id).eq("tenant_id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -1140,7 +1149,7 @@ export async function updateDocument(id: string, formData: FormData) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      await ctx.client.from("documents").update({
+      const { error } = await ctx.client.from("documents").update({
         title:                   (formData.get("title") as string) || "Untitled Document",
         category:                (formData.get("category") as string) || "sop",
         version:                 (formData.get("version") as string) || "1.0",
@@ -1151,6 +1160,7 @@ export async function updateDocument(id: string, formData: FormData) {
         ...(hasContent ? { content } : {}),
         updated_at:              now,
       }).eq("id", id).eq("tenant_id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -1184,7 +1194,7 @@ export async function addWorkspaceTask(_prev: unknown, formData: FormData) {
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
       const profileId = (formData.get("profile_id") as string) || ctx.profileId;
-      await ctx.client.from("workspace_tasks").insert({
+      const { error } = await ctx.client.from("workspace_tasks").insert({
         tenant_id:  ctx.tenantId,
         profile_id: profileId,
         title:      (formData.get("title") as string) || "Untitled Task",
@@ -1193,6 +1203,7 @@ export async function addWorkspaceTask(_prev: unknown, formData: FormData) {
         priority:   (formData.get("priority") as string) || "medium",
         status:     "pending",
       });
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const profileId = (formData.get("profile_id") as string) || DEMO_SARAH_ID;
@@ -1228,7 +1239,7 @@ export async function completeWorkspaceTask(
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      await ctx.client.from("workspace_tasks")
+      const { error } = await ctx.client.from("workspace_tasks")
         .update({
           status:           "done",
           completed_by:     completedBy,
@@ -1238,6 +1249,7 @@ export async function completeWorkspaceTask(
         })
         .eq("id", id)
         .eq("tenant_id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -1265,11 +1277,12 @@ export async function updateSdsUrl(chemicalId: string, sdsUrl: string, sdsExpiry
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      await ctx.client
+      const { error } = await ctx.client
         .from("chemical_inventory")
         .update({ sds_url: sdsUrl.trim() || null, sds_expiry: sdsExpiry || null, updated_at: now })
         .eq("id", chemicalId)
         .eq("tenant_id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -1294,11 +1307,12 @@ export async function updateLegalEvidence(requirementId: string, evidenceUrl: st
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      await ctx.client
+      const { error } = await ctx.client
         .from("legal_requirements")
         .update({ evidence_url: evidenceUrl.trim() || null, updated_at: now })
         .eq("id", requirementId)
         .eq("tenant_id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -1324,7 +1338,7 @@ export async function addCapaFromIncident(incidentId: string, formData: FormData
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      await ctx.client.from("capa_records").insert({
+      const { error: insertError } = await ctx.client.from("capa_records").insert({
         tenant_id:   ctx.tenantId,
         site_id:     ctx.siteId,
         title:       (formData.get("title") as string) || "Untitled CAPA",
@@ -1337,10 +1351,12 @@ export async function addCapaFromIncident(incidentId: string, formData: FormData
         due_date:    (formData.get("due_date") as string) || null,
         owner_id:    null,
       });
-      await ctx.client.from("incidents")
+      if (insertError) return { ok: false, error: insertError.message };
+      const { error: updateError } = await ctx.client.from("incidents")
         .update({ status: "capa_open", updated_at: now })
         .eq("id", incidentId)
         .eq("tenant_id", ctx.tenantId);
+      if (updateError) return { ok: false, error: updateError.message };
     }
   } else {
     const store = getStore();
@@ -1438,12 +1454,13 @@ export async function acknowledgeDocument(documentId: string, profileId: string)
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      await ctx.client.from("document_acknowledgments").insert({
+      const { error } = await ctx.client.from("document_acknowledgments").insert({
         tenant_id:       ctx.tenantId,
         document_id:     documentId,
         profile_id:      profileId || ctx.profileId,
         acknowledged_at: now,
       });
+      if (error) return { ok: false, error: error.message };
     }
   } else {
     const store = getStore();
@@ -1699,25 +1716,30 @@ export async function runPredictabilityScan() {
 
   // ── Persist: recompute scores, refresh pending findings, log the run ──
   await ctx.client.from("compliance_scores").delete().eq("tenant_id", tenantId);
-  if (scoreRows.length) await ctx.client.from("compliance_scores").insert(scoreRows);
+  if (scoreRows.length) {
+    const { error } = await ctx.client.from("compliance_scores").insert(scoreRows);
+    if (error) return { ok: false, error: error.message };
+  }
 
   // Keep human-reviewed findings; replace the pending (machine-proposed) set.
   await ctx.client.from("ehs_ai_findings").delete().eq("tenant_id", tenantId).eq("review_status", "pending");
   if (findings.length) {
-    await ctx.client.from("ehs_ai_findings").insert(findings.map((f) => ({
+    const { error } = await ctx.client.from("ehs_ai_findings").insert(findings.map((f) => ({
       tenant_id: tenantId, site_id: siteId, cell_id: null, job: f.job,
       source_type: f.source_type, source_id: f.source_id, model: f.model,
       prompt_version: f.prompt_version, input_summary: f.input_summary, output: f.output,
       confidence: f.confidence, review_status: "pending", human_review_required: f.human_review_required,
     })));
+    if (error) return { ok: false, error: error.message };
   }
 
-  await ctx.client.from("predictability_runs").insert({
+  const { error: runError } = await ctx.client.from("predictability_runs").insert({
     tenant_id: tenantId, site_id: siteId, stage: "forecast",
     summary: `P-Engine scanned ${itemsScanned} EHS records across ${scoreRows.length} modules. Compliance trend: ${forecast.compliance_trend}; 30-day projection ${forecast.predicted_compliance_score_30d}%. Top risk modules: ${forecast.top_risk_modules.join(", ")}. ${findings.length} findings raised, ${actionsProposed} actions proposed.`,
     items_scanned: itemsScanned, signals_found: findings.length, actions_proposed: actionsProposed,
     forecast_data: forecast,
   });
+  if (runError) return { ok: false, error: runError.message };
 
   revalidatePath("/ai");
   revalidatePath("/dashboard");
@@ -1896,6 +1918,351 @@ export async function approveStagedRow(id: string, editedJson?: string) {
   revalidatePath("/documents/import");
   revalidatePath("/chemicals"); revalidatePath("/waste"); revalidatePath("/legal"); revalidatePath("/dashboard");
   return { ok: true as const };
+}
+
+// ── Exposure Readings (industrial hygiene monitoring) ─────────────────────────
+
+export async function addExposureReading(_prev: unknown, formData: FormData) {
+  const now = new Date().toISOString();
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { error } = await ctx.client.from("exposure_readings").insert({
+        tenant_id:    ctx.tenantId,
+        site_id:      ctx.siteId,
+        chemical:     (formData.get("chemical") as string) || "",
+        reading_type: (formData.get("reading_type") as string) || "TWA",
+        value:        Number(formData.get("value")) || 0,
+        unit:         (formData.get("unit") as string) || "ppm",
+        location:     (formData.get("location") as string) || "",
+        reading_date: (formData.get("reading_date") as string) || now.slice(0, 10),
+        monitor:      (formData.get("monitor") as string) || "",
+        created_by:   ctx.profileId,
+      });
+      if (error) return { ok: false, error: error.message };
+    }
+  }
+  // Mock mode: no in-memory exposure store — accept and revalidate.
+  revalidatePath("/monitoring");
+  return { ok: true };
+}
+
+// ── Biosafety edits ───────────────────────────────────────────────────────────
+// Update the same columns createBiosafetyLab/createBiohazardAgent set, EXCEPT
+// the *_code identifiers (those are assigned once on creation).
+
+export async function updateBiosafetyLab(id: string, formData: FormData) {
+  const now       = new Date().toISOString();
+  const name      = (formData.get("name") as string)?.trim() || "Unnamed Lab";
+  const bslLevel  = (formData.get("bsl_level") as string) || "BSL-1";
+  const personnel = parseInt(formData.get("personnel_count") as string) || 0;
+  const nextInsp  = (formData.get("next_inspection") as string) || null;
+  const status    = (formData.get("status") as string) || "compliant";
+  const openFindingsRaw = formData.get("open_findings") as string;
+
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { error } = await ctx.client.from("biosafety_labs").update({
+        name, bsl_level: bslLevel, personnel_count: personnel,
+        next_inspection: nextInsp, status,
+        ...(openFindingsRaw != null ? { open_findings: parseInt(openFindingsRaw) || 0 } : {}),
+        updated_at: now,
+      }).eq("id", id).eq("tenant_id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
+    }
+  } else {
+    const store = getStore();
+    const idx = store.biosafetyLabs.findIndex((l) => l.id === id);
+    if (idx !== -1) {
+      store.biosafetyLabs[idx] = {
+        ...store.biosafetyLabs[idx],
+        name, bsl_level: bslLevel, personnel_count: personnel,
+        next_inspection: nextInsp,
+        status: status as BiosafetyLab["status"],
+        ...(openFindingsRaw != null ? { open_findings: parseInt(openFindingsRaw) || 0 } : {}),
+        updated_at: now,
+      };
+    }
+  }
+  revalidatePath("/biosafety");
+  return { ok: true };
+}
+
+export async function updateBiohazardAgent(id: string, formData: FormData) {
+  const now        = new Date().toISOString();
+  const agentName  = (formData.get("agent_name") as string)?.trim() || "Unnamed Agent";
+  const riskClass  = (formData.get("risk_class") as string) || "Risk Group 1";
+  const storageLoc = (formData.get("storage_location") as string)?.trim() || "To be assigned";
+  const quantity   = (formData.get("quantity") as string)?.trim() || "0 units";
+  const status     = (formData.get("status") as string) || "registered";
+
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { error } = await ctx.client.from("biohazard_agents").update({
+        agent_name: agentName, risk_class: riskClass,
+        storage_location: storageLoc, quantity, status,
+        updated_at: now,
+      }).eq("id", id).eq("tenant_id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
+    }
+  } else {
+    const store = getStore();
+    const idx = store.biohazardAgents.findIndex((a) => a.id === id);
+    if (idx !== -1) {
+      store.biohazardAgents[idx] = {
+        ...store.biohazardAgents[idx],
+        agent_name: agentName, risk_class: riskClass,
+        storage_location: storageLoc, quantity,
+        status: status as BiohazardAgent["status"],
+        updated_at: now,
+      };
+    }
+  }
+  revalidatePath("/biosafety");
+  return { ok: true };
+}
+
+// ── Ergonomics ────────────────────────────────────────────────────────────────
+
+export async function addErgonomicsWorkstation(_prev: unknown, formData: FormData) {
+  const now         = new Date().toISOString();
+  const name        = (formData.get("name") as string)?.trim() || "Unnamed Workstation";
+  const department  = (formData.get("department") as string)?.trim() || "";
+  const workerCount = parseInt(formData.get("worker_count") as string) || 0;
+  const nextAssess  = (formData.get("next_assessment") as string) || null;
+  const riskLevel   = (formData.get("risk_level") as string) || "low";
+  const status      = (formData.get("status") as string) || "assessment_due";
+  const primaryHazards = (formData.get("primary_hazards") as string)?.split(/[,;]+/).map((h) => h.trim()).filter(Boolean) ?? [];
+
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { count } = await ctx.client
+        .from("ergonomics_workstations")
+        .select("*", { count: "exact", head: true })
+        .eq("tenant_id", ctx.tenantId);
+      const code = `WS-${String((count ?? 0) + 1).padStart(3, "0")}`;
+      const { error } = await ctx.client.from("ergonomics_workstations").insert({
+        tenant_id: ctx.tenantId, workstation_code: code, name, department,
+        worker_count: workerCount, next_assessment: nextAssess,
+        risk_level: riskLevel, status, primary_hazards: primaryHazards, open_findings: 0,
+      });
+      if (error) return { ok: false, error: error.message };
+    }
+  } else {
+    const store = getStore();
+    const num = store.ergonomicsWorkstations.length + 1;
+    store.ergonomicsWorkstations.push({
+      id: nextId("ws"), tenant_id: MOCK_TENANT_ID,
+      workstation_code: `WS-${String(num).padStart(3, "0")}`,
+      name, department, worker_count: workerCount,
+      last_assessment: null, next_assessment: nextAssess,
+      risk_level: riskLevel as ErgonomicsWorkstation["risk_level"],
+      status: status as ErgonomicsWorkstation["status"],
+      open_findings: 0, primary_hazards: primaryHazards, notes: null,
+      created_at: now, updated_at: now,
+    });
+  }
+  revalidatePath("/ergonomics");
+  return { ok: true };
+}
+
+export async function addErgonomicsJobTask(_prev: unknown, formData: FormData) {
+  const now        = new Date().toISOString();
+  const taskTitle  = (formData.get("task_title") as string)?.trim() || "Unnamed Task";
+  const department = (formData.get("department") as string)?.trim() || "";
+  const hazardType = (formData.get("hazard_type") as string) || "repetitive_motion";
+  const riskScore  = parseInt(formData.get("risk_score") as string) || 0;
+  const status     = (formData.get("status") as string) || "review_required";
+  const controls   = (formData.get("controls") as string)?.split(/[,;]+/).map((c) => c.trim()).filter(Boolean) ?? [];
+
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { count } = await ctx.client
+        .from("ergonomics_job_tasks")
+        .select("*", { count: "exact", head: true })
+        .eq("tenant_id", ctx.tenantId);
+      const code = `JT-${String((count ?? 0) + 1).padStart(3, "0")}`;
+      const { error } = await ctx.client.from("ergonomics_job_tasks").insert({
+        tenant_id: ctx.tenantId, task_code: code, task_title: taskTitle, department,
+        hazard_type: hazardType, risk_score: riskScore, controls, status,
+      });
+      if (error) return { ok: false, error: error.message };
+    }
+  } else {
+    const store = getStore();
+    const num = store.ergonomicsJobTasks.length + 1;
+    store.ergonomicsJobTasks.push({
+      id: nextId("jt"), tenant_id: MOCK_TENANT_ID,
+      task_code: `JT-${String(num).padStart(3, "0")}`,
+      task_title: taskTitle, department,
+      hazard_type: hazardType as ErgonomicsJobTask["hazard_type"],
+      risk_score: riskScore, controls,
+      status: status as ErgonomicsJobTask["status"],
+      notes: null, created_at: now, updated_at: now,
+    });
+  }
+  revalidatePath("/ergonomics");
+  return { ok: true };
+}
+
+// Persist a screening result as an ergonomics_job_task row (risk-score driven).
+export async function saveErgonomicScreening(_prev: unknown, formData: FormData) {
+  const now        = new Date().toISOString();
+  const taskTitle  = (formData.get("task_title") as string)?.trim()
+    || (formData.get("title") as string)?.trim() || "Ergonomic Screening";
+  const department = (formData.get("department") as string)?.trim() || "";
+  const hazardType = (formData.get("hazard_type") as string) || "repetitive_motion";
+  const riskScore  = parseInt(formData.get("risk_score") as string) || 0;
+  // Derive a control status from the screening risk score.
+  const status = riskScore >= 15 ? "controls_pending" : riskScore >= 8 ? "review_required" : "controlled";
+  const controls   = (formData.get("controls") as string)?.split(/[,;]+/).map((c) => c.trim()).filter(Boolean) ?? [];
+  const notes      = (formData.get("notes") as string)?.trim() || null;
+
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { count } = await ctx.client
+        .from("ergonomics_job_tasks")
+        .select("*", { count: "exact", head: true })
+        .eq("tenant_id", ctx.tenantId);
+      const code = `JT-${String((count ?? 0) + 1).padStart(3, "0")}`;
+      const { error } = await ctx.client.from("ergonomics_job_tasks").insert({
+        tenant_id: ctx.tenantId, task_code: code, task_title: taskTitle, department,
+        hazard_type: hazardType, risk_score: riskScore, controls, status, notes,
+      });
+      if (error) return { ok: false, error: error.message };
+    }
+  } else {
+    const store = getStore();
+    const num = store.ergonomicsJobTasks.length + 1;
+    store.ergonomicsJobTasks.push({
+      id: nextId("jt"), tenant_id: MOCK_TENANT_ID,
+      task_code: `JT-${String(num).padStart(3, "0")}`,
+      task_title: taskTitle, department,
+      hazard_type: hazardType as ErgonomicsJobTask["hazard_type"],
+      risk_score: riskScore, controls,
+      status: status as ErgonomicsJobTask["status"],
+      notes, created_at: now, updated_at: now,
+    });
+  }
+  revalidatePath("/ergonomics");
+  return { ok: true };
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+// Merge a settings object into the tenant's onboarding_data jsonb.
+
+export async function saveSettings(_prev: unknown, formData: FormData) {
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    if (ctx) {
+      const { data: tenantRow, error: readError } = await ctx.client
+        .from("tenants").select("onboarding_data").eq("id", ctx.tenantId).single();
+      if (readError) return { ok: false, error: readError.message };
+
+      const onboarding = ((tenantRow?.onboarding_data ?? {}) as Record<string, unknown>);
+      const existingSettings = (onboarding.settings ?? {}) as Record<string, unknown>;
+
+      // Notification toggles arrive as a JSON object in the "notifs" field.
+      let notifs: Record<string, unknown> = {};
+      const notifsRaw = formData.get("notifs") as string | null;
+      if (notifsRaw) {
+        try { const v = JSON.parse(notifsRaw); if (v && typeof v === "object") notifs = v as Record<string, unknown>; }
+        catch { /* ignore malformed toggles */ }
+      }
+
+      // Any remaining string form fields become config values on settings.
+      const config: Record<string, string> = {};
+      for (const [key, value] of formData.entries()) {
+        if (key === "notifs") continue;
+        if (typeof value === "string") config[key] = value;
+      }
+
+      const mergedSettings = { ...existingSettings, ...config, notifications: notifs };
+      const { error } = await ctx.client
+        .from("tenants")
+        .update({ onboarding_data: { ...onboarding, settings: mergedSettings } })
+        .eq("id", ctx.tenantId);
+      if (error) return { ok: false, error: error.message };
+    }
+  }
+  // Mock mode: settings are not persisted in the in-memory store.
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+// ── Triggered CAPA actions (bulk create) ──────────────────────────────────────
+// formData.actions = JSON array of { title, description, kind, severity, due_date }.
+
+export async function createTriggeredCapaActions(_prev: unknown, formData: FormData) {
+  let actions: Array<{ title?: string; description?: string; kind?: string; severity?: string; due_date?: string }> = [];
+  try {
+    const parsed = JSON.parse((formData.get("actions") as string) || "[]");
+    if (Array.isArray(parsed)) actions = parsed;
+  } catch {
+    return { ok: false, created: 0, error: "Invalid actions payload." };
+  }
+  if (actions.length === 0) return { ok: true, created: 0 };
+
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, created: 0, error: "Session expired — please reload." };
+    if (ctx) {
+      const rows = actions.map((a) => ({
+        tenant_id:   ctx.tenantId,
+        site_id:     ctx.siteId,
+        title:       a.title || "Untitled CAPA",
+        description: a.description || "",
+        kind:        a.kind || "corrective",
+        source_type: "manual",
+        severity:    a.severity || "medium",
+        status:      "open",
+        due_date:    a.due_date || null,
+        owner_id:    null,
+      }));
+      const { error } = await ctx.client.from("capa_records").insert(rows);
+      if (error) return { ok: false, created: 0, error: error.message };
+    }
+  } else {
+    const store = getStore();
+    const now = new Date().toISOString();
+    for (const a of actions) {
+      store.capaActions.push({
+        id: nextId("capa"),
+        tenant_id:   MOCK_TENANT_ID,
+        site_id:     MOCK_SITE_ID,
+        title:       a.title || "Untitled CAPA",
+        description: a.description || "",
+        kind:        (a.kind as "corrective" | "preventive") ?? "corrective",
+        source_type: "manual" as CapaSourceType,
+        source_id:   null,
+        root_cause:  null,
+        severity:    (a.severity as Severity) ?? "medium",
+        owner_id:    null,
+        due_date:    a.due_date || null,
+        status:      "open",
+        verification_method: null,
+        closed_at:   null,
+        closure_note: null,
+        closed_with_evidence: false,
+        created_at:  now,
+        updated_at:  now,
+      });
+    }
+  }
+  revalidatePath("/capa");
+  return { ok: true, created: actions.length };
 }
 
 export async function rejectStagedRow(id: string) {

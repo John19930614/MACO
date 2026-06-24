@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ShieldCheck, AlertTriangle, Zap, Brain, ChevronRight } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ShieldCheck, AlertTriangle, Zap, Brain, ChevronRight, Check } from "lucide-react";
+import { saveErgonomicScreening } from "@/lib/actions/ehs";
+import { playCreateSound } from "@/lib/sounds";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -92,6 +95,25 @@ function aiInsight(s: ScreeningState, score: number): { headline: string; body: 
   };
 }
 
+// Map the screening work type to a JHA hazard_type enum value.
+function hazardTypeFor(s: ScreeningState): string {
+  switch (s.workType) {
+    case "lifting":           return "forceful_exertion";
+    case "pushing_pulling":   return "forceful_exertion";
+    case "reaching_overhead": return "awkward_posture";
+    case "repetitive":        return "repetitive_motion";
+    default:                  return "repetitive_motion";
+  }
+}
+
+const WORK_TYPE_LABEL: Record<WorkType, string> = {
+  lifting: "Lifting",
+  pushing_pulling: "Pushing / Pulling",
+  reaching_overhead: "Reaching / Overhead",
+  repetitive: "Repetitive Work",
+  other: "General Task",
+};
+
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
 function SectionLabel({ n, text }: { n: number; text: string }) {
@@ -128,7 +150,11 @@ function OptionCard({
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function ErgonomicsScreening() {
+  const router = useRouter();
   const [s, setS] = useState<ScreeningState>({ workType: null, discomfort: null, bodyParts: [], frequency: null });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const toggleBodyPart = (bp: BodyPart) => {
     setS((prev) => {
@@ -146,6 +172,45 @@ export function ErgonomicsScreening() {
   const ai = aiInsight(s, score);
 
   const answered = [s.workType, s.discomfort, s.bodyParts.length > 0, s.frequency].filter(Boolean).length;
+  const complete = !!s.workType && !!s.discomfort && s.bodyParts.length > 0 && !!s.frequency;
+
+  function resetScreening() {
+    setS({ workType: null, discomfort: null, bodyParts: [], frequency: null });
+    setSaved(false);
+    setSaveError(null);
+  }
+
+  async function handleSave() {
+    if (!complete) return;
+    setSaving(true);
+    setSaveError(null);
+
+    const strainedParts = s.bodyParts.filter((b) => b !== "none");
+    const bodyLabel = strainedParts.length > 0
+      ? strainedParts.map((b) => b.replace(/_/g, " ")).join(", ")
+      : "no specific body part";
+    const fd = new FormData();
+    fd.set("task_title", `Level 1 Screening — ${s.workType ? WORK_TYPE_LABEL[s.workType] : "General Task"}`);
+    fd.set("hazard_type", hazardTypeFor(s));
+    fd.set("risk_score", String(score));
+    fd.set("controls", drivers.join("; "));
+    fd.set(
+      "notes",
+      `Self-screening: work type ${s.workType ?? "—"}, discomfort ${s.discomfort ?? "—"}, ` +
+      `frequency ${s.frequency ?? "—"}, strain in ${bodyLabel}. ` +
+      `${risk.label} (score ${score}/17).`,
+    );
+
+    const res = await saveErgonomicScreening(null, fd);
+    if (res.ok) {
+      playCreateSound();
+      setSaved(true);
+      router.refresh();
+    } else {
+      setSaveError(res.error ?? "Could not save assessment.");
+    }
+    setSaving(false);
+  }
 
   return (
     <div className="grid grid-cols-[1fr_220px_220px] gap-5 items-start">
@@ -247,7 +312,7 @@ export function ErgonomicsScreening() {
         {/* Reset */}
         {answered > 0 && (
           <button
-            onClick={() => setS({ workType: null, discomfort: null, bodyParts: [], frequency: null })}
+            onClick={resetScreening}
             className="text-[11px] font-medium text-slate-400 hover:text-slate-600 transition-colors"
           >
             ↺ Reset screening
@@ -313,6 +378,26 @@ export function ErgonomicsScreening() {
             </ul>
           </div>
         )}
+
+        {/* Save assessment */}
+        <div className="border-t border-slate-100 pt-3">
+          <button
+            onClick={handleSave}
+            disabled={!complete || saving}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-[12px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saved ? <><Check className="h-3.5 w-3.5" /> Saved as JHA</> : saving ? "Saving…" : "Save Assessment"}
+          </button>
+          {!complete && (
+            <p className="mt-1.5 text-center text-[10px] text-slate-400">Answer all four questions to save this screening.</p>
+          )}
+          {saved && (
+            <p className="mt-1.5 text-center text-[10px] text-emerald-600">Recorded as a Job Hazard Analysis below.</p>
+          )}
+          {saveError && (
+            <p className="mt-1.5 text-center text-[10px] font-medium text-red-600">{saveError}</p>
+          )}
+        </div>
       </div>
 
       {/* ── AI Insight ── */}

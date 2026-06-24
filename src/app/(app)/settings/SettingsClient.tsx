@@ -5,6 +5,7 @@ import { Check, Loader2, RotateCcw, Users, MapPin, Bell, Plug, Building2, Shield
 import { PageHeader, Card, CardHeader } from "@/components/ui/primitives";
 import { useDemoUser, DEMO_USERS } from "@/lib/context/demo-user";
 import { MOCK_MODE } from "@/lib/env";
+import { saveSettings } from "@/lib/actions/ehs";
 import type { Profile, Site } from "@/lib/types";
 
 type SettingsTab = "company" | "users" | "sites" | "notifications" | "integrations";
@@ -115,15 +116,41 @@ const BIOSTAR_SITES = [
   },
 ];
 
+// Build the partial SettingsData persisted on the server (tenants.onboarding_data.settings).
+// `saveSettings` spreads config string fields onto settings.* and stores the notification
+// toggles under settings.notifications, so we read back from those shapes.
+function fromSavedSettings(saved?: Record<string, unknown> | null): Partial<SettingsData> {
+  if (!saved || typeof saved !== "object") return {};
+  const out: Partial<SettingsData> = {};
+  const stringKeys: (keyof Omit<SettingsData, "notifs">)[] = [
+    "companyName", "industry", "primarySite", "jurisdiction", "ehsManager",
+    "qualifiedEhs", "biosafetyOfficer", "chOfficer", "emergencyCoord",
+  ];
+  for (const key of stringKeys) {
+    const v = saved[key];
+    if (typeof v === "string") out[key] = v;
+  }
+  const notifs = saved.notifications;
+  if (notifs && typeof notifs === "object") {
+    out.notifs = Object.fromEntries(
+      Object.entries(notifs as Record<string, unknown>).map(([k, v]) => [k, !!v]),
+    );
+  }
+  return out;
+}
+
 export function SettingsClient({
   serverProfiles = [],
   serverSites    = [],
+  savedSettings  = null,
 }: {
   serverProfiles?: Profile[];
   serverSites?:    Site[];
+  savedSettings?:  Record<string, unknown> | null;
 }) {
   const { user, setUser } = useDemoUser();
   const [tab, setTab] = useState<SettingsTab>("company");
+  const savedInit = fromSavedSettings(savedSettings);
   const [data, setData]         = useState<SettingsData>({
     ...DEFAULT_SETTINGS,
     ...(user.tenant_id === "t-biostar-001" ? BIOSTAR_DEFAULTS : {}),
@@ -131,30 +158,38 @@ export function SettingsClient({
     primarySite:  `${user.company.split(" ")[0]} Main Campus`,
     ehsManager:   user.display_name,
     qualifiedEhs: user.display_name,
-    notifs: { ...DEFAULT_NOTIFS },
+    // Persisted server state wins over per-tenant seed defaults when present.
+    ...savedInit,
+    notifs: { ...DEFAULT_NOTIFS, ...(savedInit.notifs ?? {}) },
   });
   const [saving, setSaving]         = useState(false);
   const [saved, setSaved]           = useState(false);
+  const [saveError, setSaveError]   = useState<string | null>(null);
   const [resetting, setResetting]   = useState(false);
   const [soundsMuted, setSoundsMuted] = useState(false);
 
-  // Load persisted settings on mount
+  // Load persisted settings on mount.
+  // In live mode the server value (savedSettings) is authoritative and already
+  // seeded into state — only fall back to localStorage when none was provided.
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(LS_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as Partial<SettingsData>;
-        setData((d) => ({
-          ...d,
-          ...parsed,
-          notifs: { ...DEFAULT_NOTIFS, ...(parsed.notifs ?? {}) },
-        }));
+      const hasServerSettings = !!savedSettings && Object.keys(savedSettings).length > 0;
+      if (!hasServerSettings) {
+        const stored = localStorage.getItem(LS_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored) as Partial<SettingsData>;
+          setData((d) => ({
+            ...d,
+            ...parsed,
+            notifs: { ...DEFAULT_NOTIFS, ...(parsed.notifs ?? {}) },
+          }));
+        }
       }
       setSoundsMuted(localStorage.getItem("safetyiq_sounds_muted") === "true");
     } catch {
       // ignore corrupt storage
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-seed company fields whenever the demo user/tenant switches
   useEffect(() => {
@@ -206,11 +241,41 @@ export function SettingsClient({
 
   async function handleSave() {
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
-    localStorage.setItem(LS_KEY, JSON.stringify(data));
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    setSaveError(null);
+
+    if (MOCK_MODE) {
+      // Mock mode: persist to localStorage only (no backend tenant to write to).
+      await new Promise((r) => setTimeout(r, 600));
+      try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch {}
+      setSaving(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      return;
+    }
+
+    // Live mode: persist to tenants.onboarding_data via the saveSettings action.
+    try {
+      const fd = new FormData();
+      fd.set("notifs", JSON.stringify(data.notifs));
+      const { notifs: _notifs, ...config } = data;
+      void _notifs;
+      for (const [key, value] of Object.entries(config)) {
+        fd.set(key, value);
+      }
+      const res = await saveSettings(null, fd);
+      if (res.ok) {
+        // Mirror to localStorage so the UI stays consistent if the server read lags.
+        try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch {}
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      } else {
+        setSaveError(res.error ?? "Could not save settings. Please try again.");
+      }
+    } catch {
+      setSaveError("Could not save settings. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const TABS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
@@ -296,6 +361,12 @@ export function SettingsClient({
 
         {/* ── Company tab ── */}
         {tab === "company" && (
+          <>
+          {saveError && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+              {saveError}
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <Card>
               <CardHeader title="Company Profile" subtitle="Edit and save to persist across sessions" />
@@ -382,6 +453,7 @@ export function SettingsClient({
               </div>
             </Card>
           </div>
+          </>
         )}
 
         {/* ── Users & Roles tab ── */}
@@ -562,6 +634,9 @@ export function SettingsClient({
                 >
                   {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</> : saved ? <><Check className="h-4 w-4" /> Saved</> : "Save preferences"}
                 </button>
+                {saveError && (
+                  <p className="mt-2 text-sm text-red-700">{saveError}</p>
+                )}
               </div>
             </Card>
           </div>

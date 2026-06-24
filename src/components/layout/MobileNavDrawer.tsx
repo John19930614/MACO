@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
 import { useDemoUser } from "@/lib/context/demo-user";
+import { canCoordinate, type Role } from "@/lib/constants";
 
 type NavItem = { href: string; label: string; icon: string };
 type NavSection = { group: string; items: NavItem[] };
@@ -35,14 +36,51 @@ const BASE_NAV: NavSection[] = [
       { href: "/chemicals",  label: "Chemical Management",   icon: "⚗" },
       { href: "/biosafety",  label: "Biosafety & Lab Safety",icon: "🔬" },
       { href: "/waste",      label: "Waste Management",      icon: "♻" },
+      { href: "/ergonomics", label: "Ergonomics & MSD",      icon: "🪑" },
+      { href: "/monitoring", label: "Monitoring & Equipment",icon: "📡" },
       { href: "/incidents",  label: "Incident Reporting",    icon: "⚠" },
     ],
   },
   {
     group: "Insights",
     items: [
-      { href: "/ai",         label: "AI Assistant",          icon: "🧠" },
+      { href: "/ai",         label: "SafetyIQ AI Assistant", icon: "🤖" },
       { href: "/reports",    label: "Reports & Analytics",   icon: "📊" },
+    ],
+  },
+];
+
+const ADMIN_SECTION: NavSection = {
+  group: "Admin",
+  items: [
+    { href: "/team",     label: "Team & Invites",   icon: "👥" },
+    { href: "/settings", label: "Company Settings", icon: "⚙" },
+  ],
+};
+
+// Compact Reliance / superadmin nav so internal users get a usable mobile menu.
+const SA_NAV: NavSection[] = [
+  {
+    group: "🔒 Reliance Internal",
+    items: [
+      { href: "/sa/modules",     label: "Module Control Panel",   icon: "🔌" },
+      { href: "/sa/companies",   label: "Companies & Tenants",    icon: "🏢" },
+      { href: "/sa/impl",        label: "Implementation Tracker", icon: "🚀" },
+      { href: "/sa/globallegal", label: "Global Legal Register",  icon: "🌍" },
+      { href: "/sa/templates",   label: "Template Library",       icon: "📋" },
+      { href: "/sa/ai",          label: "AI Model Configuration", icon: "🧠" },
+      { href: "/sa/analytics",   label: "Analytics & Insights",   icon: "📊" },
+      { href: "/sa/security",    label: "Security & System",      icon: "🔐" },
+      { href: "/sa/billing",     label: "Billing & Subscriptions",icon: "💳" },
+    ],
+  },
+  {
+    group: "Operate",
+    items: [
+      { href: "/arc/map",      label: "Site Map",       icon: "🗺" },
+      { href: "/cells",        label: "Safety Cells",   icon: "⬡" },
+      { href: "/arc/review",   label: "Review Queue",   icon: "📥" },
+      { href: "/arc/forecast", label: "Risk Forecast",  icon: "🎯" },
     ],
   },
 ];
@@ -72,11 +110,16 @@ const VIEWER_NAV: NavSection[] = [
   },
 ];
 
+const FIELD_ROLES: readonly Role[] = ["field_officer", "contributor"];
+
 function getNav(role: string, isReliance: boolean): NavSection[] {
-  if (isReliance) return BASE_NAV;
-  if (role === "viewer") return VIEWER_NAV;
-  if (role === "field_officer") return FIELD_NAV;
-  if (role === "admin") return [...BASE_NAV, { group: "Admin", items: [{ href: "/team", label: "Team & Invites", icon: "👥" }, { href: "/settings", label: "Company Settings", icon: "⚙" }] }];
+  // Reliance / superadmin users get their internal SA nav on mobile too.
+  if (isReliance) return SA_NAV;
+  const r = role as Role;
+  if (r === "viewer") return VIEWER_NAV;
+  if (FIELD_ROLES.includes(r)) return FIELD_NAV;
+  // Management roles mirror desktop: full company nav INCLUDING the Admin section.
+  if (canCoordinate(r)) return [...BASE_NAV, ADMIN_SECTION];
   return BASE_NAV;
 }
 

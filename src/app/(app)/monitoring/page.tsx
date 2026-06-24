@@ -1,4 +1,4 @@
-import { getEquipment } from "@/lib/data/ehsRepo";
+import { getEquipment, getExposureReadings } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader, Stat } from "@/components/ui/primitives";
@@ -8,13 +8,22 @@ import { AddEquipmentButton } from "./AddEquipmentButton";
 import { MonitoringExportButton } from "./MonitoringExportButton";
 import { MonitoringDashboard } from "./MonitoringDashboard";
 
+// Unified "due" rule — shared with MonitoringDashboard (overview stat + register).
+// A unit counts as due if its status flags it OR its next date falls within 30 days.
+function isDueSoon(s: string | null | undefined, days = 30): boolean {
+  if (!s) return false;
+  const d = Math.ceil((new Date(s).getTime() - Date.now()) / 86400000);
+  return d >= 0 && d <= days;
+}
+
 export default async function MonitoringPage() {
   const tenantId = await getEffectiveTenantId();
   const equipment = await getEquipment(tenantId);
+  const exposureReadings = await getExposureReadings(tenantId);
 
   const operational    = equipment.filter((e) => e.status === "operational").length;
-  const calibDue       = equipment.filter((e) => e.status === "calibration_due").length;
-  const inspDue        = equipment.filter((e) => e.status === "inspection_due").length;
+  const calibDue       = equipment.filter((e) => e.status === "calibration_due" || isDueSoon(e.next_calibration_date)).length;
+  const inspDue        = equipment.filter((e) => e.status === "inspection_due"  || isDueSoon(e.next_inspection_date)).length;
   const outOfService   = equipment.filter((e) => e.status === "out_of_service").length;
   const actionRequired = calibDue + inspDue + outOfService;
 
@@ -48,7 +57,7 @@ export default async function MonitoringPage() {
           <Stat label="Action Required"  value={actionRequired}   hint="Needs attention now"  accent={actionRequired > 0 ? "#dc2626" : "#10b981"} />
         </div>
 
-        <MonitoringDashboard equipment={equipment} />
+        <MonitoringDashboard equipment={equipment} exposureReadings={exposureReadings} />
           </>
         )}
       </div>

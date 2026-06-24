@@ -6,6 +6,8 @@ import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { RegisterLabButton } from "./RegisterLabButton";
 import { AddAgentButton } from "./AddAgentButton";
+import { EditLabButton } from "./EditLabButton";
+import { EditAgentButton } from "./EditAgentButton";
 import { BiosafetyExportButton } from "./BiosafetyExportButton";
 
 function statusColor(s: string) {
@@ -183,8 +185,8 @@ export default async function BiosafetyPage() {
                 <table className="w-full text-sm">
                   <thead className="border-b border-slate-100 bg-slate-50">
                     <tr>
-                      {["Lab / Location", "BSL", "Personnel", "Last Inspection", "Next Due", "Status"].map((h) => (
-                        <th key={h} className="px-4 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">{h}</th>
+                      {["Lab / Location", "BSL", "Personnel", "Last Inspection", "Next Due", "Status", ""].map((h, i) => (
+                        <th key={h || `col-${i}`} className="px-4 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -200,10 +202,11 @@ export default async function BiosafetyPage() {
                         <td className="px-4 py-2.5 text-xs text-slate-600">{fmtDate(lab.last_inspection)}</td>
                         <td className="px-4 py-2.5 text-xs text-slate-600">{fmtDate(lab.next_inspection)}</td>
                         <td className="px-4 py-2.5"><Pill className={statusColor(lab.status)}>{lab.status.replace(/_/g, " ")}</Pill></td>
+                        <td className="px-4 py-2.5 text-right"><EditLabButton lab={lab} /></td>
                       </tr>
                     ))}
                     {labs.length === 0 && (
-                      <tr><td colSpan={6} className="px-4 py-6 text-center text-xs text-slate-400">No labs registered</td></tr>
+                      <tr><td colSpan={7} className="px-4 py-6 text-center text-xs text-slate-400">No labs registered</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -221,8 +224,8 @@ export default async function BiosafetyPage() {
                 <table className="w-full text-sm">
                   <thead className="border-b border-slate-100 bg-slate-50">
                     <tr>
-                      {["Agent", "Risk Class", "Storage Location", "Quantity", "Status"].map((h) => (
-                        <th key={h} className="px-4 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">{h}</th>
+                      {["Agent", "Risk Class", "Storage Location", "Quantity", "Status", ""].map((h, i) => (
+                        <th key={h || `col-${i}`} className="px-4 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -240,10 +243,11 @@ export default async function BiosafetyPage() {
                         <td className="px-4 py-2.5 text-xs text-slate-600">{item.storage_location}</td>
                         <td className="px-4 py-2.5 text-xs text-slate-700">{item.quantity}</td>
                         <td className="px-4 py-2.5"><Pill className={statusColor(item.status)}>{item.status.replace(/_/g, " ")}</Pill></td>
+                        <td className="px-4 py-2.5 text-right"><EditAgentButton agent={item} /></td>
                       </tr>
                     ))}
                     {agents.length === 0 && (
-                      <tr><td colSpan={5} className="px-4 py-6 text-center text-xs text-slate-400">No agents registered</td></tr>
+                      <tr><td colSpan={6} className="px-4 py-6 text-center text-xs text-slate-400">No agents registered</td></tr>
                     )}
                   </tbody>
                 </table>

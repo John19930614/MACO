@@ -2,21 +2,24 @@
 
 import React, { useState, useTransition, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   CheckCircle2, XCircle, AlertTriangle, ClipboardList, Wind,
   Droplets, FlameKindling, Stethoscope, Eye, ChevronDown,
   ChevronUp, Plus, Activity, Shield, Wrench,
 } from "lucide-react";
-import type { Equipment } from "@/lib/types";
+import type { Equipment, ExposureReading as LiveExposureReading } from "@/lib/types";
 import { Pill } from "@/components/ui/primitives";
 import { addCapa } from "@/lib/actions/ehs";
 import { updateEquipment } from "@/lib/actions/ehs";
+import { addExposureReading } from "@/lib/actions/ehs";
 import { MOCK_MODE } from "@/lib/env";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Props {
   equipment: Equipment[];
+  exposureReadings: LiveExposureReading[];
 }
 
 interface InspectionResult {
@@ -497,9 +500,27 @@ function InspectionCard({
 
 // ── Exposure Monitoring Component ─────────────────────────────────────────────
 
-function ExposureMonitoring() {
-  const [readings, setReadings] = useState<ExposureReading[]>(MOCK_MODE ? SEED_READINGS : []);
+// Map a live DB ExposureReading row to the local UI shape used by this component.
+function mapLiveReading(r: LiveExposureReading): ExposureReading {
+  return {
+    id:       r.id,
+    chemical: r.chemical,
+    type:     r.reading_type === "STEL" ? "STEL" : "TWA",
+    value:    r.value,
+    unit:     r.unit,
+    location: r.location,
+    date:     r.reading_date,
+    monitor:  r.monitor,
+  };
+}
+
+function ExposureMonitoring({ exposureReadings }: { exposureReadings: LiveExposureReading[] }) {
+  const router = useRouter();
+  // Live data drives the view; SEED_READINGS is demo-only (MOCK_MODE).
+  const readings: ExposureReading[] = MOCK_MODE ? SEED_READINGS : exposureReadings.map(mapLiveReading);
   const [showForm, setShowForm] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
   const [form, setForm] = useState({
     chemical: "Formaldehyde",
     type: "TWA" as "TWA" | "STEL",
@@ -511,19 +532,26 @@ function ExposureMonitoring() {
   function handleAdd() {
     if (!form.value) return;
     const oel = CHEMICAL_OELS.find((o) => o.chemical === form.chemical);
-    const newReading: ExposureReading = {
-      id: `exp-${Date.now()}`,
-      chemical: form.chemical,
-      type: form.type,
-      value: parseFloat(form.value),
-      unit: oel?.unit ?? "ppm",
-      location: form.location,
-      date: new Date().toISOString().slice(0, 10),
-      monitor: form.monitor,
-    };
-    setReadings((prev) => [newReading, ...prev]);
-    setShowForm(false);
-    setForm({ chemical: "Formaldehyde", type: "TWA", value: "", location: "Lab 3", monitor: "PAM-02" });
+    const fd = new FormData();
+    fd.set("chemical",     form.chemical);
+    fd.set("reading_type", form.type);
+    fd.set("value",        form.value);
+    fd.set("unit",         oel?.unit ?? "ppm");
+    fd.set("location",     form.location);
+    fd.set("reading_date", new Date().toISOString().slice(0, 10));
+    fd.set("monitor",      form.monitor);
+
+    setSaveError(null);
+    startTransition(async () => {
+      const res = await addExposureReading(null, fd);
+      if (!res.ok) {
+        setSaveError(res.error ?? "Failed to save reading.");
+        return;
+      }
+      setShowForm(false);
+      setForm({ chemical: "Formaldehyde", type: "TWA", value: "", location: "Lab 3", monitor: "PAM-02" });
+      router.refresh();
+    });
   }
 
   return (
@@ -591,13 +619,18 @@ function ExposureMonitoring() {
               <div className="flex items-end">
                 <button
                   onClick={handleAdd}
-                  disabled={!form.value}
+                  disabled={!form.value || pending}
                   className="w-full rounded-lg bg-blue-600 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
                 >
-                  Save
+                  {pending ? "Saving…" : "Save"}
                 </button>
               </div>
             </div>
+            {saveError && (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700">
+                {saveError}
+              </div>
+            )}
           </div>
         )}
 
@@ -801,7 +834,7 @@ type TabId = "overview" | "emergency" | "exposure" | "spill" | "register";
 
 const EMERGENCY_TYPES = new Set(["emergency_eyewash", "fire_extinguisher", "spill_kit", "first_aid", "emergency_shower"]);
 
-export function MonitoringDashboard({ equipment }: Props) {
+export function MonitoringDashboard({ equipment, exposureReadings }: Props) {
   const [tab, setTab]         = useState<TabId>("overview");
   const [capaMsg, setCapaMsg] = useState<string | null>(null);
 
@@ -911,10 +944,13 @@ export function MonitoringDashboard({ equipment }: Props) {
               </div>
               <div className="divide-y divide-slate-50">
                 {upcomingDue.map((e) => {
-                  const nextInsp = e.next_inspection_date;
-                  const nextCal  = e.next_calibration_date;
-                  const inspDays = nextInsp ? daysUntil(nextInsp) : 999;
-                  const calDays  = nextCal  ? daysUntil(nextCal)  : 999;
+                  // Only consider the date(s) that actually qualified as due-soon
+                  // (>= 0 and <= 30, and NOT overdue). This prevents picking an
+                  // overdue date's negative day count (the "-329d" bug).
+                  const inspQualifies = isDueSoon(e.next_inspection_date, 30)  && !isOverdue(e.next_inspection_date);
+                  const calQualifies  = isDueSoon(e.next_calibration_date, 30) && !isOverdue(e.next_calibration_date);
+                  const inspDays = inspQualifies ? daysUntil(e.next_inspection_date)  : Infinity;
+                  const calDays  = calQualifies  ? daysUntil(e.next_calibration_date) : Infinity;
                   const isInsp   = inspDays <= calDays;
                   const days     = isInsp ? inspDays : calDays;
                   return (
@@ -982,7 +1018,7 @@ export function MonitoringDashboard({ equipment }: Props) {
       )}
 
       {/* ── Exposure Monitoring ── */}
-      {tab === "exposure" && <ExposureMonitoring />}
+      {tab === "exposure" && <ExposureMonitoring exposureReadings={exposureReadings} />}
 
       {/* ── Spill Response ── */}
       {tab === "spill" && <SpillResponse />}
@@ -1023,13 +1059,13 @@ export function MonitoringDashboard({ equipment }: Props) {
                     <td className="px-4 py-3 text-xs text-slate-500">{e.location}</td>
                     <td className="px-4 py-3 text-xs tabular-nums text-slate-500">{fmtDate(e.last_calibration_date)}</td>
                     <td className="px-4 py-3 text-xs tabular-nums">
-                      <span className={isDueSoon(e.next_calibration_date) ? "font-semibold text-amber-600" : isOverdue(e.next_calibration_date) ? "font-semibold text-red-600" : "text-slate-500"}>
+                      <span className={isOverdue(e.next_calibration_date) ? "font-semibold text-red-600" : (e.status === "calibration_due" || isDueSoon(e.next_calibration_date)) ? "font-semibold text-amber-600" : "text-slate-500"}>
                         {fmtDate(e.next_calibration_date)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs tabular-nums text-slate-500">{fmtDate(e.last_inspection_date)}</td>
                     <td className="px-4 py-3 text-xs tabular-nums">
-                      <span className={isDueSoon(e.next_inspection_date) ? "font-semibold text-amber-600" : isOverdue(e.next_inspection_date) ? "font-semibold text-red-600" : "text-slate-500"}>
+                      <span className={isOverdue(e.next_inspection_date) ? "font-semibold text-red-600" : (e.status === "inspection_due" || isDueSoon(e.next_inspection_date)) ? "font-semibold text-amber-600" : "text-slate-500"}>
                         {fmtDate(e.next_inspection_date)}
                       </span>
                     </td>

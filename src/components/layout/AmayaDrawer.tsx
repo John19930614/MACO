@@ -16,7 +16,7 @@ const QUICK_PROMPTS = [
 function buildReply(q: string): string {
   const lc = q.toLowerCase();
   if (/capa|corrective|action/i.test(lc))
-    return "Your highest-priority open CAPAs are in the **CAPA module**. Look for items flagged as overdue (red) or past their due date. For a full breakdown, head to the [CAPA page](/capa) or ask Amaya on the AI Assistant page for specific counts and owner assignments.";
+    return "Your highest-priority open CAPAs are in the **CAPA module**. Look for items flagged as overdue (red) or past their due date. For a full breakdown, head to the [CAPA page](/capa) or ask SafetyIQ AI on the AI Assistant page for specific counts and owner assignments.";
   if (/sds|safety data|chemical/i.test(lc))
     return "SDS expiry is tracked in the **Chemicals module**. Any SDS with a review date in the past or within 90 days will be flagged. Visit [Chemicals](/chemicals) for the full inventory, or check the Document Register for policy-level documents.";
   if (/train|certif|expir/i.test(lc))
@@ -30,8 +30,8 @@ function buildReply(q: string): string {
   if (/incident/i.test(lc))
     return "Open incidents under investigation are in the [Incidents module](/incidents). High and critical severity incidents also surface in your notification bell.";
   if (/hi|hello|hey|help/i.test(lc))
-    return "Hi! I'm Amaya, your EHS co-pilot. I can help with **CAPAs, training expiry, SDS, risk reviews, audits, incidents, waste, and compliance**. Try one of the quick prompts below, or open the full AI Assistant for deeper analysis and data cards.";
-  return "I can give you a quick answer here, but for deeper analysis, linked data cards, and P-Engine insights, the full **AI Assistant** page has everything. [Open Amaya →](/ai)";
+    return "Hi! I'm SafetyIQ AI, your EHS co-pilot. I can help with **CAPAs, training expiry, SDS, risk reviews, audits, incidents, waste, and compliance**. Try one of the quick prompts below, or open the full AI Assistant for deeper analysis and data cards.";
+  return "I can give you a quick answer here, but for deeper analysis, linked data cards, and P-Engine insights, the full **AI Assistant** page has everything. [Open SafetyIQ AI →](/ai)";
 }
 
 export function AmayaDrawer() {
@@ -79,7 +79,7 @@ export function AmayaDrawer() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="Open Amaya quick-chat"
+        aria-label="Open SafetyIQ AI quick-chat"
         className="fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg transition hover:bg-blue-700 hover:scale-105 active:scale-95 print:hidden"
       >
         <MessageCircle className="h-5 w-5" />
@@ -105,7 +105,7 @@ export function AmayaDrawer() {
             <Sparkles className="h-3.5 w-3.5" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-bold leading-none">Amaya</div>
+            <div className="text-sm font-bold leading-none">SafetyIQ AI</div>
             <div className="text-[10px] text-blue-200 leading-none mt-0.5">EHS Co-Pilot · Quick Chat</div>
           </div>
           <Link
@@ -176,7 +176,7 @@ export function AmayaDrawer() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKey}
-              placeholder="Ask Amaya…"
+              placeholder="Ask SafetyIQ AI…"
               className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
             />
             <button
@@ -189,7 +189,7 @@ export function AmayaDrawer() {
             </button>
           </div>
           <p className="mt-1.5 text-center text-[10px] text-slate-300">
-            Quick answers only · <Link href="/ai" onClick={() => setOpen(false)} className="text-blue-400 hover:underline">Open full Amaya</Link> for deep analysis
+            Quick answers only · <Link href="/ai" onClick={() => setOpen(false)} className="text-blue-400 hover:underline">Open full SafetyIQ AI</Link> for deep analysis
           </p>
         </div>
       </div>

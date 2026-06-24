@@ -13,6 +13,8 @@ import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import type { ErgonomicsWorkstation } from "@/lib/types";
 import { ErgonomicsScreening } from "./ErgonomicsScreening";
+import { AddWorkstationButton } from "./AddWorkstationButton";
+import { AddJobTaskButton } from "./AddJobTaskButton";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -138,6 +140,8 @@ export default async function ErgonomicsPage() {
         subtitle="Level 1 screenings, workstation assessments, job hazard analyses, and OSHA ergonomics compliance"
         actions={
           <div className="flex items-center gap-2">
+            <AddWorkstationButton />
+            <AddJobTaskButton />
             <Link
               href="/documents"
               className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
@@ -200,9 +204,12 @@ export default async function ErgonomicsPage() {
                 title="Workstation Assessments"
                 subtitle="Ergonomics risk ratings and inspection schedule by workstation"
                 right={
-                  <Link href="/audits" className="flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:underline">
-                    Schedule audit <ChevronRight className="h-3 w-3" />
-                  </Link>
+                  <div className="flex items-center gap-3">
+                    <AddWorkstationButton />
+                    <Link href="/audits" className="flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:underline">
+                      Schedule audit <ChevronRight className="h-3 w-3" />
+                    </Link>
+                  </div>
                 }
               />
               <div className="overflow-x-auto">
@@ -249,6 +256,7 @@ export default async function ErgonomicsPage() {
               <CardHeader
                 title="Job Hazard Analyses (JHA)"
                 subtitle="Ergonomic hazard type, risk score, and control status per task"
+                right={<AddJobTaskButton />}
               />
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">

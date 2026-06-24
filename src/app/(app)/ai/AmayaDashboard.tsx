@@ -80,6 +80,63 @@ function chemRisk(c: Chemical): number {
 
 function uid() { return Math.random().toString(36).slice(2, 9); }
 
+// ── Live EHS data → compact context string for the LLM ─────────────────────────
+// Mirrors what buildAmayaResponse has access to: counts + the key facts the model
+// needs to answer with real numbers. Kept compact to stay token-efficient.
+function buildContextSummary(ctx: AiCtx): string {
+  const activeChems = ctx.chemicals.filter((c) => c.status === "active");
+  const scheduledChems = activeChems.filter((c) => c.is_scheduled);
+  const topChems = [...activeChems]
+    .sort((a, b) => chemRisk(b) - chemRisk(a))
+    .slice(0, 5)
+    .map((c) => `${c.name}${c.ghs_classes.length ? ` [${c.ghs_classes.slice(0, 4).join(",")}]` : ""}${c.is_scheduled ? " (scheduled)" : ""}`);
+  const missingSds = activeChems.filter((c) => !c.sds_url).length;
+
+  const expiredCerts = ctx.records.filter((r) => r.passed && isExpired(r.expiry_date)).length;
+  const expiringCerts = ctx.records.filter((r) => r.passed && !isExpired(r.expiry_date) && isExpiringSoon(r.expiry_date, 30)).length;
+
+  const openCapas = ctx.capas.filter((c) => c.status === "open").length;
+  const overdueCapas = ctx.capas.filter((c) => c.status === "overdue").length;
+  const pendingCapas = ctx.capas.filter((c) => c.status === "pending_verification").length;
+
+  const openIncidents = ctx.incidents.filter((i) => i.status !== "closed").length;
+
+  const compliant = ctx.legal.filter((l) => l.status === "compliant").length;
+  const majorGap = ctx.legal.filter((l) => l.status === "major_gap").length;
+  const nonComp = ctx.legal.filter((l) => l.status === "non_compliant").length;
+  const minorGap = ctx.legal.filter((l) => l.status === "minor_gap").length;
+  const compliancePct = ctx.legal.length ? Math.round((compliant / ctx.legal.length) * 100) : 0;
+  const topGaps = ctx.legal
+    .filter((l) => l.status !== "compliant")
+    .slice(0, 5)
+    .map((l) => `${l.regulation_ref}: ${l.title} (${l.status})`);
+
+  const scheduledAudits = ctx.audits.filter((a) => a.status === "scheduled")
+    .sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime());
+  const nextAudit = scheduledAudits[0];
+
+  const hazWaste = ctx.waste.filter((w) => w.classification === "hazardous").length;
+  const pendingWaste = ctx.waste.filter((w) => w.status === "pending_pickup" || w.status === "accumulating").length;
+
+  const run = ctx.latestRun;
+
+  const lines = [
+    `Company: ${ctx.companyName}`,
+    `Chemicals: ${activeChems.length} active, ${scheduledChems.length} OSHA-scheduled, ${missingSds} missing SDS. Highest-risk: ${topChems.join("; ") || "none"}.`,
+    `Training: ${expiredCerts} expired certs, ${expiringCerts} expiring within 30 days. ${ctx.courses.length} courses, ${ctx.profiles.length} people.`,
+    `CAPAs: ${overdueCapas} overdue, ${openCapas} open, ${pendingCapas} pending verification.`,
+    `Incidents: ${ctx.incidents.length} total, ${openIncidents} open/under investigation.`,
+    `Compliance: ${ctx.legal.length} legal requirements — ${compliant} compliant, ${minorGap} minor gap, ${majorGap} major gap, ${nonComp} non-compliant (${compliancePct}% compliant). Top gaps: ${topGaps.join("; ") || "none"}.`,
+    `Audits: ${scheduledAudits.length} scheduled, ${ctx.audits.filter((a) => a.status === "completed").length} completed.${nextAudit ? ` Next: "${nextAudit.title}" on ${fmtDate(nextAudit.scheduled_date)} (${nextAudit.type}).` : ""}`,
+    `Waste: ${ctx.waste.length} streams, ${hazWaste} hazardous, ${pendingWaste} pending pickup/accumulating.`,
+    run
+      ? `P-Engine last run ${fmtDate(run.created_at)}: ${run.items_scanned} scanned, ${run.signals_found} signals, 30-day forecast ${run.forecast_data?.predicted_compliance_score_30d ?? "—"}% (${run.forecast_data?.compliance_trend ?? "stable"}).`
+      : "P-Engine: no run yet.",
+    `AI findings: ${ctx.findings.length} total, ${ctx.findings.filter((f) => f.review_status === "pending").length} pending review.`,
+  ];
+  return lines.join("\n");
+}
+
 // ── Suggested prompts ─────────────────────────────────────────────────────────
 
 const PROMPT_GROUPS = [
@@ -138,7 +195,7 @@ function buildAmayaResponse(
     const activeChems = ctx.chemicals.filter((c) => c.status === "active").length;
     const openCapas  = ctx.capas.filter((c) => c.status === "open" || c.status === "overdue").length;
     return {
-      text: `Hello! I'm Amaya, your AI Safety Assistant for ${ctx.companyName} I have live access to your EHS data — ${activeChems} active chemicals, ${openCapas} open corrective actions, and all your training records, compliance requirements, and incidents.\n\nHere's what I can help with:\n\n• **Chemical safety** — inventory queries, GHS hazard classifications, SDS status, storage guidance\n• **Training & competency** — certification gaps, expiry tracking, role-based requirements\n• **Corrective actions** — open CAPAs, overdue items, verification status\n• **Compliance & regulatory** — OSHA, EPA, CDC requirements, gap analysis\n• **Risk intelligence** — compliance scores, predictive forecasts, high-risk priorities\n• **Platform navigation** — find any module or feature instantly\n\nWhat would you like to know?`,
+      text: `Hello! I'm SafetyIQ AI, your AI Safety Assistant for ${ctx.companyName} I have live access to your EHS data — ${activeChems} active chemicals, ${openCapas} open corrective actions, and all your training records, compliance requirements, and incidents.\n\nHere's what I can help with:\n\n• **Chemical safety** — inventory queries, GHS hazard classifications, SDS status, storage guidance\n• **Training & competency** — certification gaps, expiry tracking, role-based requirements\n• **Corrective actions** — open CAPAs, overdue items, verification status\n• **Compliance & regulatory** — OSHA, EPA, CDC requirements, gap analysis\n• **Risk intelligence** — compliance scores, predictive forecasts, high-risk priorities\n• **Platform navigation** — find any module or feature instantly\n\nWhat would you like to know?`,
       followUps: [
         "What are my highest-risk chemicals?",
         "What is my overall compliance status?",
@@ -860,7 +917,7 @@ function FindingsPanel({ findings, runs, latestRun }: {
 // ── Main AmayaDashboard ───────────────────────────────────────────────────────
 
 const TABS = [
-  { id: "chat",     label: "Chat with Amaya",    icon: <Sparkles className="h-3.5 w-3.5" /> },
+  { id: "chat",     label: "Chat with SafetyIQ AI",    icon: <Sparkles className="h-3.5 w-3.5" /> },
   { id: "findings", label: "AI Findings & P-Engine", icon: <BarChart3 className="h-3.5 w-3.5" /> },
 ] as const;
 
@@ -900,19 +957,45 @@ export function AmayaDashboard({
   }, [messages, typing]);
 
   const sendMessage = useCallback((text: string) => {
-    if (!text.trim()) return;
-    const userMsg: ChatMessage = { id: uid(), role: "user", text: text.trim(), timestamp: new Date() };
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const userMsg: ChatMessage = { id: uid(), role: "user", text: trimmed, timestamp: new Date() };
+    // Snapshot the history (incl. this turn) so the LLM gets full conversation context.
+    const history = [...messages, userMsg].map((m) => ({ role: m.role, text: m.text }));
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setTyping(true);
-    const delay = 800 + Math.random() * 800;
-    setTimeout(() => {
-      const response = buildAmayaResponse(text, ctx);
-      const amayaMsg: ChatMessage = { id: uid(), role: "amaya", timestamp: new Date(), ...response };
-      setMessages((prev) => [...prev, amayaMsg]);
+
+    // Local deterministic fallback — used when no AI key is configured or the
+    // request fails, so the chat always works. Preserves the original cards /
+    // follow-ups UX (the live LLM returns plain text only).
+    const pushLocal = () => {
+      const response = buildAmayaResponse(trimmed, ctx);
+      setMessages((prev) => [...prev, { id: uid(), role: "amaya", timestamp: new Date(), ...response }]);
       setTyping(false);
-    }, delay);
-  }, [ctx]);
+    };
+
+    (async () => {
+      try {
+        const res = await fetch("/api/ai/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: history, contextSummary: buildContextSummary(ctx) }),
+        });
+        if (!res.ok) { pushLocal(); return; }
+        const data = (await res.json()) as { reply?: string | null };
+        if (data && typeof data.reply === "string" && data.reply.trim()) {
+          setMessages((prev) => [...prev, { id: uid(), role: "amaya", text: data.reply!, timestamp: new Date() }]);
+          setTyping(false);
+        } else {
+          // { reply: null } → no live AI; fall back to the local engine.
+          pushLocal();
+        }
+      } catch {
+        pushLocal();
+      }
+    })();
+  }, [ctx, messages]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -970,7 +1053,7 @@ export function AmayaDashboard({
                   <Sparkles className="h-4 w-4 text-white" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-slate-900">Amaya</div>
+                  <div className="text-xs font-bold text-slate-900">SafetyIQ AI</div>
                   <div className="text-[10px] text-slate-400">AI Safety Assistant</div>
                 </div>
               </div>
@@ -1017,7 +1100,7 @@ export function AmayaDashboard({
                   <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg">
                     <Sparkles className="h-7 w-7 text-white" />
                   </div>
-                  <h3 className="mb-1 text-base font-semibold text-slate-800">Ask Amaya anything</h3>
+                  <h3 className="mb-1 text-base font-semibold text-slate-800">Ask SafetyIQ AI anything</h3>
                   <p className="mb-6 max-w-xs text-sm text-slate-500">
                     I have live access to your EHS data — chemicals, training, CAPAs, incidents, compliance, and more.
                   </p>
@@ -1084,7 +1167,7 @@ export function AmayaDashboard({
                 </button>
               </form>
               <p className="mt-1.5 text-center text-[10px] text-slate-400">
-                Amaya uses your live EHS data — always verify AI responses against source records.
+                SafetyIQ AI uses your live EHS data — always verify AI responses against source records.
               </p>
             </div>
           </div>
