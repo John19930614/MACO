@@ -1822,6 +1822,12 @@ export async function stageDocumentImport(kind: RowKind, files: { name: string; 
   if (!serviceRoleKey) return { ok: false as const, error: "Import needs the service-role key configured." };
   const svc = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey, { auth: { persistSession: false } });
 
+  // SECURITY: service-role download bypasses Storage RLS — reject any path that
+  // isn't under the caller's own tenant prefix.
+  if (files.some((f) => !f?.path || !f.path.startsWith(`${ctx.tenantId}/`))) {
+    return { ok: false as const, error: "Invalid file path." };
+  }
+
   // Existing live records → dedup keys
   const existing = kind === "chemical" ? await getChemicals(ctx.tenantId)
     : kind === "waste" ? await getWasteStreams(ctx.tenantId)

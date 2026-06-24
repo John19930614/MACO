@@ -1681,6 +1681,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
+  // SECURITY: the service-role client below bypasses Storage RLS, so we must
+  // verify every supplied path lives under THIS tenant's prefix — otherwise a
+  // user could pass another tenant's path and have its file extracted into theirs.
+  for (const files of Object.values(uploads)) {
+    for (const f of files) {
+      if (!f?.path || !f.path.startsWith(`${tenantId}/`)) {
+        return NextResponse.json({ error: "invalid_path" }, { status: 403 });
+      }
+    }
+  }
+
   // Seeding + AI extraction both run with the service-role key. Without it we
   // can't seed anything, so skip processing but let the user finish onboarding
   // cleanly (no crash — onboarding just completes with nothing auto-imported).

@@ -197,7 +197,7 @@ export function QuickReportsPanel({ capas, incidents, trainingRecs, courseMap, p
         ["Lost-Time Events", lostTime.length],
         ["Total Lost Days", totalLostDays],
         ["Critical/High Severity", ytd.filter((i) => i.severity === "critical" || i.severity === "high").length],
-        ["TRIR (per 100 FTE, 97,760 hrs)", ((ytd.length / 97760) * 200000).toFixed(2)],
+        ["TRIR (per 100 FTE, 87,360 hrs)", ((ytd.length / 87360) * 200000).toFixed(2)],
       ],
       companyName: user.company,
     });

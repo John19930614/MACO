@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
   const next      = searchParams.get("next") ?? "/dashboard";
 
   // Only allow same-origin relative redirects to avoid open-redirect abuse.
-  const safeNext = next.startsWith("/") ? next : "/dashboard";
+  // Reject protocol-relative ("//evil.com") and absolute ("https://…") targets.
+  const safeNext = next.startsWith("/") && !next.startsWith("//") && !next.includes("://") ? next : "/dashboard";
 
   if (MOCK_MODE || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return NextResponse.redirect(`${origin}/login`);

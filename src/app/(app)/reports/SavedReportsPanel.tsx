@@ -282,7 +282,7 @@ function exportIncidentAnalysis(incidents: Incident[], companyName: string) {
       ["Regulatory Reportable", regulatory.length],
       ["Lost-Time Events", lostTime.length],
       ["Total Lost Days", totalLostDays],
-      ["TRIR (per 100 FTE, 97,760 hrs)", ((ytd.length / 97760) * 200000).toFixed(2)],
+      ["TRIR (per 100 FTE, 87,360 hrs)", ((ytd.length / 87360) * 200000).toFixed(2)],
     ],
     companyName,
   });
