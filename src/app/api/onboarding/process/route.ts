@@ -1690,8 +1690,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, seeded: {}, total: 0, note: "no_service_key" });
   }
 
-  // Pre-scan: flag uploaded files that have no extractable text (empty stubs or
-  // scanned images) so the user gets a clear reason instead of a silent 0.
+  // Pre-scan: flag uploaded files that are genuinely empty (a near-zero-byte PDF,
+  // or a text file with no content). NOTE: file SIZE is only a rough signal — small
+  // PDFs (~2-4KB) routinely contain a thin but valid text layer the AI reads fine,
+  // so the threshold is deliberately low to avoid false "nothing imported" alarms.
   const warnings: string[] = [];
   for (const [docId, files] of Object.entries(uploads)) {
     for (const f of files) {
@@ -1699,9 +1701,9 @@ export async function POST(req: NextRequest) {
         const fd = await downloadFile(f.path);
         const approxBytes = fd.base64 ? fd.base64.length * 0.75 : 0;
         const empty = fd.mimeType === "application/pdf"
-          ? approxBytes < 4000
+          ? approxBytes < 1800
           : (fd.text ?? "").trim().length < 40;
-        if (empty) warnings.push(`${docId}/${f.name} — no extractable text (empty stub or scanned image); nothing imported from it.`);
+        if (empty) warnings.push(`${docId}/${f.name} — appears empty or unreadable; if its data is missing, re-upload a text-based version.`);
       } catch {
         warnings.push(`${docId}/${f.name} — could not be read.`);
       }
