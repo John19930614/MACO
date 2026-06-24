@@ -4,7 +4,7 @@ import { MOCK_MODE } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
   Subscription, SupportTicket, Guardrail, GlobalLegalItem, ImportJob,
-  TenantSummary, TenantDetail, Profile,
+  TenantSummary, TenantDetail, Profile, SaTemplate,
 } from "@/lib/types";
 
 // Platform-admin (Reliance superadmin) data layer for the SA console.
@@ -128,6 +128,29 @@ export const getImportJobs = cache(async (): Promise<ImportJob[]> => {
     filename: r.filename,
     row_count: r.row_count ?? 0,
     status: r.status,
+    created_at: r.created_at,
+  }));
+});
+
+// ── Templates (global template library) ─────────────────────────────────────────
+
+export const getSaTemplates = cache(async (): Promise<SaTemplate[]> => {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("sa_templates")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    name: r.name,
+    category: r.category ?? "form",
+    format: r.format ?? "PDF",
+    version: r.version ?? "v1.0",
+    status: r.status ?? "active",
+    notes: r.notes ?? null,
     created_at: r.created_at,
   }));
 });

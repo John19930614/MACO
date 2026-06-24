@@ -115,6 +115,17 @@ export interface ImportJob {
   created_at: string;
 }
 
+export interface SaTemplate {
+  id: string;
+  name: string;
+  category: string;
+  format: string;
+  version: string;
+  status: string;
+  notes: string | null;
+  created_at: string;
+}
+
 export interface TenantSummary {
   id: string;
   name: string;

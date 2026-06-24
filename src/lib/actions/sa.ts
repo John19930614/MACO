@@ -37,6 +37,33 @@ function strOrNull(formData: FormData, key: string): string | null {
   return v.trim() ? v : null;
 }
 
+// ── Templates (global library) ───────────────────────────────────────────────────
+
+export async function addSaTemplate(_prev: unknown, formData: FormData) {
+  const ctx = await getSaCtx();
+  if (!ctx) return NOT_AUTHORIZED;
+  const { error } = await ctx.client.from("sa_templates").insert({
+    name: str(formData, "name") || "Untitled Template",
+    category: str(formData, "category") || "form",
+    format: str(formData, "format") || "PDF",
+    version: str(formData, "version") || "v1.0",
+    status: str(formData, "status") || "active",
+    notes: strOrNull(formData, "notes"),
+  });
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/sa/templates");
+  return { ok: true };
+}
+
+export async function deleteSaTemplate(id: string) {
+  const ctx = await getSaCtx();
+  if (!ctx) return NOT_AUTHORIZED;
+  const { error } = await ctx.client.from("sa_templates").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/sa/templates");
+  return { ok: true };
+}
+
 // ── Support Tickets ─────────────────────────────────────────────────────────────
 
 export async function createSupportTicket(_prev: unknown, formData: FormData) {
