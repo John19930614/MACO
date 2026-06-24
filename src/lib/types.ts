@@ -230,6 +230,11 @@ export interface TrainingRecord {
 
 // ── Documents ─────────────────────────────────────────────────────────────────
 
+export interface DocSection {
+  heading: string;
+  body: string;
+}
+
 export interface Document {
   id: string;
   tenant_id: string;
@@ -244,6 +249,9 @@ export interface Document {
   owner_id: string | null;
   acknowledgment_required: boolean;
   regulation_ref: string | null;
+  content?: DocSection[];            // structured program/SOP body (empty for file-only docs)
+  generated?: boolean;               // authored by the AI Program Builder
+  source_doc_paths?: string[];       // source manuals/SOPs the AI used (traceability)
   created_at: string;
   updated_at: string;
 }

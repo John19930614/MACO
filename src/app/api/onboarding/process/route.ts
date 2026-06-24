@@ -1690,6 +1690,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, seeded: {}, total: 0, note: "no_service_key" });
   }
 
+  // Pre-scan: flag uploaded files that have no extractable text (empty stubs or
+  // scanned images) so the user gets a clear reason instead of a silent 0.
+  const warnings: string[] = [];
+  for (const [docId, files] of Object.entries(uploads)) {
+    for (const f of files) {
+      try {
+        const fd = await downloadFile(f.path);
+        const approxBytes = fd.base64 ? fd.base64.length * 0.75 : 0;
+        const empty = fd.mimeType === "application/pdf"
+          ? approxBytes < 4000
+          : (fd.text ?? "").trim().length < 40;
+        if (empty) warnings.push(`${docId}/${f.name} — no extractable text (empty stub or scanned image); nothing imported from it.`);
+      } catch {
+        warnings.push(`${docId}/${f.name} — could not be read.`);
+      }
+    }
+  }
+
   const seeded: Record<string, number> = {};
 
   // Process all categories in parallel. Each processor is internally fault-
@@ -1749,6 +1767,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       seeded,
       total: Object.values(seeded).reduce((a, b) => a + b, 0),
+      warnings,
       note: "processing_error",
     });
   }
@@ -1764,5 +1783,5 @@ export async function POST(req: NextRequest) {
     await svc.from("tenants").update({ onboarding_data: { ...existingObd, seeded_counts: seeded } }).eq("id", tenantId);
   } catch { /* non-fatal */ }
 
-  return NextResponse.json({ ok: true, seeded, total });
+  return NextResponse.json({ ok: true, seeded, total, warnings });
 }

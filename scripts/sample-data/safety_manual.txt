@@ -1,0 +1,29 @@
+CORTEXA BIOSCIENCES, INC.
+INJURY & ILLNESS PREVENTION PROGRAM (IIPP) / CHEMICAL HYGIENE PLAN
+Revision 3 — Effective January 2026
+
+SECTION 3 — REGULATORY COMPLIANCE
+This program is maintained in accordance with the following standards:
+- OSHA Hazard Communication Standard, 29 CFR 1910.1200 — maintain Safety Data Sheets,
+  container labeling, written HazCom program, and annual employee training.
+- OSHA Occupational Exposure to Hazardous Chemicals in Laboratories, 29 CFR 1910.1450 —
+  written Chemical Hygiene Plan and a designated Chemical Hygiene Officer (CHO).
+- OSHA Formaldehyde Standard, 29 CFR 1910.1048 — initial and periodic exposure monitoring
+  and a medical surveillance program for exposed employees.
+- OSHA Bloodborne Pathogens, 29 CFR 1910.1030 — Exposure Control Plan and Hepatitis B
+  vaccination offered to staff handling human cell lines.
+- EPA Resource Conservation and Recovery Act, 40 CFR 262 — hazardous waste generator
+  accumulation limits and manifesting.
+
+SECTION 4 — REQUIRED TRAINING
+All laboratory personnel must complete:
+- Hazard Communication / GHS training — annual.
+- Chemical Hygiene & Laboratory Safety — at hire and annual refresher.
+- Bloodborne Pathogens — annual, for staff working with human-derived materials.
+- Formaldehyde Safety — for histology staff prior to first exposure.
+
+SECTION 5 — IDENTIFIED HAZARDS
+- Inhalation/skin exposure to formaldehyde during tissue fixation (carcinogen) — high risk.
+- Flammable solvent fire during handling and storage of methanol/acetonitrile — high risk.
+- Cryogenic burns and oxygen displacement from liquid nitrogen in cryostorage — medium risk.
+- Exposure to BSL-2 biological agents during cell culture — medium risk.

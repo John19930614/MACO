@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getDocuments, getProfiles, getChemicals } from "@/lib/data/ehsRepo";
+import { getDocuments, getProfiles, getChemicals, getBiosafetyLabs, getWasteStreams } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader, Stat, Card, CardHeader, Pill } from "@/components/ui/primitives";
@@ -8,6 +8,8 @@ import { DocumentsExportButton } from "./DocumentsExportButton";
 import { DocumentLibrary } from "./DocumentLibrary";
 import { ExpirationTracker } from "./ExpirationTracker";
 import { DocumentGeneratorButton } from "./DocumentGeneratorButton";
+import { ProgramBuilderPanel } from "./ProgramBuilderPanel";
+import { requiredPrograms } from "@/lib/ai/programBuilder";
 import { DOCUMENT_LIBRARY } from "./libraryTemplates";
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -42,13 +44,23 @@ export default async function DocumentsPage({
   const showLibrary = view === "library";
   const showTracker = view === "tracker";
 
-  const [docs, profiles, chemicals] = await Promise.all([
+  const [docs, profiles, chemicals, biosafetyLabs, wasteStreams] = await Promise.all([
     getDocuments(tenantId),
     getProfiles(tenantId),
     getChemicals(tenantId),
+    getBiosafetyLabs(tenantId),
+    getWasteStreams(tenantId),
   ]);
 
   const profileMap = Object.fromEntries(profiles.map((p) => [p.id, p.display_name]));
+
+  // Which EHS programs the company is required to maintain, and whether one exists.
+  const existingRefs = new Set(docs.map((d) => d.regulation_ref).filter(Boolean));
+  const existingTitles = new Set(docs.map((d) => d.title));
+  const programs = requiredPrograms({ chemicals, biosafetyLabs, wasteStreams }).map((p) => ({
+    ...p,
+    exists: existingRefs.has(p.regulation) || existingTitles.has(p.title),
+  }));
 
   const current   = docs.filter((d) => d.status === "active").length;
   const draft     = docs.filter((d) => d.status === "draft").length;
@@ -151,6 +163,11 @@ export default async function DocumentsPage({
             </div>
           </Card>
         </div>
+
+        {/* AI Program Builder — author required programs from the company's manuals + live data */}
+        {!showLibrary && !showTracker && programs.length > 0 && (
+          <ProgramBuilderPanel programs={programs} />
+        )}
 
         {/* View tabs */}
         <div className="mb-5 flex gap-0 border-b border-slate-200 dark:border-slate-700">

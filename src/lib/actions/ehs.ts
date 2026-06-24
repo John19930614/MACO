@@ -5,7 +5,9 @@ import { getStore, nextId } from "@/lib/data/store";
 import { MOCK_TENANT_ID, MOCK_SITE_ID } from "@/lib/data/mock";
 import { createSupabaseServerClient, DEMO_SARAH_ID } from "@/lib/supabase/server";
 import { getServerTenantId, getServerProfileId } from "@/lib/auth/session";
-import { MOCK_MODE } from "@/lib/env";
+import { MOCK_MODE, serverSecrets } from "@/lib/env";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { PROGRAM_DEFS, generateProgram, type SourceBlock } from "@/lib/ai/programBuilder";
 import type { Severity, IncidentType, CapaStatus, AuditStatus, DocumentStatus } from "@/lib/constants";
 import { COMPLIANCE_STATUS_META, type ComplianceStatus } from "@/lib/constants";
 import type { CapaSourceType, AuditType, Incident, RiskAssessment, WasteStream, Equipment, LegalRequirement, TrainingRecord, OshaCase, AiFinding, Chemical, AiAnalysisOutput } from "@/lib/types";
@@ -1064,9 +1066,20 @@ export async function addTrainingCourse(_prev: unknown, formData: FormData) {
 
 // ── Documents ─────────────────────────────────────────────────────────────────
 
+// Parse a JSON-encoded document body (array of {heading, body}) from a form field.
+function parseDocContent(raw: string | null): { heading: string; body: string }[] {
+  if (!raw) return [];
+  try { const v = JSON.parse(raw); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+
 export async function addDocument(_prev: unknown, formData: FormData) {
   const now = new Date().toISOString();
   const ackRequired = (formData.get("acknowledgment_required") as string) === "true";
+  const content = parseDocContent(formData.get("content") as string);
+  const regulationRef = (formData.get("regulation_ref") as string) || null;
+  const generated = (formData.get("generated") as string) === "true";
+  const sourcePaths = parseDocContent(formData.get("source_doc_paths") as string) as unknown as string[];
+  const ownerId = (formData.get("owner_id") as string) || null;
   if (!MOCK_MODE) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
@@ -1081,6 +1094,11 @@ export async function addDocument(_prev: unknown, formData: FormData) {
         review_date:             (formData.get("review_date") as string) || now.slice(0, 10),
         status:                  (formData.get("status") as string) || "draft",
         acknowledgment_required: ackRequired,
+        regulation_ref:          regulationRef,
+        content,
+        generated,
+        source_doc_paths:        Array.isArray(sourcePaths) ? sourcePaths : [],
+        owner_id:                ownerId,
       });
       if (error) return { ok: false, error: error.message };
     }
@@ -1097,9 +1115,12 @@ export async function addDocument(_prev: unknown, formData: FormData) {
       effective_date:          (formData.get("effective_date") as string) || now.slice(0, 10),
       review_date:             (formData.get("review_date") as string) || now.slice(0, 10),
       status:                  ((formData.get("status") as string) || "draft") as DocumentStatus,
-      owner_id:                null,
+      owner_id:                ownerId,
       acknowledgment_required: ackRequired,
-      regulation_ref:          null,
+      regulation_ref:          regulationRef,
+      content,
+      generated,
+      source_doc_paths:        Array.isArray(sourcePaths) ? sourcePaths : [],
       created_at:              now,
       updated_at:              now,
     });
@@ -1112,6 +1133,8 @@ export async function addDocument(_prev: unknown, formData: FormData) {
 export async function updateDocument(id: string, formData: FormData) {
   const now = new Date().toISOString();
   const ackRequired = (formData.get("acknowledgment_required") as string) === "true";
+  const hasContent = formData.has("content");
+  const content = parseDocContent(formData.get("content") as string);
   if (!MOCK_MODE) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
@@ -1124,6 +1147,7 @@ export async function updateDocument(id: string, formData: FormData) {
         review_date:             (formData.get("review_date") as string) || null,
         status:                  (formData.get("status") as string) || "draft",
         acknowledgment_required: ackRequired,
+        ...(hasContent ? { content } : {}),
         updated_at:              now,
       }).eq("id", id).eq("tenant_id", ctx.tenantId);
     }
@@ -1140,6 +1164,7 @@ export async function updateDocument(id: string, formData: FormData) {
         review_date:             (formData.get("review_date") as string) || store.documents[idx].review_date,
         status:                  ((formData.get("status") as string) || "draft") as DocumentStatus,
         acknowledgment_required: ackRequired,
+        ...(hasContent ? { content } : {}),
         updated_at:              now,
       };
     }
@@ -1696,4 +1721,71 @@ export async function runPredictabilityScan() {
   revalidatePath("/ai");
   revalidatePath("/dashboard");
   return { ok: true, scanned: itemsScanned, findings: findings.length, modules: scoreRows.length };
+}
+
+// ── AI Program Builder ────────────────────────────────────────────────────────
+// Reads the company's uploaded manuals/SOPs + live data and authors a required
+// EHS program/SOP as a real, editable document (draft), linked to the regulation
+// it satisfies. Surfaces wherever the platform references that document.
+export async function buildProgramFromDocs(programKey: string) {
+  if (MOCK_MODE) return { ok: false as const, error: "Program builder runs in live mode only." };
+  const ctx = await getCtx();
+  if (!ctx) return { ok: false as const, error: "Session expired — please reload." };
+  const def = PROGRAM_DEFS.find((d) => d.key === programKey);
+  if (!def) return { ok: false as const, error: "Unknown program." };
+  const { tenantId, client } = ctx;
+
+  // Company / site / EHS lead context
+  const { data: tenantRow } = await client.from("tenants").select("name").eq("id", tenantId).single();
+  const company = (tenantRow?.name as string) || "Your Company";
+  const { data: siteRow } = await client.from("sites").select("name, address").eq("tenant_id", tenantId).limit(1).maybeSingle();
+  const site = siteRow?.name ? (siteRow.address ? `${siteRow.name}, ${siteRow.address}` : (siteRow.name as string)) : "Main Site";
+  const { data: profs } = await client.from("profiles").select("display_name, job_title, role").eq("tenant_id", tenantId);
+  const lead = (profs ?? []).find((p) => p.role === "ehs_manager") ?? (profs ?? [])[0];
+  const cho = lead ? `${lead.display_name}${lead.job_title ? `, ${lead.job_title}` : ""}` : "EHS Manager";
+
+  const [chemicals, biosafetyLabs, wasteStreams] = await Promise.all([
+    getChemicals(tenantId), getBiosafetyLabs(tenantId), getWasteStreams(tenantId),
+  ]);
+  void biosafetyLabs; void wasteStreams; // included in ctx for future program types
+
+  // Best-effort: pull the company's uploaded safety manuals + SOPs to ground the AI.
+  const sources: SourceBlock[] = [];
+  const sourcePaths: string[] = [];
+  const { serviceRoleKey } = serverSecrets();
+  if (serviceRoleKey) {
+    const svc = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceRoleKey, { auth: { persistSession: false } });
+    for (const cat of ["safety_manual", "sop"]) {
+      const { data: list } = await svc.storage.from("client-documents").list(`${tenantId}/${cat}`);
+      for (const f of (list ?? []).slice(0, 3)) {
+        const p = `${tenantId}/${cat}/${f.name}`;
+        try {
+          const { data: blob } = await svc.storage.from("client-documents").download(p);
+          if (!blob) continue;
+          if (f.name.toLowerCase().endsWith(".pdf")) {
+            sources.push({ name: f.name, base64: Buffer.from(await blob.arrayBuffer()).toString("base64"), mimeType: "application/pdf" });
+          } else {
+            sources.push({ name: f.name, text: await blob.text() });
+          }
+          sourcePaths.push(p);
+        } catch { /* skip unreadable file */ }
+      }
+    }
+  }
+
+  const sections = await generateProgram(def, { company, site, cho }, chemicals, sources);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const review = new Date(Date.now() + 365 * 86400 * 1000).toISOString().slice(0, 10);
+  const { error } = await client.from("documents").insert({
+    tenant_id: tenantId, title: def.title, category: def.category, version: "1.0",
+    storage_path: "", effective_date: today, review_date: review, status: "draft",
+    acknowledgment_required: true, regulation_ref: def.regulation,
+    content: sections, generated: true, source_doc_paths: sourcePaths, owner_id: ctx.profileId,
+  });
+  if (error) return { ok: false as const, error: error.message };
+
+  revalidatePath("/documents");
+  revalidatePath("/legal");
+  return { ok: true as const, title: def.title, sections: sections.length, grounded: sourcePaths.length };
 }

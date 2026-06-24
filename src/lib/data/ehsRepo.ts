@@ -412,6 +412,9 @@ export const getDocuments = cache(async (tenantId = MOCK_TENANT_ID): Promise<Doc
     owner_id: r.owner_id ?? null,
     acknowledgment_required: r.acknowledgment_required ?? false,
     regulation_ref: r.regulation_ref ?? null,
+    content: Array.isArray(r.content) ? r.content : [],
+    generated: r.generated ?? false,
+    source_doc_paths: r.source_doc_paths ?? [],
     created_at: r.created_at,
     updated_at: r.updated_at,
   }));

@@ -122,6 +122,13 @@ export function DocumentGeneratorButton({
     const today    = new Date().toISOString().slice(0, 10);
     const reviewMs = new Date().setMonth(new Date().getMonth() + reviewMonths);
     const reviewDate = new Date(reviewMs).toISOString().slice(0, 10);
+    // Persist the actual document body (template sections with the company's data
+    // substituted in) — not just metadata. This is what gets stored + rendered.
+    const siteAddress = SITE_ADDRESSES[user.tenant_id ?? ""] ?? `${user.company} Main Campus`;
+    const content = template.sections.map((s) => ({
+      heading: s.heading,
+      body: applySubstitutions(s.body, chemicals, { ...user, site_address: siteAddress }),
+    }));
     const fd = new FormData();
     fd.set("title",                    template.title);
     fd.set("category",                 template.category);
@@ -130,6 +137,8 @@ export function DocumentGeneratorButton({
     fd.set("review_date",              reviewDate);
     fd.set("status",                   "draft");
     fd.set("acknowledgment_required",  template.acknowledgmentRequired ? "true" : "false");
+    fd.set("content",                  JSON.stringify(content));
+    if (template.regulatoryBasis) fd.set("regulation_ref", template.regulatoryBasis);
     if (ownerId) fd.set("owner_id", ownerId);
     await addDocument(null, fd);
     setAdding(false);

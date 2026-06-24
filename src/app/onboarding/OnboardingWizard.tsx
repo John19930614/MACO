@@ -92,6 +92,7 @@ export default function OnboardingWizard({ tenantId }: { tenantId: string }) {
   const [processing, setProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
   const [summaryData, setSummaryData] = useState<Record<string, number> | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   // Lifted from Step2Documents so handleSubmit can access the file paths
   const [uploads, setUploads]   = useState<UploadState>({});
@@ -188,6 +189,7 @@ export default function OnboardingWizard({ tenantId }: { tenantId: string }) {
         });
         const result = resp.ok ? await resp.json() : {};
         setSummaryData(result.seeded ?? {});
+        setWarnings(Array.isArray(result.warnings) ? result.warnings : []);
       } catch {
         setSummaryData({});
       } finally {
@@ -255,6 +257,7 @@ export default function OnboardingWizard({ tenantId }: { tenantId: string }) {
     return (
       <SummaryScreen
         seeded={summaryData}
+        warnings={warnings}
         companyName={data.legalName}
         onContinue={() => router.push("/dashboard?onboarding=complete")}
       />
@@ -696,8 +699,9 @@ const SUMMARY_STATS: { key: string; label: string; icon: React.ElementType; colo
   { key: "biosafety_labs",     label: "Biosafety labs",            icon: Microscope,     color: "text-teal-400 bg-teal-900/30 border-teal-700/40"        },
 ];
 
-function SummaryScreen({ seeded, companyName, onContinue }: {
+function SummaryScreen({ seeded, warnings = [], companyName, onContinue }: {
   seeded: Record<string, number>;
+  warnings?: string[];
   companyName: string;
   onContinue: () => void;
 }) {
@@ -734,6 +738,22 @@ function SummaryScreen({ seeded, companyName, onContinue }: {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Files that couldn't be read */}
+        {warnings.length > 0 && (
+          <div className="mb-8 rounded-xl border border-amber-700/40 bg-amber-900/15 px-4 py-3 text-left">
+            <div className="mb-1.5 text-xs font-semibold text-amber-300">
+              {warnings.length} file{warnings.length > 1 ? "s" : ""} had no readable content:
+            </div>
+            <ul className="space-y-1 text-[11px] text-amber-200/90">
+              {warnings.slice(0, 8).map((w, i) => <li key={i}>• {w}</li>)}
+              {warnings.length > 8 && <li>• …and {warnings.length - 8} more</li>}
+            </ul>
+            <div className="mt-2 text-[11px] text-amber-300/70">
+              Re-upload these as real, text-based documents (not scans/empty files) to import their data.
+            </div>
           </div>
         )}
 

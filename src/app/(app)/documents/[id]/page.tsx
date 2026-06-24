@@ -95,6 +95,36 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
             </div>
           </div>
 
+          {/* Program / SOP body */}
+          {(doc.content?.length ?? 0) > 0 && (
+            <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="text-base font-semibold text-slate-800">Document Content</h2>
+                <div className="flex items-center gap-2">
+                  {doc.generated && (
+                    <Pill className="bg-purple-100 text-purple-700 text-[11px]">✨ AI-authored</Pill>
+                  )}
+                  {doc.regulation_ref && (
+                    <Pill className="bg-blue-100 text-blue-700 text-[11px]">{doc.regulation_ref}</Pill>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-5">
+                {doc.content!.map((s, i) => (
+                  <div key={i}>
+                    <h3 className="mb-1.5 text-sm font-bold text-slate-900">{i + 1}. {s.heading}</h3>
+                    <p className="whitespace-pre-line text-sm leading-relaxed text-slate-600">{s.body}</p>
+                  </div>
+                ))}
+              </div>
+              {(doc.source_doc_paths?.length ?? 0) > 0 && (
+                <div className="mt-5 border-t border-slate-100 pt-3 text-[11px] text-slate-400">
+                  Authored from {doc.source_doc_paths!.length} uploaded source document(s) + your live EHS data.
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Edit */}
           <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
             <h2 className="mb-5 text-base font-semibold text-slate-800">Edit Document</h2>
