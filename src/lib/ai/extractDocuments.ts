@@ -11,7 +11,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { serverSecrets, hasLiveAi } from "@/lib/env";
 import type { SourceBlock } from "./programBuilder";
 
-export type RowKind = "chemical" | "waste" | "legal";
+export type RowKind = "chemical" | "waste" | "legal" | "training" | "incident" | "equipment";
 
 const norm = (s: unknown) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
@@ -85,6 +85,65 @@ export const KIND_DEFS: Record<RowKind, KindDef> = {
       jurisdiction: String(r.jurisdiction || ""), category: String(r.category || "general"), description: String(r.description || ""),
       applicable_sectors: [], review_frequency_days: 365,
       next_review_date: new Date(Date.now() + 365 * 86400 * 1000).toISOString().slice(0, 10), status: "not_assessed",
+    }),
+  },
+  training: {
+    table: "training_courses", toolName: "extract_training",
+    system: "You are an EHS training specialist. Extract training courses/requirements. For course_type use: safety, hazmat, emergency-response, regulatory, equipment, general. duration_minutes in minutes (estimate if stated as hours). validity_period_days is how long the certification lasts (null if none).",
+    instruction: "Extract all training courses or requirements from this document.",
+    schema: arr({
+      required: ["title", "description", "course_type", "duration_minutes"], additionalProperties: false,
+      properties: { title: { type: "string" }, description: { type: "string" }, course_type: { type: "string" }, duration_minutes: { type: "number" }, regulatory_ref: { type: ["string", "null"] }, validity_period_days: { type: ["number", "null"] } },
+    }),
+    label: (r) => String(r.title ?? "Training course"),
+    dedupKey: (r) => norm(r.title),
+    toLive: (r, _c) => ({
+      tenant_id: _c.tenantId, title: String(r.title || "Training Course"), description: String(r.description || ""),
+      course_type: String(r.course_type || "general"), duration_minutes: Number(r.duration_minutes) || 60,
+      pass_score: 80, validity_period_days: r.validity_period_days ? Number(r.validity_period_days) : null,
+      required_roles: [], regulatory_ref: r.regulatory_ref ? String(r.regulatory_ref) : null, active: true,
+    }),
+  },
+  incident: {
+    table: "incidents", toolName: "extract_incidents",
+    system: "You are an EHS data specialist. Extract injury/illness or near-miss cases. For incident_type use: near_miss, first_aid, medical_treatment, lost_time_injury, property_damage, environmental_spill, chemical_release, fire_explosion. For severity: low, medium, high, critical. occurred_date must be YYYY-MM-DD.",
+    instruction: "Extract all incidents, injuries, illnesses, or near-misses from this document.",
+    schema: arr({
+      required: ["title", "incident_type", "severity", "occurred_date"], additionalProperties: false,
+      properties: { title: { type: "string" }, description: { type: "string" }, incident_type: { type: "string" }, severity: { type: "string" }, occurred_date: { type: "string" }, location: { type: ["string", "null"] }, injured_party: { type: ["string", "null"] }, lost_time_days: { type: ["number", "null"] } },
+    }),
+    label: (r) => String(r.title ?? "Incident"),
+    dedupKey: (r) => norm(r.title),
+    toLive: (r, c) => {
+      const d = String(r.occurred_date || "");
+      const occurredAt = d && !Number.isNaN(new Date(d).getTime()) ? new Date(d).toISOString() : new Date().toISOString();
+      return {
+        tenant_id: c.tenantId, site_id: c.siteId, title: String(r.title || "Incident"), description: String(r.description || ""),
+        incident_type: String(r.incident_type || "medical_treatment"), severity: String(r.severity || "medium"),
+        occurred_at: occurredAt, location: String(r.location || ""),
+        injured_party: r.injured_party ? String(r.injured_party) : null,
+        lost_time_days: r.lost_time_days != null ? Number(r.lost_time_days) : null,
+        reported_by: c.createdBy, status: "reported",
+      };
+    },
+  },
+  equipment: {
+    table: "equipment", toolName: "extract_equipment",
+    system: "You are an EHS equipment specialist. Extract equipment/calibration records. For type use: general, air_monitor, gas_detector, noise_meter, pressure_vessel, electrical, lifting, ppe, fire_suppression, emergency, hvac, laboratory. Dates must be YYYY-MM-DD.",
+    instruction: "Extract all equipment records from this register.",
+    schema: arr({
+      required: ["name", "type", "location"], additionalProperties: false,
+      properties: { name: { type: "string" }, type: { type: "string" }, serial_number: { type: ["string", "null"] }, location: { type: "string" }, next_calibration_date: { type: ["string", "null"] }, next_inspection_date: { type: ["string", "null"] }, calibration_interval_days: { type: ["number", "null"] } },
+    }),
+    label: (r) => String(r.name ?? "Equipment"),
+    dedupKey: (r) => `${norm(r.name)}|${norm(r.serial_number)}`,
+    toLive: (r, c) => ({
+      tenant_id: c.tenantId, site_id: c.siteId, name: String(r.name || "Unknown Equipment"), type: String(r.type || "general"),
+      serial_number: r.serial_number ? String(r.serial_number) : null, location: String(r.location || ""),
+      next_calibration_date: r.next_calibration_date ? String(r.next_calibration_date) : null,
+      next_inspection_date: r.next_inspection_date ? String(r.next_inspection_date) : null,
+      calibration_interval_days: r.calibration_interval_days ? Number(r.calibration_interval_days) : null,
+      status: "operational",
     }),
   },
 };

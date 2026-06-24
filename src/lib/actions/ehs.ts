@@ -14,7 +14,7 @@ import { COMPLIANCE_STATUS_META, type ComplianceStatus } from "@/lib/constants";
 import type { CapaSourceType, AuditType, Incident, RiskAssessment, WasteStream, Equipment, LegalRequirement, TrainingRecord, OshaCase, AiFinding, Chemical, AiAnalysisOutput } from "@/lib/types";
 import { analyzeChemical, analyzeComplianceGap, buildPredictabilityForecast } from "@/lib/ai/engine";
 import {
-  getChemicals, getLegalRequirements, getTrainingRecords, getCapaActions,
+  getChemicals, getLegalRequirements, getTrainingRecords, getTrainingCourses, getCapaActions,
   getIncidents, getAudits, getRiskAssessments, getEquipment, getWasteStreams,
   getDocuments, getOshaCases, getBiosafetyLabs,
 } from "@/lib/data/ehsRepo";
@@ -1825,7 +1825,10 @@ export async function stageDocumentImport(kind: RowKind, files: { name: string; 
   // Existing live records → dedup keys
   const existing = kind === "chemical" ? await getChemicals(ctx.tenantId)
     : kind === "waste" ? await getWasteStreams(ctx.tenantId)
-    : await getLegalRequirements(ctx.tenantId);
+    : kind === "legal" ? await getLegalRequirements(ctx.tenantId)
+    : kind === "training" ? await getTrainingCourses(ctx.tenantId)
+    : kind === "incident" ? await getIncidents(ctx.tenantId)
+    : await getEquipment(ctx.tenantId);
   const existingKeys = new Map(existing.map((e) => [def.dedupKey(e as unknown as Record<string, unknown>), e.id]));
 
   const staged: Record<string, unknown>[] = [];
@@ -1860,7 +1863,7 @@ export async function stageDocumentImport(kind: RowKind, files: { name: string; 
   return { ok: true as const, staged: staged.length, dupes: staged.filter((s) => s.dedup_of).length };
 }
 
-export async function approveStagedRow(id: string) {
+export async function approveStagedRow(id: string, editedJson?: string) {
   if (MOCK_MODE) return { ok: false as const, error: "Live mode only." };
   const ctx = await getCtx();
   if (!ctx) return { ok: false as const, error: "Session expired — please reload." };
@@ -1869,7 +1872,18 @@ export async function approveStagedRow(id: string) {
   if (row.status !== "staged") return { ok: false as const, error: "Already reviewed." };
   const def = KIND_DEFS[row.row_kind as RowKind];
   if (!def) return { ok: false as const, error: "Unknown document type." };
-  const live = def.toLive(row.candidate as Record<string, unknown>, { tenantId: ctx.tenantId, siteId: ctx.siteId, createdBy: ctx.profileId });
+  // Use the user's inline edits if provided; persist them on the staged row too.
+  let candidate = row.candidate as Record<string, unknown>;
+  if (editedJson) {
+    try {
+      const edited = JSON.parse(editedJson);
+      if (edited && typeof edited === "object") {
+        candidate = edited as Record<string, unknown>;
+        await ctx.client.from("document_staged_rows").update({ candidate, label: def.label(candidate) }).eq("id", id).eq("tenant_id", ctx.tenantId);
+      }
+    } catch { /* ignore bad edits, use original */ }
+  }
+  const live = def.toLive(candidate, { tenantId: ctx.tenantId, siteId: ctx.siteId, createdBy: ctx.profileId });
   const { error } = await ctx.client.from(def.table).insert(live);
   if (error) return { ok: false as const, error: error.message };
   await ctx.client.from("document_staged_rows").update({ status: "approved", reviewed_at: new Date().toISOString() }).eq("id", id).eq("tenant_id", ctx.tenantId);

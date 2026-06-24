@@ -2,20 +2,26 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, Loader2, Check, X, FileText, AlertTriangle, FlaskConical, Trash2, Scale } from "lucide-react";
+import { Upload, Loader2, Check, X, FileText, AlertTriangle, FlaskConical, Trash2, Scale, GraduationCap, Wrench, Pencil } from "lucide-react";
 import { Card, CardHeader, Pill } from "@/components/ui/primitives";
 import { createClient } from "@/lib/supabase/client";
 import { stageDocumentImport, approveStagedRow, rejectStagedRow } from "@/lib/actions/ehs";
 
-type Kind = "chemical" | "waste" | "legal";
+type Kind = "chemical" | "waste" | "legal" | "training" | "incident" | "equipment";
 
 const KINDS: { id: Kind; label: string; hint: string; Icon: React.ElementType }[] = [
   { id: "chemical", label: "Chemical Inventory", hint: "→ Chemical Management", Icon: FlaskConical },
   { id: "waste", label: "Hazardous Waste", hint: "→ Waste Management", Icon: Trash2 },
   { id: "legal", label: "Permits & Regulations", hint: "→ Legal Register", Icon: Scale },
+  { id: "training", label: "Training Records", hint: "→ Training", Icon: GraduationCap },
+  { id: "incident", label: "Incident / OSHA Logs", hint: "→ Incidents", Icon: AlertTriangle },
+  { id: "equipment", label: "Equipment Register", hint: "→ Monitoring", Icon: Wrench },
 ];
 
-const KIND_LABEL: Record<string, string> = { chemical: "Chemical", waste: "Waste stream", legal: "Legal requirement" };
+const KIND_LABEL: Record<string, string> = {
+  chemical: "Chemical", waste: "Waste stream", legal: "Legal requirement",
+  training: "Training course", incident: "Incident", equipment: "Equipment",
+};
 
 interface StagedRow {
   id: string; row_kind: string; candidate: Record<string, unknown>; label: string;
@@ -29,6 +35,8 @@ export function ImportClient({ tenantId, staged }: { tenantId: string; staged: S
   const [msg, setMsg] = useState("");
   const [msgErr, setMsgErr] = useState(false);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Record<string, unknown>>({});
 
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
@@ -62,13 +70,34 @@ export function ImportClient({ tenantId, staged }: { tenantId: string; staged: S
     }
   }
 
-  async function decide(id: string, accept: boolean) {
+  async function decide(id: string, accept: boolean, edited?: Record<string, unknown>) {
     setRowBusy(id);
     try {
-      const res = accept ? await approveStagedRow(id) : await rejectStagedRow(id);
+      const res = accept
+        ? await approveStagedRow(id, edited ? JSON.stringify(edited) : undefined)
+        : await rejectStagedRow(id);
       if (!res.ok) { setMsgErr(true); setMsg(res.error || "Action failed."); }
+      else { setEditingId(null); }
       router.refresh();
     } finally { setRowBusy(null); }
+  }
+
+  function startEdit(row: StagedRow) {
+    setEditingId(row.id);
+    setDraft({ ...row.candidate });
+  }
+
+  function setField(key: string, raw: string, original: unknown) {
+    setDraft((d) => ({
+      ...d,
+      [key]: Array.isArray(original)
+        ? raw.split(",").map((s) => s.trim()).filter(Boolean)
+        : typeof original === "number"
+          ? (raw === "" ? "" : Number(raw))
+          : typeof original === "boolean"
+            ? raw === "true"
+            : raw,
+    }));
   }
 
   return (
@@ -108,32 +137,68 @@ export function ImportClient({ tenantId, staged }: { tenantId: string; staged: S
           </div>
         ) : (
           <div className="divide-y divide-slate-50 dark:divide-slate-700">
-            {staged.map((row) => (
-              <div key={row.id} className="flex items-center gap-3 px-5 py-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{row.label}</span>
-                    <Pill className="bg-slate-100 text-slate-500 text-[10px]">{KIND_LABEL[row.row_kind] ?? row.row_kind}</Pill>
-                    {row.dedup_of && (
-                      <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                        <AlertTriangle className="h-3 w-3" /> Possible duplicate
-                      </span>
-                    )}
+            {staged.map((row) => {
+              const editing = editingId === row.id;
+              return (
+              <div key={row.id} className="px-5 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{editing ? String(draft.name ?? draft.title ?? draft.waste_name ?? row.label) : row.label}</span>
+                      <Pill className="bg-slate-100 text-slate-500 text-[10px]">{KIND_LABEL[row.row_kind] ?? row.row_kind}</Pill>
+                      {row.dedup_of && (
+                        <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                          <AlertTriangle className="h-3 w-3" /> Possible duplicate
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 truncate text-[11px] text-slate-400">
+                      {summarize(row.candidate)}{row.source_name ? ` · from ${row.source_name}` : ""}
+                    </div>
                   </div>
-                  <div className="mt-0.5 truncate text-[11px] text-slate-400">
-                    {summarize(row.candidate)}{row.source_name ? ` · from ${row.source_name}` : ""}
-                  </div>
+                  {!editing && (
+                    <button onClick={() => startEdit(row)} disabled={rowBusy !== null}
+                      className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50">
+                      <Pencil className="h-3.5 w-3.5" /> Edit
+                    </button>
+                  )}
+                  <button onClick={() => decide(row.id, true, editing ? draft : undefined)} disabled={rowBusy !== null}
+                    className="flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+                    {rowBusy === row.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} {editing ? "Save & Accept" : "Accept"}
+                  </button>
+                  <button onClick={() => (editing ? setEditingId(null) : decide(row.id, false))} disabled={rowBusy !== null}
+                    className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50">
+                    <X className="h-3.5 w-3.5" /> {editing ? "Cancel" : "Reject"}
+                  </button>
                 </div>
-                <button onClick={() => decide(row.id, true)} disabled={rowBusy !== null}
-                  className="flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
-                  {rowBusy === row.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Accept
-                </button>
-                <button onClick={() => decide(row.id, false)} disabled={rowBusy !== null}
-                  className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50">
-                  <X className="h-3.5 w-3.5" /> Reject
-                </button>
+
+                {editing && (
+                  <div className="mt-3 grid grid-cols-1 gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2 dark:border-slate-700 dark:bg-slate-800/40">
+                    {Object.entries(draft)
+                      .filter(([, v]) => v === null || ["string", "number", "boolean"].includes(typeof v) || Array.isArray(v))
+                      .map(([k, v]) => (
+                        <div key={k}>
+                          <label className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">{k.replace(/_/g, " ")}</label>
+                          {typeof v === "boolean" ? (
+                            <select value={String(v)} onChange={(e) => setField(k, e.target.value, v)}
+                              className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-400 focus:outline-none">
+                              <option value="true">Yes</option>
+                              <option value="false">No</option>
+                            </select>
+                          ) : (
+                            <input
+                              value={Array.isArray(v) ? v.join(", ") : (v ?? "") as string | number}
+                              onChange={(e) => setField(k, e.target.value, v)}
+                              className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-400 focus:outline-none"
+                            />
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>
