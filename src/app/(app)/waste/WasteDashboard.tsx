@@ -27,10 +27,23 @@ import {
   Scale,
   ShieldAlert,
 } from "lucide-react";
-import type { WasteStream, Chemical } from "@/lib/types";
+import type {
+  WasteStream,
+  Chemical,
+  WasteVendor,
+  WastePickup,
+  WasteInspection as LiveWasteInspection,
+} from "@/lib/types";
 import { Card, CardHeader, Pill, Stat } from "@/components/ui/primitives";
 import { MOCK_MODE } from "@/lib/env";
-import { addWorkspaceTask } from "@/lib/actions/ehs";
+import {
+  addWorkspaceTask,
+  addWasteVendor,
+  updateWasteVendor,
+  scheduleWastePickup,
+  updateWastePickup,
+  logWasteInspection,
+} from "@/lib/actions/ehs";
 import { Modal, Field, Input, Select, Textarea, SubmitRow } from "@/components/modals/Modal";
 import { playCreateSound } from "@/lib/sounds";
 
@@ -76,6 +89,9 @@ const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: "register",     label: "Waste Register",        Icon: FlaskConical },
   { id: "accumulation", label: "Accumulation Tracker",  Icon: Clock },
   { id: "schedule",     label: "Pickup Schedule",       Icon: Calendar },
+  { id: "vendors",      label: "Vendors / TSDF",        Icon: Truck },
+  { id: "manifests",    label: "Pickups / Manifests",   Icon: FileText },
+  { id: "inspections",  label: "Inspections",           Icon: ClipboardCheck },
 ];
 
 // ── Storage Area mock data ────────────────────────────────────────────────────
@@ -1220,14 +1236,359 @@ function ComingSoonButton({
   );
 }
 
+// ── Live vendor / pickup / inspection workflow primitives ─────────────────────
+// Backed by waste_vendors / waste_pickups / waste_inspections via real actions.
+
+const VENDOR_STATUS_STYLE: Record<string, string> = {
+  active:   "bg-emerald-100 text-emerald-700",
+  pending:  "bg-amber-100 text-amber-700",
+  review:   "bg-amber-100 text-amber-700",
+  inactive: "bg-slate-100 text-slate-500",
+  expired:  "bg-red-100 text-red-700",
+};
+
+const PICKUP_STATUS_STYLE: Record<string, string> = {
+  requested: "bg-amber-100 text-amber-700",
+  scheduled: "bg-blue-100 text-blue-700",
+  confirmed: "bg-blue-100 text-blue-700",
+  completed: "bg-emerald-100 text-emerald-700",
+  cancelled: "bg-slate-100 text-slate-500",
+};
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Add / Edit Vendor modal → addWasteVendor / updateWasteVendor
+function VendorFormButton({
+  mode,
+  vendor,
+  label,
+  className,
+}: {
+  mode: "add" | "edit";
+  vendor?: WasteVendor;
+  label: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setPending(true);
+    setError(null);
+    const fd = new FormData(e.currentTarget);
+    const res =
+      mode === "edit" && vendor
+        ? await updateWasteVendor(vendor.id, fd)
+        : await addWasteVendor(null, fd);
+    if (res.ok) {
+      playCreateSound();
+      setOpen(false);
+      router.refresh();
+    } else {
+      setError(res.error ?? "Could not save vendor.");
+    }
+    setPending(false);
+  }
+
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className={className}>
+        {label}
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title={mode === "edit" ? `Edit Vendor — ${vendor?.name ?? ""}` : "Add Waste Vendor / TSDF"}>
+        <form onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-4 px-6 py-5">
+            {error && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
+            )}
+            <Field label="Vendor Name" required>
+              <Input name="name" defaultValue={vendor?.name ?? ""} required placeholder="Clean Harbors" />
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="EPA ID">
+                <Input name="epa_id" defaultValue={vendor?.epa_id ?? ""} placeholder="NJD000000000" />
+              </Field>
+              <Field label="Status">
+                <Select name="status" defaultValue={vendor?.status ?? "active"}>
+                  <option value="active">Active</option>
+                  <option value="pending">Pending</option>
+                  <option value="review">Under Review</option>
+                  <option value="inactive">Inactive</option>
+                </Select>
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Contact Name">
+                <Input name="contact_name" defaultValue={vendor?.contact_name ?? ""} placeholder="Account manager" />
+              </Field>
+              <Field label="Phone">
+                <Input name="phone" defaultValue={vendor?.phone ?? ""} placeholder="(800) 000-0000" />
+              </Field>
+            </div>
+            <Field label="Email">
+              <Input name="email" type="email" defaultValue={vendor?.email ?? ""} placeholder="scheduling@vendor.com" />
+            </Field>
+            <Field label="Services (comma-separated)">
+              <Input name="services" defaultValue={(vendor?.services ?? []).join(", ")} placeholder="Hazardous disposal, Transport, TSDF" />
+            </Field>
+            <Field label="Permit Expiry">
+              <Input name="permit_expiry" type="date" defaultValue={vendor?.permit_expiry ? vendor.permit_expiry.slice(0, 10) : ""} />
+            </Field>
+            <Field label="Notes">
+              <Textarea name="notes" defaultValue={vendor?.notes ?? ""} placeholder="Restrictions, scope, certifications…" />
+            </Field>
+          </div>
+          <SubmitRow onClose={() => setOpen(false)} submitting={pending} />
+        </form>
+      </Modal>
+    </>
+  );
+}
+
+// Schedule Pickup modal → scheduleWastePickup
+function SchedulePickupButton({
+  vendors,
+  streams,
+  label,
+  className,
+  prefillVendorId,
+}: {
+  vendors: WasteVendor[];
+  streams: WasteStream[];
+  label: string;
+  className?: string;
+  prefillVendorId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setPending(true);
+    setError(null);
+    const res = await scheduleWastePickup(null, new FormData(e.currentTarget));
+    if (res.ok) {
+      playCreateSound();
+      setOpen(false);
+      router.refresh();
+    } else {
+      setError(res.error ?? "Could not schedule pickup.");
+    }
+    setPending(false);
+  }
+
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className={className}>
+        {label}
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title="Schedule Waste Pickup">
+        <form onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-4 px-6 py-5">
+            {error && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
+            )}
+            <Field label="Vendor" required>
+              <Select name="vendor_id" defaultValue={prefillVendorId ?? ""} required>
+                <option value="" disabled>Select a vendor…</option>
+                {vendors.map((v) => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Waste Stream">
+              <Select name="waste_stream_id" defaultValue="">
+                <option value="">— Not specified —</option>
+                {streams.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.waste_name}{s.waste_code ? ` (${s.waste_code})` : ""}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Manifest #">
+                <Input name="manifest_number" placeholder="NJ-2026-000000" />
+              </Field>
+              <Field label="Scheduled Date" required>
+                <Input name="scheduled_date" type="date" defaultValue={todayISO()} required />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Quantity">
+                <Input name="quantity" type="number" step="any" min="0" placeholder="0" />
+              </Field>
+              <Field label="Unit">
+                <Select name="unit" defaultValue="kg">
+                  <option value="kg">kg</option>
+                  <option value="lb">lb</option>
+                  <option value="L">L</option>
+                  <option value="gal">gal</option>
+                  <option value="drums">drums</option>
+                </Select>
+              </Field>
+            </div>
+            <Field label="Status">
+              <Select name="status" defaultValue="requested">
+                <option value="requested">Requested</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="confirmed">Confirmed</option>
+              </Select>
+            </Field>
+            <Field label="Notes">
+              <Textarea name="notes" placeholder="Pickup window, access instructions…" />
+            </Field>
+          </div>
+          <SubmitRow onClose={() => setOpen(false)} submitting={pending} />
+        </form>
+      </Modal>
+    </>
+  );
+}
+
+// Per-pickup "Mark Complete" → updateWastePickup(id, {status:"completed", completed_date: today})
+function MarkPickupCompleteButton({ pickup }: { pickup: WastePickup }) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  async function handleClick() {
+    setPending(true);
+    setError(null);
+    const fd = new FormData();
+    fd.set("status", "completed");
+    fd.set("completed_date", todayISO());
+    fd.set("manifest_number", pickup.manifest_number ?? "");
+    fd.set("scheduled_date", pickup.scheduled_date ?? "");
+    if (pickup.quantity != null) fd.set("quantity", String(pickup.quantity));
+    fd.set("unit", pickup.unit ?? "kg");
+    fd.set("notes", pickup.notes ?? "");
+    const res = await updateWastePickup(pickup.id, fd);
+    if (res.ok) {
+      playCreateSound();
+      router.refresh();
+    } else {
+      setError(res.error ?? "Could not update pickup.");
+    }
+    setPending(false);
+  }
+
+  if (pickup.status === "completed") {
+    return (
+      <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+        <CheckCircle2 className="h-3.5 w-3.5" /> Completed
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={pending}
+        className="rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+      >
+        {pending ? "Saving…" : "Mark Complete"}
+      </button>
+      {error && <span className="text-[10px] text-red-600">{error}</span>}
+    </div>
+  );
+}
+
+// Log Inspection modal → logWasteInspection
+function LogInspectionButton({
+  label,
+  className,
+  prefillArea,
+}: {
+  label: string;
+  className?: string;
+  prefillArea?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setPending(true);
+    setError(null);
+    const res = await logWasteInspection(null, new FormData(e.currentTarget));
+    if (res.ok) {
+      playCreateSound();
+      setOpen(false);
+      router.refresh();
+    } else {
+      setError(res.error ?? "Could not log inspection.");
+    }
+    setPending(false);
+  }
+
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className={className}>
+        {label}
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title="Log SAA / CAA Inspection">
+        <form onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-4 px-6 py-5">
+            {error && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
+            )}
+            <Field label="Area" required>
+              <Input name="area" defaultValue={prefillArea ?? ""} required placeholder="Chemical SAA — Lab A" />
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Inspection Date" required>
+                <Input name="inspection_date" type="date" defaultValue={todayISO()} required />
+              </Field>
+              <Field label="Inspector">
+                <Input name="inspector" placeholder="Inspector name" />
+              </Field>
+            </div>
+            <Field label="Result">
+              <Select name="passed" defaultValue="true">
+                <option value="true">Pass</option>
+                <option value="false">Fail — findings noted</option>
+              </Select>
+            </Field>
+            <Field label="Findings">
+              <Textarea name="findings" placeholder="Deficiencies, CAPA notes, observations…" />
+            </Field>
+            <Field label="Next Due">
+              <Input name="next_due" type="date" />
+            </Field>
+          </div>
+          <SubmitRow onClose={() => setOpen(false)} submitting={pending} />
+        </form>
+      </Modal>
+    </>
+  );
+}
+
 // ── WasteDashboard (main export) ──────────────────────────────────────────────
 
 export function WasteDashboard({
   streams,
   chemicals,
+  vendors,
+  pickups,
+  inspections,
 }: {
   streams: WasteStream[];
   chemicals: Chemical[];
+  vendors: WasteVendor[];
+  pickups: WastePickup[];
+  inspections: LiveWasteInspection[];
 }) {
   const [tab, setTab] = useState<Tab>("register");
   const [expandedStream, setExpandedStream] = useState<string | null>(null);
@@ -1694,24 +2055,79 @@ export function WasteDashboard({
       {/* ── Inspections tab ── */}
       {tab === "inspections" && (
         <div className="space-y-5">
-          {/* Summary KPIs */}
+          {/* Summary KPIs — live SAA/CAA inspection records */}
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Stat label="Total Inspections" value={INSPECTIONS.length} hint="All areas" />
-            <Stat label="Pass"     value={INSPECTIONS.filter(i => i.status === "pass").length}    hint="Fully compliant"   accent="#10b981" />
-            <Stat label="Partial"  value={INSPECTIONS.filter(i => i.status === "partial").length} hint="Minor findings"    accent="#f59e0b" />
-            <Stat label="Fail"     value={INSPECTIONS.filter(i => i.status === "fail").length}    hint="CAPA required"    accent="#dc2626" />
+            <Stat label="Total Inspections" value={inspections.length} hint="All areas" />
+            <Stat label="Passed"  value={inspections.filter(i => i.passed === true).length}  hint="Fully compliant" accent="#10b981" />
+            <Stat label="Failed"  value={inspections.filter(i => i.passed === false).length} hint="Findings noted"  accent="#dc2626" />
+            <Stat label="Logged 30d" value={inspections.filter(i => i.inspection_date && (Date.now() - new Date(i.inspection_date).getTime()) <= 30 * 86400000).length} hint="Recent activity" />
           </div>
 
-          {/* Blueprint info */}
-          <div className="rounded-xl border-l-4 border-violet-500 bg-violet-50 p-4 text-xs text-violet-800">
-            <div className="font-semibold text-sm text-violet-900 mb-1">BL-WMP-09 Inspection &amp; Audit App</div>
-            SAA/CAA checklist with Yes/No/N/A, photos, inspector notes, and prior findings.
-            Failed items auto-create CAPA with owner, severity, due date, and evidence requirement.
-            Repeat findings flagged for escalation.
+          {/* Blueprint info + Log Inspection */}
+          <div className="flex items-start justify-between gap-4 rounded-xl border-l-4 border-violet-500 bg-violet-50 p-4">
+            <div className="text-xs text-violet-800">
+              <div className="font-semibold text-sm text-violet-900 mb-1">BL-WMP-09 Inspection &amp; Audit App</div>
+              SAA/CAA inspections record area, date, inspector, pass/fail result, findings, and the next due date.
+              Failed inspections should be followed by a CAPA in the CAPA module.
+            </div>
+            <LogInspectionButton
+              label="Log Inspection"
+              className="flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-700"
+            />
           </div>
 
-          {/* Inspection cards */}
-          {INSPECTIONS.map((insp) => {
+          {/* Live inspection records */}
+          {inspections.length === 0 ? (
+            <div className="rounded-2xl border border-slate-100 bg-white p-8 text-center text-sm text-slate-400 shadow-sm">
+              No inspections logged yet. Use “Log Inspection” to record an SAA/CAA inspection.
+            </div>
+          ) : (
+            inspections.map((insp) => {
+              const passed = insp.passed === true;
+              const failed = insp.passed === false;
+              return (
+                <Card key={insp.id}>
+                  <div className="p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3">
+                        <ClipboardCheck className={`mt-0.5 h-5 w-5 shrink-0 ${passed ? "text-emerald-500" : failed ? "text-red-500" : "text-slate-400"}`} />
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-sm font-bold text-slate-800">{insp.area ?? "Unspecified area"}</h3>
+                            <Pill className={passed ? "bg-emerald-100 text-emerald-700" : failed ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600"}>
+                              {passed ? "Pass" : failed ? "Fail" : "—"}
+                            </Pill>
+                          </div>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            Inspector: {insp.inspector ?? "—"} · {fmt(insp.inspection_date)}
+                          </p>
+                        </div>
+                      </div>
+                      {insp.next_due && (
+                        <div className="shrink-0 text-right">
+                          <div className="text-[10px] text-slate-400">Next due</div>
+                          <div className="text-sm font-semibold text-blue-600">{fmt(insp.next_due)}</div>
+                        </div>
+                      )}
+                    </div>
+                    {insp.findings ? (
+                      <div className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2.5">
+                        <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-red-600">Findings</div>
+                        <p className="text-xs text-red-800">{insp.findings}</p>
+                      </div>
+                    ) : passed ? (
+                      <div className="mt-3 flex items-center gap-2 text-xs text-emerald-600">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> No findings recorded
+                      </div>
+                    ) : null}
+                  </div>
+                </Card>
+              );
+            })
+          )}
+
+          {/* Sample inspection cards (mock display mode only) */}
+          {MOCK_MODE && INSPECTIONS.map((insp) => {
             const total = insp.passed + insp.failed + insp.na;
             const passPct = total > 0 ? Math.round((insp.passed / total) * 100) : 0;
             const statusColor =
@@ -2555,6 +2971,73 @@ export function WasteDashboard({
             Land Disposal Restriction (LDR) certification → return copy → disposal certificate.
             Shipment is blocked until all required evidence is confirmed.
           </div>
+
+          {/* Live scheduled pickups / manifests — waste_pickups */}
+          <Card>
+            <CardHeader
+              title="Scheduled Pickups &amp; Manifests"
+              subtitle={`${pickups.length} pickup${pickups.length !== 1 ? "s" : ""} · ${pickups.filter(p => p.status === "completed").length} completed`}
+              right={
+                <SchedulePickupButton
+                  vendors={vendors}
+                  streams={streams}
+                  label="Schedule Pickup"
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
+                />
+              }
+            />
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
+                    <th className="px-4 py-2.5 text-left">Vendor</th>
+                    <th className="px-4 py-2.5 text-left">Manifest #</th>
+                    <th className="px-4 py-2.5 text-left">Scheduled</th>
+                    <th className="px-4 py-2.5 text-left">Completed</th>
+                    <th className="px-4 py-2.5 text-left">Qty</th>
+                    <th className="px-4 py-2.5 text-left">Status</th>
+                    <th className="px-4 py-2.5 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {pickups.map((p) => {
+                    const vendor = vendors.find((v) => v.id === p.vendor_id);
+                    return (
+                      <tr key={p.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 text-xs font-medium text-slate-700">{vendor?.name ?? "—"}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-slate-600">
+                          {p.manifest_number ?? <span className="italic text-slate-300">Not assigned</span>}
+                        </td>
+                        <td className="px-4 py-3 text-xs tabular-nums text-slate-600">{fmt(p.scheduled_date)}</td>
+                        <td className="px-4 py-3 text-xs tabular-nums text-slate-600">{fmt(p.completed_date)}</td>
+                        <td className="px-4 py-3 text-xs tabular-nums text-slate-600">
+                          {p.quantity != null ? `${p.quantity} ${p.unit ?? ""}`.trim() : "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Pill className={PICKUP_STATUS_STYLE[p.status] ?? "bg-slate-100 text-slate-600"}>
+                            {p.status.replace(/_/g, " ")}
+                          </Pill>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex justify-end">
+                            <MarkPickupCompleteButton pickup={p} />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {pickups.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-400">
+                        No pickups scheduled yet. Use “Schedule Pickup” to create one.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
           {/* Pickup Requests + Readiness Checklist — BL-WMP-10 */}
           <Card>
             <CardHeader
@@ -2843,12 +3326,9 @@ export function WasteDashboard({
                     className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600"
                     note="Signage package generation is not yet available"
                   />
-                  <ScheduleTaskButton
+                  <LogInspectionButton
                     label="Schedule Inspection"
-                    title={`Schedule Inspection — ${area.name}`}
-                    defaultTitle={`Inspect ${area.name} (${area.room})`}
-                    defaultType="Audit"
-                    defaultDue={area.nextInspection}
+                    prefillArea={area.name}
                     className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-600 transition hover:bg-blue-50"
                   />
                 </div>
@@ -2868,14 +3348,94 @@ export function WasteDashboard({
             Shipments are blocked when TSDF permit evidence is missing or expired.
           </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Stat label="Approved Vendors"   value={VENDORS.length}                              hint="All DOT-certified" />
-            <Stat label="TSDF Approved"      value={VENDORS.length}                              hint="Permit on file"     accent="#10b981" />
-            <Stat label="Scheduled Pickups"  value={VENDORS.filter(v => v.nextPickup).length}    hint="Next 30 days" />
-            <Stat label="Avg Rating"         value="4.3 / 5"                                     hint="On-time performance" />
+            <Stat label="Vendors"          value={vendors.length}                                          hint="On file" />
+            <Stat label="Active"           value={vendors.filter(v => v.status === "active").length}        hint="Approved status"  accent="#10b981" />
+            <Stat label="Permit Expiring"  value={vendors.filter(v => v.permit_expiry && (new Date(v.permit_expiry).getTime() - Date.now()) <= 90 * 86400000).length} hint="≤ 90 days"  accent="#f59e0b" />
+            <Stat label="Needs Review"     value={vendors.filter(v => v.status !== "active").length}        hint="Pending / inactive" />
           </div>
 
-          {/* ── Reports / Audit Binder (BL-WMP-16) — rendered at end of file ── */}
-          {VENDORS.map((v) => (
+          {/* Live approved vendors / TSDF — waste_vendors */}
+          <Card>
+            <CardHeader
+              title="Approved Vendors / TSDF"
+              subtitle={`${vendors.length} vendor${vendors.length !== 1 ? "s" : ""} on file`}
+              right={
+                <VendorFormButton
+                  mode="add"
+                  label="Add Vendor"
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
+                />
+              }
+            />
+            <div className="divide-y divide-slate-50">
+              {vendors.map((v) => {
+                const permitDays = v.permit_expiry ? Math.ceil((new Date(v.permit_expiry).getTime() - Date.now()) / 86400000) : null;
+                const permitExpired = permitDays != null && permitDays <= 0;
+                const permitExpiring = permitDays != null && permitDays > 0 && permitDays <= 90;
+                return (
+                  <div key={v.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Truck className="h-4 w-4 shrink-0 text-blue-500" />
+                        <h3 className="text-sm font-bold text-slate-800">{v.name}</h3>
+                        <Pill className={VENDOR_STATUS_STYLE[v.status] ?? "bg-slate-100 text-slate-600"}>
+                          {v.status.replace(/_/g, " ")}
+                        </Pill>
+                      </div>
+                      <div className="mt-1 grid grid-cols-1 gap-x-6 gap-y-0.5 text-xs text-slate-500 sm:grid-cols-2">
+                        <span>EPA ID: <span className="font-mono text-slate-600">{v.epa_id ?? "—"}</span></span>
+                        <span>Contact: {v.contact_name ?? "—"}</span>
+                        {v.phone && (
+                          <span className="flex items-center gap-1 text-blue-600"><PhoneCall className="h-3 w-3" />{v.phone}</span>
+                        )}
+                        <span className={permitExpired ? "font-semibold text-red-600" : permitExpiring ? "font-semibold text-amber-600" : ""}>
+                          Permit: {fmt(v.permit_expiry)}{permitExpired ? " — EXPIRED" : permitExpiring ? ` — ${permitDays}d` : ""}
+                        </span>
+                      </div>
+                      {v.services.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {v.services.map((s) => (
+                            <span key={s} className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">{s}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <SchedulePickupButton
+                        vendors={vendors}
+                        streams={streams}
+                        prefillVendorId={v.id}
+                        label="Schedule pickup"
+                        className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
+                      />
+                      <VendorFormButton
+                        mode="edit"
+                        vendor={v}
+                        label="Edit"
+                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                      />
+                      {v.email && (
+                        <a
+                          href={`mailto:${v.email}`}
+                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                        >
+                          Contact
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {vendors.length === 0 && (
+                <div className="px-5 py-8 text-center text-sm text-slate-400">
+                  No vendors on file. Use “Add Vendor” to register a disposal vendor or TSDF.
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {/* Sample vendor profiles (mock display mode only) */}
+          {MOCK_MODE && VENDORS.map((v) => (
             <Card key={v.id}>
               <div className="p-5">
                 <div className="flex items-start justify-between gap-4 mb-4">

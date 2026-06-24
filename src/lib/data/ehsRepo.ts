@@ -13,6 +13,7 @@ import type {
   WorkspaceTask, BiosafetyLab, BiohazardAgent, CapaSourceType,
   DocumentAcknowledgment, OshaCase,
   ErgonomicsWorkstation, ErgonomicsJobTask, ExposureReading,
+  WasteVendor, WastePickup, WasteInspection,
 } from "@/lib/types";
 import type { Severity, CapaStatus, AuditStatus, RiskLevel, TrainingDelivery } from "@/lib/constants";
 
@@ -309,6 +310,94 @@ export const getWasteStreams = cache(async (tenantId = MOCK_TENANT_ID): Promise<
     regulatory_unit: r.regulatory_unit ?? null,
     status: r.status as WasteStream["status"],
     created_by: r.created_by ?? "",
+    created_at: r.created_at,
+  }));
+});
+
+// ── Waste Vendors ─────────────────────────────────────────────────────────────
+
+export const getWasteVendors = cache(async (tenantId = MOCK_TENANT_ID): Promise<WasteVendor[]> => {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("waste_vendors")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("name", { ascending: true });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    name: r.name,
+    epa_id: r.epa_id ?? null,
+    contact_name: r.contact_name ?? null,
+    phone: r.phone ?? null,
+    email: r.email ?? null,
+    services: r.services ?? [],
+    permit_expiry: r.permit_expiry ?? null,
+    status: r.status ?? "active",
+    notes: r.notes ?? null,
+    created_by: r.created_by ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+// ── Waste Pickups ─────────────────────────────────────────────────────────────
+
+export const getWastePickups = cache(async (tenantId = MOCK_TENANT_ID): Promise<WastePickup[]> => {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("waste_pickups")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("scheduled_date", { ascending: false, nullsFirst: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? null,
+    vendor_id: r.vendor_id ?? null,
+    waste_stream_id: r.waste_stream_id ?? null,
+    manifest_number: r.manifest_number ?? null,
+    scheduled_date: r.scheduled_date ?? null,
+    completed_date: r.completed_date ?? null,
+    quantity: r.quantity === null || r.quantity === undefined ? null : Number(r.quantity),
+    unit: r.unit ?? null,
+    status: r.status ?? "requested",
+    notes: r.notes ?? null,
+    created_by: r.created_by ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
+// ── Waste Inspections ─────────────────────────────────────────────────────────
+
+export const getWasteInspections = cache(async (tenantId = MOCK_TENANT_ID): Promise<WasteInspection[]> => {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("waste_inspections")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("inspection_date", { ascending: false, nullsFirst: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? null,
+    area: r.area ?? null,
+    inspection_date: r.inspection_date ?? null,
+    inspector: r.inspector ?? null,
+    passed: r.passed ?? null,
+    findings: r.findings ?? null,
+    next_due: r.next_due ?? null,
+    created_by: r.created_by ?? null,
     created_at: r.created_at,
   }));
 });

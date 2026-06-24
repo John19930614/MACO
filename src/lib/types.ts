@@ -381,6 +381,57 @@ export interface WasteStream {
   created_at: string;
 }
 
+// ── Waste Vendors / Pickups / Inspections ─────────────────────────────────────
+
+export interface WasteVendor {
+  id: string;
+  tenant_id: string;
+  name: string;
+  epa_id: string | null;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+  services: string[];
+  permit_expiry: string | null;
+  status: string;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WastePickup {
+  id: string;
+  tenant_id: string;
+  site_id: string | null;
+  vendor_id: string | null;
+  waste_stream_id: string | null;
+  manifest_number: string | null;
+  scheduled_date: string | null;
+  completed_date: string | null;
+  quantity: number | null;
+  unit: string | null;
+  status: string;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WasteInspection {
+  id: string;
+  tenant_id: string;
+  site_id: string | null;
+  area: string | null;
+  inspection_date: string | null;
+  inspector: string | null;
+  passed: boolean | null;
+  findings: string | null;
+  next_due: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 // ── Equipment & Calibration ───────────────────────────────────────────────────
 
 export interface Equipment {

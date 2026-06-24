@@ -1,4 +1,4 @@
-import { getWasteStreams, getChemicals } from "@/lib/data/ehsRepo";
+import { getWasteStreams, getChemicals, getWasteVendors, getWastePickups, getWasteInspections } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader } from "@/components/ui/primitives";
@@ -10,7 +10,13 @@ import { WasteDashboard } from "./WasteDashboard";
 
 export default async function WastePage() {
   const tenantId = await getEffectiveTenantId();
-  const [streams, chemicals] = await Promise.all([getWasteStreams(tenantId), getChemicals(tenantId)]);
+  const [streams, chemicals, vendors, pickups, inspections] = await Promise.all([
+    getWasteStreams(tenantId),
+    getChemicals(tenantId),
+    getWasteVendors(tenantId),
+    getWastePickups(tenantId),
+    getWasteInspections(tenantId),
+  ]);
 
   return (
     <div className="flex h-full flex-col">
@@ -32,7 +38,13 @@ export default async function WastePage() {
             description="Add a hazardous waste stream with the button above. SafetyIQ can also suggest waste profiles from your chemical inventory and track 90-day accumulation limits automatically."
           />
         ) : (
-          <WasteDashboard streams={streams} chemicals={chemicals} />
+          <WasteDashboard
+            streams={streams}
+            chemicals={chemicals}
+            vendors={vendors}
+            pickups={pickups}
+            inspections={inspections}
+          />
         )}
       </div>
     </div>

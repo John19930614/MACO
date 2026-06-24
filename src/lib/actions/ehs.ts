@@ -2273,3 +2273,126 @@ export async function rejectStagedRow(id: string) {
   revalidatePath("/documents/import");
   return { ok: true as const };
 }
+
+// ── Waste Vendors / Pickups / Inspections ─────────────────────────────────────
+
+// Split a comma-separated "services" form field into a clean text[].
+function parseServices(raw: string | null): string[] {
+  if (!raw) return [];
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+export async function addWasteVendor(_prev: unknown, formData: FormData) {
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    const { error } = await ctx.client.from("waste_vendors").insert({
+      tenant_id:    ctx.tenantId,
+      name:         (formData.get("name") as string) || "Unnamed Vendor",
+      epa_id:       (formData.get("epa_id") as string) || null,
+      contact_name: (formData.get("contact_name") as string) || null,
+      phone:        (formData.get("phone") as string) || null,
+      email:        (formData.get("email") as string) || null,
+      services:     parseServices(formData.get("services") as string),
+      permit_expiry: (formData.get("permit_expiry") as string) || null,
+      status:       (formData.get("status") as string) || "active",
+      notes:        (formData.get("notes") as string) || null,
+      created_by:   ctx.profileId,
+    });
+    if (error) return { ok: false, error: error.message };
+  }
+  revalidatePath("/waste");
+  return { ok: true };
+}
+
+export async function updateWasteVendor(id: string, formData: FormData) {
+  const now = new Date().toISOString();
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    const { error } = await ctx.client.from("waste_vendors").update({
+      name:         (formData.get("name") as string) || "Unnamed Vendor",
+      epa_id:       (formData.get("epa_id") as string) || null,
+      contact_name: (formData.get("contact_name") as string) || null,
+      phone:        (formData.get("phone") as string) || null,
+      email:        (formData.get("email") as string) || null,
+      services:     parseServices(formData.get("services") as string),
+      permit_expiry: (formData.get("permit_expiry") as string) || null,
+      status:       (formData.get("status") as string) || "active",
+      notes:        (formData.get("notes") as string) || null,
+      updated_at:   now,
+    }).eq("id", id).eq("tenant_id", ctx.tenantId);
+    if (error) return { ok: false, error: error.message };
+  }
+  revalidatePath("/waste");
+  return { ok: true };
+}
+
+export async function scheduleWastePickup(_prev: unknown, formData: FormData) {
+  const quantityRaw = formData.get("quantity") as string;
+  const quantity = quantityRaw ? Number(quantityRaw) : null;
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    const { error } = await ctx.client.from("waste_pickups").insert({
+      tenant_id:       ctx.tenantId,
+      site_id:         ctx.siteId,
+      vendor_id:       (formData.get("vendor_id") as string) || null,
+      waste_stream_id: (formData.get("waste_stream_id") as string) || null,
+      manifest_number: (formData.get("manifest_number") as string) || null,
+      scheduled_date:  (formData.get("scheduled_date") as string) || null,
+      quantity,
+      unit:            (formData.get("unit") as string) || "kg",
+      status:          (formData.get("status") as string) || "requested",
+      notes:           (formData.get("notes") as string) || null,
+      created_by:      ctx.profileId,
+    });
+    if (error) return { ok: false, error: error.message };
+  }
+  revalidatePath("/waste");
+  return { ok: true };
+}
+
+export async function updateWastePickup(id: string, formData: FormData) {
+  const now = new Date().toISOString();
+  const quantityRaw = formData.get("quantity") as string;
+  const quantity = quantityRaw ? Number(quantityRaw) : null;
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    const { error } = await ctx.client.from("waste_pickups").update({
+      status:          (formData.get("status") as string) || "requested",
+      completed_date:  (formData.get("completed_date") as string) || null,
+      manifest_number: (formData.get("manifest_number") as string) || null,
+      scheduled_date:  (formData.get("scheduled_date") as string) || null,
+      quantity,
+      unit:            (formData.get("unit") as string) || "kg",
+      notes:           (formData.get("notes") as string) || null,
+      updated_at:      now,
+    }).eq("id", id).eq("tenant_id", ctx.tenantId);
+    if (error) return { ok: false, error: error.message };
+  }
+  revalidatePath("/waste");
+  return { ok: true };
+}
+
+export async function logWasteInspection(_prev: unknown, formData: FormData) {
+  if (!MOCK_MODE) {
+    const ctx = await getCtx();
+    if (!ctx) return { ok: false, error: "Session expired — please reload." };
+    const { error } = await ctx.client.from("waste_inspections").insert({
+      tenant_id:       ctx.tenantId,
+      site_id:         ctx.siteId,
+      area:            (formData.get("area") as string) || null,
+      inspection_date: (formData.get("inspection_date") as string) || null,
+      inspector:       (formData.get("inspector") as string) || null,
+      passed:          (formData.get("passed") as string) === "true",
+      findings:        (formData.get("findings") as string) || null,
+      next_due:        (formData.get("next_due") as string) || null,
+      created_by:      ctx.profileId,
+    });
+    if (error) return { ok: false, error: error.message };
+  }
+  revalidatePath("/waste");
+  return { ok: true };
+}
