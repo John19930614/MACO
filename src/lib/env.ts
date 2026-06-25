@@ -32,6 +32,7 @@ export function serverSecrets() {
     aiModel:         process.env.SAFETYIQ_AI_MODEL            ?? "gpt-4o-mini",
     anthropicKey:    process.env.ANTHROPIC_API_KEY            ?? "",
     anthropicModel:  process.env.SAFETYIQ_ANTHROPIC_MODEL     ?? "claude-sonnet-4-6",
+    resendKey:       process.env.RESEND_API_KEY               ?? "",
   };
 }
 
