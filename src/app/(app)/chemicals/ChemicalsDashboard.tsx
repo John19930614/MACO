@@ -6,9 +6,11 @@ import { Card, CardHeader, Pill, Stat } from "@/components/ui/primitives";
 import { ScoreGauge, DonutChart, Legend, type Segment } from "@/components/charts/Charts";
 import { ChemicalsTable } from "./ChemicalsTable";
 import { WasteReviewTab } from "./WasteReviewTab";
+import { ClassificationsTab } from "./ClassificationsTab";
 import {
   AlertTriangle,
   BrainCircuit,
+  ClipboardList,
   ExternalLink,
   FileText,
   FlaskConical,
@@ -841,10 +843,11 @@ function SDSRegister({ chemicals }: { chemicals: Chemical[] }) {
 
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 
-type Tab = "inventory" | "compatibility" | "ppe" | "sds" | "waste";
+type Tab = "inventory" | "classify" | "compatibility" | "ppe" | "sds" | "waste";
 
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: "inventory",     label: "Inventory",    Icon: FlaskConical },
+  { id: "classify",      label: "Classification", Icon: ClipboardList },
   { id: "sds",           label: "SDS Register", Icon: FileText     },
   { id: "compatibility", label: "Compatibility", Icon: LayoutGrid   },
   { id: "ppe",           label: "PPE & Controls", Icon: Shield      },
@@ -1029,6 +1032,25 @@ export function ChemicalsDashboard({
               subtitle={`${chemicals.length} chemicals · ${highHazard.length} high-hazard · ${sdsProblem} SDS issues`}
             />
             <ChemicalsTable chemicals={chemicals} />
+          </Card>
+        )}
+
+        {/* Tab: GHS Classification */}
+        {tab === "classify" && (
+          <Card>
+            <CardHeader
+              title="GHS Classification"
+              subtitle="Section-2 hazard classification derived from each chemical's H-codes — OSHA 29 CFR 1910.1200 / GHS Rev. 9"
+              right={
+                <div className="flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+                  <ClipboardList className="h-3 w-3" />
+                  {chemicals.length} chemicals
+                </div>
+              }
+            />
+            <div className="p-5">
+              <ClassificationsTab chemicals={chemicals} />
+            </div>
           </Card>
         )}
 
