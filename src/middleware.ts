@@ -4,7 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 // Routes that do NOT require authentication.
 // /auth/callback must be public: the invitee has no session yet when they arrive
 // via the magic link — the callback itself establishes it.
-const PUBLIC_PATHS = ["/", "/login", "/onboarding", "/auth/callback"];
+const PUBLIC_PATHS = ["/", "/login", "/onboarding", "/auth/callback", "/auth/set-password"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

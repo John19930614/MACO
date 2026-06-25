@@ -80,7 +80,7 @@ export async function inviteTeamMembers(
   }
 
   const svc = serviceClient();
-  const redirectTo = `${APP_URL}/auth/callback?next=${encodeURIComponent("/auth/set-password")}`;
+  const redirectTo = `${APP_URL}/auth/callback`;
 
   let sent = 0;
   const errors: string[] = [];
