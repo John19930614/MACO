@@ -38,6 +38,20 @@ export function riskLevelFromScore(score: number): RiskLevel {
   return "extreme";
 }
 
+/**
+ * Band a 0–100 score into a RiskLevel. The AI engine scores risk on a 0–100
+ * scale (not the 1–25 likelihood×consequence matrix), so it needs its own
+ * banding. Thresholds mirror riskLevelFromScore scaled ×4, keeping the two
+ * scales semantically aligned (e.g. matrix "high" 13–20 ↔ 0–100 "high" 49–80).
+ */
+export function riskLevelFromScore100(score: number): RiskLevel {
+  if (score <= 8)  return "negligible";
+  if (score <= 24) return "low";
+  if (score <= 48) return "medium";
+  if (score <= 80) return "high";
+  return "extreme";
+}
+
 // ── Compliance Status ─────────────────────────────────────────────────────────
 export const COMPLIANCE_STATUSES = [
   "compliant",

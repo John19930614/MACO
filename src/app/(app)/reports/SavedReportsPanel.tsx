@@ -6,7 +6,7 @@ import { useDemoUser } from "@/lib/context/demo-user";
 import { Pill } from "@/components/ui/primitives";
 import { oshaRate } from "@/lib/osha";
 import { deleteReport } from "@/lib/actions/ehs";
-import { downloadReportPptx } from "@/lib/reports/pptx";
+import { downloadReportPptx, type ReportChart } from "@/lib/reports/pptx";
 import { downloadReportXlsx } from "@/lib/reports/xlsx";
 import type { SavedReport, CapaAction, Incident, OshaCase, TrainingRecord, Chemical, LegalRequirement } from "@/lib/types";
 
@@ -58,6 +58,7 @@ interface ReportSpec {
   summary: [string, string | number][];
   accent: string;
   fileBase: string;
+  chart?: ReportChart;
 }
 
 // ── Report spec builders (rendered to PowerPoint or Excel) ────────────────────
@@ -83,6 +84,12 @@ function complianceSpec(moduleScores: ModuleScore[]): ReportSpec {
     ],
     accent: "2563EB",
     fileBase: "Compliance-Scorecard",
+    chart: {
+      type: "bar",
+      title: "Compliance Score by Module",
+      labels: sorted.map((m) => (m.module.length > 16 ? m.module.slice(0, 15) + "…" : m.module)),
+      series: [{ name: "Score %", values: sorted.map((m) => m.score) }],
+    },
   };
 }
 
@@ -113,6 +120,12 @@ function chemicalSpec(chemicals: Chemical[]): ReportSpec {
     ],
     accent: "D97706",
     fileBase: "Chemical-Inventory",
+    chart: {
+      type: "doughnut",
+      title: "SDS Coverage (Active Chemicals)",
+      labels: ["SDS On File", "Missing SDS"],
+      series: [{ name: "Chemicals", values: [Math.max(0, active - missingSds), missingSds] }],
+    },
   };
 }
 
@@ -145,6 +158,12 @@ function capaSpec(capas: CapaAction[]): ReportSpec {
     ],
     accent: "EA580C",
     fileBase: "CAPA-Status-Report",
+    chart: {
+      type: "doughnut",
+      title: "CAPA Status Distribution",
+      labels: ["Open (on time)", "Overdue", "Closed / Verified"],
+      series: [{ name: "CAPAs", values: [Math.max(0, open.length - overdue.length), overdue.length, closed.length] }],
+    },
   };
 }
 
@@ -192,6 +211,12 @@ function trainingSpec(
     ],
     accent: "10B981",
     fileBase: "Training-Report",
+    chart: {
+      type: "doughnut",
+      title: "Training Pass / Fail",
+      labels: ["Passed", "Failed"],
+      series: [{ name: "Records", values: [passed, failed] }],
+    },
   };
 }
 
@@ -225,6 +250,17 @@ function incidentSpec(incidents: Incident[], oshaCases: OshaCase[]): ReportSpec 
     ],
     accent: "DC2626",
     fileBase: "Incident-Analysis",
+    chart: {
+      type: "bar",
+      title: "Incidents by Severity (YTD)",
+      labels: ["Critical", "High", "Medium", "Low"],
+      series: [{ name: "Incidents", values: [
+        ytd.filter((i) => i.severity === "critical").length,
+        ytd.filter((i) => i.severity === "high").length,
+        ytd.filter((i) => i.severity === "medium").length,
+        ytd.filter((i) => i.severity === "low").length,
+      ] }],
+    },
   };
 }
 
@@ -254,6 +290,17 @@ function regulatorySpec(legal: LegalRequirement[]): ReportSpec {
     ],
     accent: "7C3AED",
     fileBase: "Regulatory-Gap",
+    chart: {
+      type: "bar",
+      title: "Regulatory Obligations by Status",
+      labels: ["Compliant", "Minor Gap", "Major / Non-Compliant", "N/A"],
+      series: [{ name: "Obligations", values: [
+        legal.filter((l) => l.status === "compliant").length,
+        legal.filter((l) => l.status === "minor_gap").length,
+        majorGaps.length,
+        legal.filter((l) => l.status === "not_applicable").length,
+      ] }],
+    },
   };
 }
 
@@ -300,7 +347,7 @@ function ReportRow({
     if (fmt === "pptx") {
       void downloadReportPptx({
         title: s.title, description: s.description, headers: s.headers, rows: s.rows,
-        summary: s.summary, companyName, accent: s.accent, fileName,
+        summary: s.summary, companyName, accent: s.accent, chart: s.chart, fileName,
       });
     } else {
       downloadReportXlsx({

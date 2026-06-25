@@ -9,6 +9,7 @@ import { oshaRate, OSHA_DART_BENCHMARK } from "@/lib/osha";
 import { MOCK_MODE } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PageHeader, Stat, Card, CardHeader } from "@/components/ui/primitives";
+import { ScoreGauge, DonutChart, Legend, TrendArea, type Segment, type TrendPoint } from "@/components/charts/Charts";
 import { CapaStatusBadge, ReviewStatusBadge } from "@/components/ui/badges";
 import { OnboardingWelcomeBanner } from "@/components/dashboard/OnboardingWelcomeBanner";
 import type { AiAnalysisOutput } from "@/lib/types";
@@ -97,6 +98,39 @@ export default async function DashboardPage({
 
   // Compliance by module sorted by score ascending (lowest = most at risk)
   const moduleScores = [...complianceScores].sort((a, b) => a.percentage - b.percentage);
+
+  // ── Chart data (all derived from live records) ───────────────────────────────
+  const isOverdueCapa = (c: typeof capas[number]) =>
+    c.due_date != null && new Date(c.due_date) < new Date() && !["closed", "rejected", "pending_verification"].includes(c.status);
+  const capaSegments: Segment[] = [
+    { label: "Overdue",              value: capas.filter(isOverdueCapa).length,                                          color: "#dc2626" },
+    { label: "Open",                 value: capas.filter((c) => c.status === "open" && !isOverdueCapa(c)).length,        color: "#3b82f6" },
+    { label: "In Progress",          value: capas.filter((c) => c.status === "in_progress" && !isOverdueCapa(c)).length, color: "#f59e0b" },
+    { label: "Pending Verification", value: capas.filter((c) => c.status === "pending_verification").length,             color: "#7c3aed" },
+    { label: "Closed",               value: capas.filter((c) => c.status === "closed").length,                           color: "#10b981" },
+  ].filter((s) => s.value > 0);
+
+  const severitySegments: Segment[] = [
+    { label: "Critical", value: incidents.filter((i) => i.severity === "critical").length, color: "#991b1b" },
+    { label: "High",     value: incidents.filter((i) => i.severity === "high").length,     color: "#dc2626" },
+    { label: "Medium",   value: incidents.filter((i) => i.severity === "medium").length,   color: "#f59e0b" },
+    { label: "Low",      value: incidents.filter((i) => i.severity === "low").length,      color: "#10b981" },
+  ].filter((s) => s.value > 0);
+
+  // Incidents per month over the trailing 12 months.
+  const incidentTrend: TrendPoint[] = (() => {
+    const now = new Date();
+    const out: TrendPoint[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      out.push({
+        label: d.toLocaleDateString("en-US", { month: "short" }),
+        value: incidents.filter((it) => (it.occurred_at || "").slice(0, 7) === key).length,
+      });
+    }
+    return out;
+  })();
 
   // Trend icon helper
   const TrendIcon = latestRun?.forecast_data?.compliance_trend === "improving"
@@ -226,6 +260,51 @@ export default async function DashboardPage({
               trend={{ label: "Within 30 days", direction: expiringTraining.length > 0 ? "down" : "flat" }}
             />
           </Link>
+        </div>
+
+        {/* ── Visual analytics row ────────────────────────────────── */}
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-4">
+          {/* Overall compliance gauge */}
+          <Card>
+            <CardHeader title="Overall Compliance" subtitle="Across all EHS modules" />
+            <div className="flex items-center justify-center px-4 py-5">
+              <ScoreGauge value={overall} label="Compliant" />
+            </div>
+          </Card>
+
+          {/* CAPA status donut */}
+          <Card>
+            <CardHeader title="CAPA Status" subtitle="Corrective & preventive actions" />
+            <div className="flex items-center gap-4 px-4 py-5">
+              {capaSegments.length > 0 ? (
+                <>
+                  <DonutChart segments={capaSegments} centerValue={capas.length} centerLabel="CAPAs" size={116} />
+                  <div className="flex-1"><Legend segments={capaSegments} /></div>
+                </>
+              ) : (
+                <Empty>No CAPAs recorded.</Empty>
+              )}
+            </div>
+          </Card>
+
+          {/* Incident 12-month trend */}
+          <Card className="lg:col-span-2">
+            <CardHeader title="Incident Trend" subtitle="Reported incidents · trailing 12 months" />
+            <div className="px-3 py-4">
+              <TrendArea points={incidentTrend} color="#2563eb" fill="#dbeafe" />
+              {severitySegments.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-slate-50 px-2 pt-2.5">
+                  {severitySegments.map((s) => (
+                    <div key={s.label} className="flex items-center gap-1.5 text-[11px]">
+                      <span className="h-2 w-2 rounded-sm" style={{ background: s.color }} />
+                      <span className="text-slate-500">{s.label}</span>
+                      <span className="font-semibold text-slate-700">{s.value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Card>
         </div>
 
         {/* ── P-Engine Status + Compliance by Module ──────────────── */}

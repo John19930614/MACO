@@ -5,7 +5,7 @@ import { useTransition } from "react";
 import { useDemoUser } from "@/lib/context/demo-user";
 import { oshaRate } from "@/lib/osha";
 import { saveReport } from "@/lib/actions/ehs";
-import { downloadReportPptx } from "@/lib/reports/pptx";
+import { downloadReportPptx, type ReportChart } from "@/lib/reports/pptx";
 import { downloadReportXlsx } from "@/lib/reports/xlsx";
 import type { CapaAction, Incident, OshaCase, TrainingRecord, LegalRequirement, Chemical } from "@/lib/types";
 
@@ -54,6 +54,7 @@ interface ReportData {
   summary: [string, string | number][];
   fileBase: string;
   accent: string;
+  chart?: ReportChart;
 }
 
 export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, courseMap, profileMap, legal, chemicals, moduleScores }: Props) {
@@ -85,6 +86,12 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
       ],
       fileBase: "Compliance-Scorecard",
       accent: "2563EB",
+      chart: {
+        type: "bar",
+        title: "Compliance Score by Module",
+        labels: sorted.map((m) => (m.module.length > 16 ? m.module.slice(0, 15) + "…" : m.module)),
+        series: [{ name: "Score %", values: sorted.map((m) => m.score) }],
+      },
     };
   }
 
@@ -116,6 +123,12 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
       ],
       fileBase: "CAPA-Status-Report",
       accent: "EA580C",
+      chart: {
+        type: "doughnut",
+        title: "CAPA Status Distribution",
+        labels: ["Open (on time)", "Overdue", "Closed / Verified"],
+        series: [{ name: "CAPAs", values: [Math.max(0, open.length - overdue.length), overdue.length, closed.length] }],
+      },
     };
   }
 
@@ -145,6 +158,17 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
       ],
       fileBase: "Incident-Analysis",
       accent: "DC2626",
+      chart: {
+        type: "bar",
+        title: "Incidents by Severity (YTD)",
+        labels: ["Critical", "High", "Medium", "Low"],
+        series: [{ name: "Incidents", values: [
+          ytd.filter((i) => i.severity === "critical").length,
+          ytd.filter((i) => i.severity === "high").length,
+          ytd.filter((i) => i.severity === "medium").length,
+          ytd.filter((i) => i.severity === "low").length,
+        ] }],
+      },
     };
   }
 
@@ -187,6 +211,12 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
       ],
       fileBase: "Training-Report",
       accent: "10B981",
+      chart: {
+        type: "doughnut",
+        title: "Training Pass / Fail",
+        labels: ["Passed", "Failed"],
+        series: [{ name: "Records", values: [passed, failed] }],
+      },
     };
   }
 
@@ -221,6 +251,17 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
       ],
       fileBase: "Regulatory-Gap-Analysis",
       accent: "7C3AED",
+      chart: {
+        type: "bar",
+        title: "Regulatory Obligations by Status",
+        labels: ["Compliant", "Minor Gap", "Major / Non-Compliant", "N/A"],
+        series: [{ name: "Obligations", values: [
+          all.filter((l) => l.status === "compliant").length,
+          all.filter((l) => l.status === "minor_gap").length,
+          majorGaps.length,
+          all.filter((l) => l.status === "not_applicable").length,
+        ] }],
+      },
     };
   }
 
@@ -233,7 +274,7 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
   async function exportPptx(d: ReportData, type: string, label: string) {
     await downloadReportPptx({
       title: d.title, description: d.description, headers: d.headers, rows: d.rows,
-      summary: d.summary, companyName: co, accent: d.accent,
+      summary: d.summary, companyName: co, accent: d.accent, chart: d.chart,
       fileName: `${firstWord}-${d.fileBase}.pptx`,
     });
     persist(type, label, d.rows.length);

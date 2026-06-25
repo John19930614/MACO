@@ -15,7 +15,7 @@ import { describe, it, expect } from "vitest";
 import { analyzeChemical, analyzeComplianceGap, buildPredictabilityForecast, deriveConfidence } from "@/lib/ai/engine";
 import type { AiAnalysisOutput } from "@/lib/types";
 import { MOCK_CHEMICALS, MOCK_LEGAL_REQUIREMENTS, MOCK_TENANT_ID, MOCK_SITE_ID } from "@/lib/data/mock";
-import { RISK_LEVELS, SEVERITIES } from "@/lib/constants";
+import { RISK_LEVELS, SEVERITIES, riskLevelFromScore100 } from "@/lib/constants";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -144,6 +144,18 @@ describe("analyzeChemical()", () => {
     const output = finding.output as AiAnalysisOutput;
     expect(output.risk_score).toBeGreaterThan(40);
   });
+
+  it("risk_level is the 0–100 banding of risk_score (not collapsed to low)", async () => {
+    // Regression: previously risk_level = riskLevelFromScore(risk_score / 20),
+    // which fed a 0–100 score into the 1–25 matrix function and capped every
+    // chemical at "low" regardless of risk_score.
+    const azide = MOCK_CHEMICALS.find(c => c.id === "chem-007")!;
+    const finding = await analyzeChemical(azide);
+    const output = finding.output as AiAnalysisOutput;
+    expect(output.risk_level).toBe(riskLevelFromScore100(output.risk_score));
+    // azide scores > 40 → must land at medium or above, never negligible/low.
+    expect(["medium", "high", "extreme"]).toContain(output.risk_level);
+  });
 });
 
 // ── analyzeComplianceGap ──────────────────────────────────────────────────────
@@ -212,6 +224,43 @@ describe("analyzeComplianceGap()", () => {
       const finding = await analyzeComplianceGap(req);
       const output = finding.output as AiAnalysisOutput;
       expect(output.recommended_actions.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("risk_level tracks risk_score banding for every requirement", async () => {
+    // Regression: previously risk_level was derived from a constant (5/3/2), not
+    // from risk_score, so a material gap could still read "low".
+    for (const req of MOCK_LEGAL_REQUIREMENTS) {
+      const finding = await analyzeComplianceGap(req);
+      const output = finding.output as AiAnalysisOutput;
+      expect(output.risk_level).toBe(riskLevelFromScore100(output.risk_score));
+    }
+  });
+});
+
+// ── riskLevelFromScore100 (0–100 banding) ─────────────────────────────────────
+
+describe("riskLevelFromScore100()", () => {
+  it("bands boundary scores into the right level", () => {
+    expect(riskLevelFromScore100(0)).toBe("negligible");
+    expect(riskLevelFromScore100(8)).toBe("negligible");
+    expect(riskLevelFromScore100(9)).toBe("low");
+    expect(riskLevelFromScore100(24)).toBe("low");
+    expect(riskLevelFromScore100(25)).toBe("medium");
+    expect(riskLevelFromScore100(48)).toBe("medium");
+    expect(riskLevelFromScore100(49)).toBe("high");
+    expect(riskLevelFromScore100(80)).toBe("high");
+    expect(riskLevelFromScore100(81)).toBe("extreme");
+    expect(riskLevelFromScore100(100)).toBe("extreme");
+  });
+
+  it("is monotonic across the full 0–100 range", () => {
+    const order = RISK_LEVELS as readonly string[];
+    let prev = 0;
+    for (let s = 0; s <= 100; s++) {
+      const idx = order.indexOf(riskLevelFromScore100(s));
+      expect(idx).toBeGreaterThanOrEqual(prev);
+      prev = idx;
     }
   });
 });

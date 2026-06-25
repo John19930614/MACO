@@ -19,11 +19,11 @@ import { MOCK_MODE, hasLiveAi, aiProvider, PROMPT_VERSION } from "@/lib/env";
 import { generateStructuredJson } from "./provider";
 import { recordAiCall } from "./telemetry";
 import { SYSTEM_PROMPT, buildUserPrompt, ANALYSIS_JSON_SCHEMA as ARC_CAUSALITY_SCHEMA } from "./prompt";
-import { aiCellAnalysisOutputSchema } from "@/lib/schemas";
+import { aiAnalysisOutputSchema, aiCellAnalysisOutputSchema } from "@/lib/schemas";
 import { nextId } from "@/lib/data/store";
 import type { Chemical, LegalRequirement, AiFinding, AiAnalysisOutput, CausalityOutput, PredictabilityForecast, SafetyCell } from "@/lib/types";
-import { riskLevelFromScore, COMPLIANCE_STATUS_META } from "@/lib/constants";
-import type { RiskLevel, EdgeType } from "@/lib/constants";
+import { riskLevelFromScore100, COMPLIANCE_STATUS_META } from "@/lib/constants";
+import type { EdgeType } from "@/lib/constants";
 
 const MODEL_TIMEOUT_MS = 30_000;
 
@@ -137,7 +137,7 @@ function chemicalHeuristicAnalysis(chem: Chemical): AiAnalysisOutput {
   }
 
   return {
-    risk_level: riskLevelFromScore(Math.round(risk_score / 20)) as RiskLevel,
+    risk_level: riskLevelFromScore100(risk_score),
     risk_score,
     findings,
     gaps,
@@ -173,7 +173,7 @@ function complianceGapHeuristicAnalysis(req: LegalRequirement): AiAnalysisOutput
   if (isOverdue) gaps.push(`Periodic review is overdue (was due ${req.next_review_date})`);
 
   return {
-    risk_level: riskLevelFromScore(isNonCompliant ? 5 : isOverdue ? 3 : 2) as RiskLevel,
+    risk_level: riskLevelFromScore100(Math.round(risk_score)),
     risk_score: Math.round(risk_score),
     findings,
     gaps,
@@ -211,12 +211,17 @@ async function modelAnalysis(systemPrompt: string, userPrompt: string): Promise<
     timeoutMs: MODEL_TIMEOUT_MS,
   });
 
-  const out = data as AiAnalysisOutput;
-  if (!out || typeof out.risk_score !== "number" || !Array.isArray(out.recommended_actions)) {
-    if (process.env.NODE_ENV !== "production") { console.error("[safetyiq] AI analysis failed schema validation", { raw: data }); }
+  // Validate at the trust boundary with the same Zod schema analyzeCell uses —
+  // a malformed or hallucinated payload is rejected here so the caller falls
+  // back to the deterministic heuristic instead of persisting bad output.
+  const parsed = aiAnalysisOutputSchema.safeParse(data);
+  if (!parsed.success) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[safetyiq] AI analysis failed schema validation", { issues: parsed.error.flatten(), raw: data });
+    }
     throw new Error("model output failed validation");
   }
-  return { output: out, model };
+  return { output: parsed.data as AiAnalysisOutput, model };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

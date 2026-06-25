@@ -153,6 +153,32 @@ export function evaluateGateways(d: EhsDataset, now: number): GatewayReport {
   for (const a of enumBadAudit) block(a.id, "Audit", "Gateway 1 · Enum", "Invalid audit status value");
   for (const e of enumBadEquip) block(e.id, "Equipment", "Gateway 1 · Enum", "Invalid equipment status value");
 
+  // Reference integrity — a CAPA's source_type/source_id must resolve to an
+  // existing record. Only verify source types whose target set is loaded in the
+  // dataset (incident, risk_assessment, safety_cell, chemical); other types
+  // (audit_finding, legal_requirement, site, manual) live elsewhere and are
+  // left to their own modules rather than flagged as false positives here.
+  const refPools: Record<string, Set<string>> = {
+    incident:        new Set(incidents.map((i) => i.id)),
+    risk_assessment: new Set(risks.map((r) => r.id)),
+    safety_cell:     new Set(cells.map((c) => c.id)),
+    chemical:        new Set(chemicals.map((c) => c.id)),
+  };
+  const capaDanglingRef = capas.filter((c) => {
+    const pool = c.source_id ? refPools[c.source_type] : undefined;
+    return pool ? !pool.has(c.source_id!) : false;
+  });
+  for (const c of capaDanglingRef) block(c.id, "CAPA", "Gateway 1 · Reference", `Source ${c.source_type} "${c.source_id}" does not resolve to an existing record`);
+
+  // Unit-of-measure validation — quantity-bearing records (chemicals, waste)
+  // must carry a recognized unit and a finite, non-negative quantity. Quality
+  // gate (warn), not a hard block.
+  const RECOGNIZED_UOM = new Set(["mg", "g", "kg", "t", "mcg", "µg", "mL", "L", "kL", "gal", "ea", "unit", "units", "ppm", "ppb"]);
+  const uomBad = [
+    ...chemicals.map((c) => ({ unit: c.unit, qty: c.quantity })),
+    ...wasteStreams.map((w) => ({ unit: w.unit, qty: w.quantity })),
+  ].filter((r) => r.unit && (!RECOGNIZED_UOM.has(r.unit) || !Number.isFinite(r.qty) || r.qty < 0)).length;
+
   const g1: GatewayResult = {
     id: "g1",
     name: "Schema & Format Validation",
@@ -161,8 +187,8 @@ export function evaluateGateways(d: EhsDataset, now: number): GatewayReport {
       { id: "g1_required",  label: "Required field validation", ...verdict(totalRequired, totalRecords, "fail", "all required fields present across all EHS modules", (n) => `${n} record(s) missing required fields`) },
       { id: "g1_enum",      label: "Enum value validation",     ...verdict(totalEnumBad, totalRecords, "fail", "all severity/status/type values are valid", (n) => `${n} record(s) with invalid enum values`) },
       { id: "g1_schema",    label: "Schema compliance",         status: totalRequired + totalEnumBad === 0 ? "pass" : "fail", detail: totalRequired + totalEnumBad === 0 ? "all records schema-compliant" : `${totalRequired + totalEnumBad} non-compliant record(s)` },
-      { id: "g1_reference", label: "Reference data validation", status: "pass", detail: `${totalRecords} EHS records with valid tenant & site references` },
-      { id: "g1_uom",       label: "Unit of measure validation", status: "warn", detail: "chemical quantity units enforced at entry — no unit-bearing cross-checks wired yet" },
+      { id: "g1_reference", label: "Reference data validation", ...verdict(capaDanglingRef.length, capas.length, "fail", "all CAPA source references resolve to an existing record", (n) => `${n} CAPA(s) reference a missing source record`) },
+      { id: "g1_uom",       label: "Unit of measure validation", ...verdict(uomBad, chemicals.length + wasteStreams.length, "warn", "all chemical & waste quantities use a recognized unit", (n) => `${n} record(s) with an unrecognized unit or invalid quantity`) },
     ],
     status: "pass",
   };

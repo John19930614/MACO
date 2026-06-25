@@ -21,6 +21,13 @@ const BRAND = {
 
 export type CellValue = string | number | boolean | null | undefined;
 
+export interface ReportChart {
+  type: "bar" | "line" | "doughnut";
+  title?: string;
+  labels: string[];
+  series: { name: string; values: number[] }[];
+}
+
 export interface PptxReportSpec {
   title: string;
   description: string;
@@ -31,6 +38,8 @@ export interface PptxReportSpec {
   fileName: string;
   /** Accent color hex (no #). Defaults to brand blue. */
   accent?: string;
+  /** Optional chart slide rendered between the summary and the data table. */
+  chart?: ReportChart;
 }
 
 const WIDE_W = 13.33;
@@ -96,6 +105,33 @@ export async function downloadReportPptx(spec: PptxReportSpec): Promise<void> {
       k.addText(s[0], { x: x + 0.15, y: y + 1.15, w: tileW - 0.3, h: 0.5, fontSize: 11, color: BRAND.slate2, align: "center", valign: "top", fontFace: "Arial" });
     });
     footer(k);
+  }
+
+  // ── 2b. Chart slide (optional) ───────────────────────────────────────────────
+  if (spec.chart && spec.chart.series.length && spec.chart.labels.length) {
+    const ch = pptx.addSlide();
+    ch.background = { color: BRAND.light };
+    headerBar(ch, spec.chart.title ?? "Analysis");
+    const ct =
+      spec.chart.type === "line" ? pptx.ChartType.line :
+      spec.chart.type === "doughnut" ? pptx.ChartType.doughnut :
+      pptx.ChartType.bar;
+    const data = spec.chart.series.map((s) => ({ name: s.name, labels: spec.chart!.labels, values: s.values }));
+    ch.addChart(ct, data, {
+      x: 0.7, y: 1.4, w: WIDE_W - 1.4, h: 5.2,
+      chartColors: [accent, "10B981", "F59E0B", "DC2626", "7C3AED", "0EA5E9", "64748B"],
+      showLegend: spec.chart.type === "doughnut" || spec.chart.series.length > 1,
+      legendPos: "b",
+      showTitle: false,
+      showValue: spec.chart.type !== "line",
+      dataLabelColor: spec.chart.type === "doughnut" ? "FFFFFF" : "475569",
+      dataLabelFontSize: 9,
+      catAxisLabelFontSize: 9,
+      valAxisLabelFontSize: 9,
+      barDir: "col",
+      holeSize: spec.chart.type === "doughnut" ? 55 : undefined,
+    });
+    footer(ch);
   }
 
   // ── 3. Data table (auto-paginated) ───────────────────────────────────────────

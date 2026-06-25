@@ -26,7 +26,7 @@ export function summarizeFindings(findings: AiFinding[]): FindingsSummary {
   let confSum = 0;
   for (const f of findings) {
     byModel[f.model] = (byModel[f.model] ?? 0) + 1;
-    if (f.model.startsWith("amaya-heuristic")) heuristic++;
+    if (f.model.startsWith("safetyiq-heuristic")) heuristic++;
     if (f.human_review_required) humanReview++;
     if (f.review_status === "pending") pending++;
     confSum += f.confidence;

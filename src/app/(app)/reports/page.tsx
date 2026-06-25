@@ -4,6 +4,7 @@ import { BarChart3, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { QuickReportsPanel } from "./QuickReportsPanel";
 import { ReportsHeaderActions } from "./ReportsHeaderActions";
 import { SavedReportsPanel } from "./SavedReportsPanel";
+import { ScoreGauge } from "@/components/charts/Charts";
 import {
   getCapaActions, getIncidents, getTrainingRecords, getTrainingCourses,
   getLegalRequirements, getDocuments, getBiosafetyLabs, getEquipment,
@@ -291,8 +292,8 @@ export default async function ReportsPage({
                       title="Overall Compliance"
                       subtitle="Live average across module assessments"
                     />
-                    <div className="px-4 py-6 text-center">
-                      <div className={`text-5xl font-extrabold ${scoreColor(overallScore)}`}>{overallScore}%</div>
+                    <div className="flex flex-col items-center px-4 py-6 text-center">
+                      <ScoreGauge value={overallScore} size={150} label="Compliant" />
                       <div className="mt-2 text-xs text-slate-400">
                         {complianceScores.length > 0
                           ? `Based on ${complianceScores.length} module assessment${complianceScores.length !== 1 ? "s" : ""} from the latest P-Engine scan.`

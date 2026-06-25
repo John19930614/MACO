@@ -18,7 +18,7 @@ describe("summarizeFindings", () => {
     expect(mixTotal).toBe(s.total);
     const withFallback = summarizeFindings([
       ...fx.FINDINGS,
-      { ...fx.FINDINGS[0], id: "f_fb", model: "amaya-heuristic-fallback" },
+      { ...fx.FINDINGS[0], id: "f_fb", model: "safetyiq-heuristic-fallback" },
     ]);
     expect(withFallback.fallbackRate).toBeGreaterThan(0);
   });
@@ -38,7 +38,7 @@ describe("summarizeTelemetry", () => {
   const calls: AiCall[] = [
     { at: 1, provider: "openai", model: "gpt-4o-mini", ms: 800, inputTokens: 1000, outputTokens: 300, ok: true },
     { at: 2, provider: "anthropic", model: "claude-haiku-4-5", ms: 1200, inputTokens: 2000, outputTokens: 400, ok: true },
-    { at: 3, provider: "openai", model: "amaya-heuristic-fallback", ms: 0, inputTokens: 0, outputTokens: 0, ok: false },
+    { at: 3, provider: "openai", model: "safetyiq-heuristic-fallback", ms: 0, inputTokens: 0, outputTokens: 0, ok: false },
   ];
   const t = summarizeTelemetry(calls);
 
