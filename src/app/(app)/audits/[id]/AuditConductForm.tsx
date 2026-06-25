@@ -719,10 +719,30 @@ interface SavedAudit {
 }
 
 // The submit action stores the full conduct snapshot in `audit.notes` as JSON.
+// `items` was persisted either as a bare array OR nested as
+// { oshaStandard, items: [...] } — normalize both so callers always get a
+// flat SavedItem[] and a top-level oshaStandard.
 function parseSavedAudit(audit: Audit): SavedAudit {
   try {
-    const p = JSON.parse(audit.notes ?? "{}");
-    return p && typeof p === "object" ? p : {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const p: any = JSON.parse(audit.notes ?? "{}");
+    if (!p || typeof p !== "object") return {};
+    let items: SavedItem[] | undefined;
+    let osha = p.oshaStandard ?? null;
+    if (Array.isArray(p.items)) {
+      items = p.items;
+    } else if (p.items && Array.isArray(p.items.items)) {
+      items = p.items.items;
+      osha = osha ?? p.items.oshaStandard ?? null;
+    }
+    return {
+      conductedBy: p.conductedBy,
+      conductedDate: p.conductedDate,
+      score: p.score,
+      overallNotes: p.overallNotes,
+      items,
+      oshaStandard: osha,
+    };
   } catch {
     return {};
   }
