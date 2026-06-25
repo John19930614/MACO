@@ -993,7 +993,7 @@ function exportCSV(cases: OshaCase[], EST: EstInfo) {
 
 // ── Trend Analysis ─────────────────────────────────────────────────────────────
 
-function TrendsTab({ cases, incidents }: { cases: OshaCase[]; incidents: Incident[] }) {
+function TrendsTab({ cases, incidents, oshaHours = OSHA_HOURS_WORKED }: { cases: OshaCase[]; incidents: Incident[]; oshaHours?: number }) {
   const byMonth: Record<string, number> = {};
   for (const c of cases) {
     const month = c.date.slice(0, 7);
@@ -1018,8 +1018,8 @@ function TrendsTab({ cases, incidents }: { cases: OshaCase[]; incidents: Inciden
   const erCases          = cases.filter(c => c.treatmentER).length;
   const hospitalCases    = cases.filter(c => c.treatmentHospitalized).length;
   const severeCases      = cases.filter(c => c.isSevereInjury).length;
-  const dart = (((cases.filter(c => c.classification === "days_away" || c.classification === "restricted").length) / OSHA_HOURS_WORKED) * 200000);
-  const trir = ((cases.length / OSHA_HOURS_WORKED) * 200000);
+  const dart = (((cases.filter(c => c.classification === "days_away" || c.classification === "restricted").length) / oshaHours) * 200000);
+  const trir = ((cases.length / oshaHours) * 200000);
 
   return (
     <div className="space-y-5">
@@ -1196,18 +1196,18 @@ function TrendsTab({ cases, incidents }: { cases: OshaCase[]; incidents: Inciden
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function OshaClient({ initialCases, incidents = [], establishment, tenantId }: { initialCases: OshaCase[]; incidents?: Incident[]; establishment: EstablishmentProp; tenantId: string }) {
+export function OshaClient({ initialCases, incidents = [], establishment, tenantId, oshaHours = OSHA_HOURS_WORKED, oshaEstablishment }: { initialCases: OshaCase[]; incidents?: Incident[]; establishment: EstablishmentProp; tenantId: string; oshaHours?: number; oshaEstablishment?: { ein: string; naics: string; employees: number } }) {
   const EST: EstInfo = {
     name:      establishment.name,
-    ein:       "",
+    ein:       oshaEstablishment?.ein ?? "",
     street:    "",
     city:      establishment.siteName ?? "",
     state:     establishment.state ?? "",
     zip:       "",
-    naics:     "",
+    naics:     oshaEstablishment?.naics ?? "",
     industry:  establishment.industry ?? "",
-    employees: OSHA_FTE,
-    hours:     OSHA_HOURS_WORKED,
+    employees: oshaEstablishment?.employees || OSHA_FTE,
+    hours:     oshaHours,
     benchDart: OSHA_DART_BENCHMARK,
     ehsContact: [establishment.contactName, establishment.contactTitle].filter(Boolean).join(", ") || "—",
   };
@@ -1556,7 +1556,7 @@ export function OshaClient({ initialCases, incidents = [], establishment, tenant
         )}
 
         {/* Trends & Analysis */}
-        {tab === "trends" && <TrendsTab cases={cases} incidents={incidents} />}
+        {tab === "trends" && <TrendsTab cases={cases} incidents={incidents} oshaHours={oshaHours} />}
       </div>
     </div>
   );

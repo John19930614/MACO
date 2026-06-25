@@ -30,6 +30,7 @@ interface Props {
   moduleScores: ModuleScore[];
   courseMap: Record<string, string>;
   profileMap: Record<string, string>;
+  oshaHours?: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -220,7 +221,7 @@ function trainingSpec(
   };
 }
 
-function incidentSpec(incidents: Incident[], oshaCases: OshaCase[]): ReportSpec {
+function incidentSpec(incidents: Incident[], oshaCases: OshaCase[], oshaHours?: number): ReportSpec {
   const now     = new Date();
   const ytd         = incidents.filter((i) => new Date(i.occurred_at).getFullYear() === now.getFullYear());
   const regulatory  = incidents.filter((i) => i.regulatory_reportable);
@@ -246,7 +247,7 @@ function incidentSpec(incidents: Incident[], oshaCases: OshaCase[]): ReportSpec 
       ["Regulatory Reportable", regulatory.length],
       ["Lost-Time Events", lostTime.length],
       ["Total Lost Days", totalLostDays],
-      ["TRIR (per 100 FTE)", oshaRate(oshaCases.length)],
+      ["TRIR (per 100 FTE)", oshaRate(oshaCases.length, oshaHours)],
     ],
     accent: "DC2626",
     fileBase: "Incident-Analysis",
@@ -318,13 +319,13 @@ const TYPE_COLOR: Record<string, string> = {
 // ── Single row: re-download (PowerPoint / Excel) + delete ─────────────────────
 
 function ReportRow({
-  report, capas, incidents, oshaCases, trainingRecs, chemicals, legal, moduleScores, courseMap, profileMap, companyName,
+  report, capas, incidents, oshaCases, trainingRecs, chemicals, legal, moduleScores, courseMap, profileMap, companyName, oshaHours,
 }: {
   report: SavedReport;
   capas: CapaAction[]; incidents: Incident[]; oshaCases: OshaCase[];
   trainingRecs: TrainingRecord[]; chemicals: Chemical[]; legal: LegalRequirement[];
   moduleScores: ModuleScore[]; courseMap: Record<string, string>; profileMap: Record<string, string>;
-  companyName: string;
+  companyName: string; oshaHours?: number;
 }) {
   const [isPending, startTransition] = useTransition();
 
@@ -334,7 +335,7 @@ function ReportRow({
       case "Chemical":   return chemicalSpec(chemicals);
       case "CAPA":       return capaSpec(capas);
       case "Training":   return trainingSpec(trainingRecs, courseMap, profileMap);
-      case "Incidents":  return incidentSpec(incidents, oshaCases);
+      case "Incidents":  return incidentSpec(incidents, oshaCases, oshaHours);
       case "Regulatory": return regulatorySpec(legal);
       default:           return null;
     }
@@ -409,7 +410,7 @@ function ReportRow({
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function SavedReportsPanel({
-  reports, capas, incidents, oshaCases, trainingRecs, chemicals, legal, moduleScores, courseMap, profileMap,
+  reports, capas, incidents, oshaCases, trainingRecs, chemicals, legal, moduleScores, courseMap, profileMap, oshaHours,
 }: Props) {
   const { user } = useDemoUser();
   const co = user.company;
@@ -440,6 +441,7 @@ export function SavedReportsPanel({
           courseMap={courseMap}
           profileMap={profileMap}
           companyName={co}
+          oshaHours={oshaHours}
         />
       ))}
     </div>

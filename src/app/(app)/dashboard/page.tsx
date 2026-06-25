@@ -3,9 +3,10 @@ import {
   getChemicals, getCapaActions, getAiFindings, getTrainingRecords,
   getEquipment, getComplianceScores, getAudits, getIncidents,
   getOshaCases, overallComplianceScore, latestPredictabilityRun, getTenantName,
+  getTenantSettings,
 } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
-import { oshaRate, OSHA_DART_BENCHMARK } from "@/lib/osha";
+import { oshaRate, resolveOshaHours, OSHA_DART_BENCHMARK } from "@/lib/osha";
 import { MOCK_MODE } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PageHeader, Stat, Card, CardHeader } from "@/components/ui/primitives";
@@ -90,10 +91,11 @@ export default async function DashboardPage({
   ).length;
 
   // OSHA safety rates — calculated from confirmed OSHA 300 log entries
+  const oshaHours = resolveOshaHours(await getTenantSettings(tenantId));
   const oshaCasesYtd = oshaCases.filter((c) => c.date.startsWith("2026"));
-  const trir = oshaRate(oshaCasesYtd.length);
+  const trir = oshaRate(oshaCasesYtd.length, oshaHours);
   const dartCases = oshaCasesYtd.filter((c) => c.classification === "days_away" || c.classification === "restricted");
-  const dart = oshaRate(dartCases.length);
+  const dart = oshaRate(dartCases.length, oshaHours);
   const severeOsha = oshaCasesYtd.filter((c) => c.isSevereInjury || c.classification === "fatality").length;
 
   // Compliance by module sorted by score ascending (lowest = most at risk)

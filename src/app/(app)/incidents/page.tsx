@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { getIncidents, getProfiles, getCapaActions } from "@/lib/data/ehsRepo";
+import { getIncidents, getProfiles, getCapaActions, getTenantSettings } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
-import { MOCK_TENANT_ID } from "@/lib/data/mock";
+import { resolveOshaHours } from "@/lib/osha";
 import { PageHeader, Stat, Card, CardHeader, Pill } from "@/components/ui/primitives";
 import { SeverityBadge } from "@/components/ui/badges";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -31,11 +31,13 @@ function fmt(s: string) {
 export default async function IncidentsPage() {
   const tenantId = await getEffectiveTenantId();
 
-  const [incidents, profiles, capas] = await Promise.all([
+  const [incidents, profiles, capas, settings] = await Promise.all([
     getIncidents(tenantId),
     getProfiles(tenantId),
     getCapaActions(tenantId),
+    getTenantSettings(tenantId),
   ]);
+  const oshaHours = resolveOshaHours(settings);
 
   const profileMap = Object.fromEntries(profiles.map((p) => [p.id, p.display_name]));
 
@@ -82,7 +84,7 @@ export default async function IncidentsPage() {
         subtitle="Near-misses, injuries, chemical spills, and regulatory-reportable events"
         actions={
           <div className="flex gap-2">
-            <IncidentExportButton incidents={incidents} profiles={profiles} />
+            <IncidentExportButton incidents={incidents} profiles={profiles} oshaHours={oshaHours} />
             <AddIncidentButton />
           </div>
         }

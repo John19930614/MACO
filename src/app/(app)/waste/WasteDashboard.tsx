@@ -949,6 +949,8 @@ export function WasteDashboard({
   pickups,
   inspections,
   profiles,
+  emergencyCoordinator,
+  facilityPhone,
 }: {
   streams: WasteStream[];
   chemicals: Chemical[];
@@ -956,6 +958,8 @@ export function WasteDashboard({
   pickups: WastePickup[];
   inspections: LiveWasteInspection[];
   profiles: WasteProfile[];
+  emergencyCoordinator?: string;
+  facilityPhone?: string;
 }) {
   const [tab, setTab] = useState<Tab>("register");
 
@@ -1312,7 +1316,7 @@ export function WasteDashboard({
 
       {/* ── Training & Compliance tab ── */}
         {tab === "compliance" && (
-          <WasteComplianceTab streams={streams} pickups={pickups} vendors={vendors} inspections={inspections} />
+          <WasteComplianceTab streams={streams} pickups={pickups} vendors={vendors} inspections={inspections} emergencyCoordinator={emergencyCoordinator} facilityPhone={facilityPhone} />
         )}
 
       {tab === "accumulation" && <AccumulationTracker streams={streams} />}

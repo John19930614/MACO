@@ -7,6 +7,10 @@ import { useDemoUser, DEMO_USERS } from "@/lib/context/demo-user";
 import { MOCK_MODE } from "@/lib/env";
 import { saveSettings } from "@/lib/actions/ehs";
 import type { Profile, Site } from "@/lib/types";
+import type { EstablishmentInfo } from "@/lib/data/ehsRepo";
+
+export interface AiInfo { on: boolean; provider: string; model: string }
+export interface IntegrationStatus { supabase: boolean; ai: boolean; aiProvider: string; email: boolean }
 
 type SettingsTab = "company" | "users" | "sites" | "notifications" | "integrations";
 
@@ -17,11 +21,20 @@ interface SettingsData {
   industry:         string;
   primarySite:      string;
   jurisdiction:     string;
+  hqAddress:        string;
+  hqPhone:          string;
+  primaryContact:   string;
+  contactEmail:     string;
+  logoUrl:          string;
   ehsManager:       string;
   qualifiedEhs:     string;
   biosafetyOfficer: string;
   chOfficer:        string;
   emergencyCoord:   string;
+  oshaNaics:        string;
+  oshaEin:          string;
+  oshaAnnualHours:  string;
+  oshaAvgEmployees: string;
   notifs: Record<string, boolean>;
 }
 
@@ -41,30 +54,21 @@ const DEFAULT_SETTINGS: Omit<SettingsData, "notifs"> = {
   industry:         "",
   primarySite:      "",
   jurisdiction:     "",
+  hqAddress:        "",
+  hqPhone:          "",
+  primaryContact:   "",
+  contactEmail:     "",
+  logoUrl:          "",
   ehsManager:       "",
   qualifiedEhs:     "",
   biosafetyOfficer: "",
   chOfficer:        "",
   emergencyCoord:   "",
+  oshaNaics:        "",
+  oshaEin:          "",
+  oshaAnnualHours:  "",
+  oshaAvgEmployees: "",
 };
-
-// Platform-level configuration (true for every tenant) — not tenant-specific data.
-const CONFIG_ROWS = [
-  { label: "P-Engine Mode",    value: "Auto — runs daily at 02:00 UTC" },
-  { label: "AI Provider",      value: "Anthropic Claude" },
-  { label: "AI Model",         value: "claude-sonnet-4-6" },
-  { label: "Compliance Basis", value: "Federal OSHA, EPA, NFPA, ANSI" },
-  { label: "Training Cycle",   value: "Annual + role-based triggers" },
-];
-
-const INTEGRATIONS = [
-  { name: "Supabase (Database)",   status: MOCK_MODE ? "Demo mode" : "Connected", color: MOCK_MODE ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700", action: false },
-  { name: "Anthropic Claude API",  status: "Connected", color: "bg-emerald-100 text-emerald-700", action: false },
-  { name: "SDS Management (SDS+)", status: "Not set up",color: "bg-slate-100 text-slate-500",    action: true  },
-  { name: "LIMS Integration",      status: "Not set up",color: "bg-slate-100 text-slate-500",    action: true  },
-  { name: "Payroll / HR System",   status: "Not set up",color: "bg-slate-100 text-slate-500",    action: true  },
-  { name: "Email (SendGrid)",      status: "Not set up",color: "bg-slate-100 text-slate-500",    action: true  },
-];
 
 function Field({
   label,
@@ -104,8 +108,10 @@ function fromSavedSettings(saved?: Record<string, unknown> | null): Partial<Sett
   if (!saved || typeof saved !== "object") return {};
   const out: Partial<SettingsData> = {};
   const stringKeys: (keyof Omit<SettingsData, "notifs">)[] = [
-    "companyName", "industry", "primarySite", "jurisdiction", "ehsManager",
-    "qualifiedEhs", "biosafetyOfficer", "chOfficer", "emergencyCoord",
+    "companyName", "industry", "primarySite", "jurisdiction",
+    "hqAddress", "hqPhone", "primaryContact", "contactEmail", "logoUrl",
+    "ehsManager", "qualifiedEhs", "biosafetyOfficer", "chOfficer", "emergencyCoord",
+    "oshaNaics", "oshaEin", "oshaAnnualHours", "oshaAvgEmployees",
   ];
   for (const key of stringKeys) {
     const v = saved[key];
@@ -124,14 +130,29 @@ export function SettingsClient({
   serverProfiles = [],
   serverSites    = [],
   savedSettings  = null,
+  establishment  = null,
+  aiInfo,
+  integrationStatus,
 }: {
   serverProfiles?: Profile[];
   serverSites?:    Site[];
   savedSettings?:  Record<string, unknown> | null;
+  establishment?:  EstablishmentInfo | null;
+  aiInfo?:         AiInfo;
+  integrationStatus?: IntegrationStatus;
 }) {
   const { user, setUser } = useDemoUser();
   const [tab, setTab] = useState<SettingsTab>("company");
   const savedInit = fromSavedSettings(savedSettings);
+  // Canonical identity (onboarding_data) wins over the settings bucket for these.
+  const identitySeed: Partial<SettingsData> = establishment ? {
+    companyName:    establishment.name || savedInit.companyName || user.company,
+    industry:       establishment.industry || savedInit.industry || "",
+    primarySite:    establishment.siteName || savedInit.primarySite || "",
+    primaryContact: establishment.contactName || savedInit.primaryContact || "",
+    hqPhone:        establishment.contactPhone || savedInit.hqPhone || "",
+    contactEmail:   establishment.contactEmail || savedInit.contactEmail || "",
+  } : {};
   const [data, setData]         = useState<SettingsData>({
     ...DEFAULT_SETTINGS,
     companyName:  user.company,
@@ -140,6 +161,7 @@ export function SettingsClient({
     qualifiedEhs: user.display_name,
     // Persisted server state wins over defaults when present.
     ...savedInit,
+    ...identitySeed,
     notifs: { ...DEFAULT_NOTIFS, ...(savedInit.notifs ?? {}) },
   });
   const [saving, setSaving]         = useState(false);
@@ -177,8 +199,10 @@ export function SettingsClient({
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-seed company fields whenever the demo user/tenant switches
+  // Re-seed company fields whenever the demo persona switches — MOCK mode only.
+  // In live mode the company identity comes from the database, not the persona.
   useEffect(() => {
+    if (!MOCK_MODE) return;
     setData((d) => ({
       ...d,
       companyName:  user.company,
@@ -264,6 +288,24 @@ export function SettingsClient({
     { id: "sites",         label: "Sites",          icon: <MapPin className="h-3.5 w-3.5" /> },
     { id: "notifications", label: "Notifications",  icon: <Bell className="h-3.5 w-3.5" /> },
     { id: "integrations",  label: "Integrations",   icon: <Plug className="h-3.5 w-3.5" /> },
+  ];
+
+  // Platform configuration — reflects the real environment, not hardcoded claims.
+  const configRows = [
+    { label: "P-Engine Mode",    value: "Hourly automated scan" },
+    { label: "AI Assistant",     value: aiInfo ? (aiInfo.on ? `${aiInfo.provider} · ${aiInfo.model}` : "Not configured") : "—" },
+    { label: "Compliance Basis", value: "Federal OSHA, EPA, NFPA, ANSI" },
+    { label: "Training Cycle",   value: "Annual + role-based triggers" },
+  ];
+
+  const ok = "bg-emerald-100 text-emerald-700";
+  const off = "bg-slate-100 text-slate-500";
+  const integrations = [
+    { name: "Supabase (Database)",       status: integrationStatus?.supabase ? "Connected" : "Demo mode", color: integrationStatus?.supabase ? ok : "bg-amber-100 text-amber-700", action: false },
+    { name: integrationStatus?.aiProvider ?? "AI Provider", status: integrationStatus?.ai ? "Connected" : "Not configured", color: integrationStatus?.ai ? ok : off, action: false },
+    { name: "Email (Resend)",            status: integrationStatus?.email ? "Connected" : "Not set up", color: integrationStatus?.email ? ok : off, action: !integrationStatus?.email },
+    { name: "SDS Management (SDS+)",     status: "Not set up", color: off, action: true },
+    { name: "LIMS Integration",          status: "Not set up", color: off, action: true },
   ];
 
   const visibleUsers = MOCK_MODE
@@ -365,18 +407,47 @@ export function SettingsClient({
                 <Field label="Industry"              value={data.industry}         onChange={(v) => setField("industry", v)} />
                 <Field label="Primary Site"          value={data.primarySite}      onChange={(v) => setField("primarySite", v)} />
                 <Field label="Jurisdiction"          value={data.jurisdiction}     onChange={(v) => setField("jurisdiction", v)} />
-                <Field label="EHS Manager"           value={data.ehsManager}       onChange={(v) => setField("ehsManager", v)} />
-                <Field label="Qualified EHS Person"  value={data.qualifiedEhs}     onChange={(v) => setField("qualifiedEhs", v)} />
-                <Field label="Biosafety Officer"     value={data.biosafetyOfficer} onChange={(v) => setField("biosafetyOfficer", v)} />
-                <Field label="Chemical Hygiene Officer" value={data.chOfficer}     onChange={(v) => setField("chOfficer", v)} />
-                <Field label="Emergency Coordinator" value={data.emergencyCoord}   onChange={(v) => setField("emergencyCoord", v)} />
+                <Field label="HQ Address"            value={data.hqAddress}        onChange={(v) => setField("hqAddress", v)} />
+                <Field label="Phone"                 value={data.hqPhone}          onChange={(v) => setField("hqPhone", v)} />
+                <Field label="Primary Contact"       value={data.primaryContact}   onChange={(v) => setField("primaryContact", v)} />
+                <Field label="Contact Email"         value={data.contactEmail}     onChange={(v) => setField("contactEmail", v)} />
+                <Field label="Logo URL"              value={data.logoUrl}          onChange={(v) => setField("logoUrl", v)} />
               </div>
             </Card>
 
             <Card>
-              <CardHeader title="EHS Program Configuration" subtitle="Managed by Reliance — contact SA to change" />
+              <CardHeader title="EHS Responsible Persons" subtitle="Named roles used on reports, posters, and emergency documents" />
+              <div className="space-y-3 p-4">
+                <Field label="EHS Manager"              value={data.ehsManager}       onChange={(v) => setField("ehsManager", v)} />
+                <Field label="Qualified EHS Person"     value={data.qualifiedEhs}     onChange={(v) => setField("qualifiedEhs", v)} />
+                <Field label="Biosafety Officer"        value={data.biosafetyOfficer} onChange={(v) => setField("biosafetyOfficer", v)} />
+                <Field label="Chemical Hygiene Officer" value={data.chOfficer}        onChange={(v) => setField("chOfficer", v)} />
+                <Field label="Emergency Coordinator"    value={data.emergencyCoord}   onChange={(v) => setField("emergencyCoord", v)} />
+              </div>
+            </Card>
+
+            <Card>
+              <CardHeader title="OSHA Establishment & Reporting" subtitle="Used for OSHA 300A and your real TRIR / DART rates" />
+              <div className="space-y-3 p-4">
+                <Field label="NAICS Code"            value={data.oshaNaics}        onChange={(v) => setField("oshaNaics", v)} />
+                <Field label="EIN"                   value={data.oshaEin}          onChange={(v) => setField("oshaEin", v)} />
+                <Field label="Total Annual Hours Worked" value={data.oshaAnnualHours} onChange={(v) => setField("oshaAnnualHours", v.replace(/[^0-9]/g, ""))} />
+                <Field label="Average # Employees"   value={data.oshaAvgEmployees} onChange={(v) => setField("oshaAvgEmployees", v.replace(/[^0-9]/g, ""))} />
+                <div className="ml-52 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                  {(() => {
+                    const hrs = Number(data.oshaAnnualHours) || (Number(data.oshaAvgEmployees) ? Number(data.oshaAvgEmployees) * 2080 : 0);
+                    return hrs > 0
+                      ? `Incident rates will use ${hrs.toLocaleString()} hours/year as the basis. Leave blank to use the platform default.`
+                      : "Enter your annual hours (or employee count) so TRIR/DART reflect your real establishment. Otherwise a default basis is used.";
+                  })()}
+                </div>
+              </div>
+            </Card>
+
+            <Card>
+              <CardHeader title="EHS Program Configuration" subtitle="Platform configuration — managed by Reliance" />
               <div className="space-y-4 p-4">
-                {CONFIG_ROWS.map(({ label, value }) => (
+                {configRows.map(({ label, value }) => (
                   <div key={label} className="flex items-start gap-3">
                     <div className="w-44 shrink-0 text-xs font-medium text-slate-500">{label}</div>
                     <div className="rounded bg-slate-50 px-2 py-0.5 font-mono text-sm text-slate-700">{value}</div>
@@ -405,26 +476,28 @@ export function SettingsClient({
                     <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${!soundsMuted ? "translate-x-4" : "translate-x-0"}`} />
                   </button>
                 </div>
-                <div className="py-3">
-                  <div className="text-sm text-slate-700 mb-1.5">Active Demo User</div>
-                  <div className="mb-1 text-xs text-slate-400">Switch persona to explore role-based views</div>
-                  <select
-                    value={user.id}
-                    onChange={(e) => {
-                      const found = DEMO_USERS.find((u) => u.id === e.target.value);
-                      if (found) setUser(found);
-                    }}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 focus:border-blue-400 focus:outline-none"
-                  >
-                    {DEMO_USERS.map((u) => (
-                      <option key={u.id} value={u.id}>{u.display_name} — {u.job_title}</option>
-                    ))}
-                  </select>
-                  <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-                    Logged in as <strong>{user.display_name}</strong> · {user.job_title}
-                    {user.is_reliance && " · Reliance Admin"}
+                {MOCK_MODE && (
+                  <div className="py-3">
+                    <div className="text-sm text-slate-700 mb-1.5">Active Demo User</div>
+                    <div className="mb-1 text-xs text-slate-400">Switch persona to explore role-based views</div>
+                    <select
+                      value={user.id}
+                      onChange={(e) => {
+                        const found = DEMO_USERS.find((u) => u.id === e.target.value);
+                        if (found) setUser(found);
+                      }}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 focus:border-blue-400 focus:outline-none"
+                    >
+                      {DEMO_USERS.map((u) => (
+                        <option key={u.id} value={u.id}>{u.display_name} — {u.job_title}</option>
+                      ))}
+                    </select>
+                    <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                      Logged in as <strong>{user.display_name}</strong> · {user.job_title}
+                      {user.is_reliance && " · Reliance Admin"}
+                    </div>
                   </div>
-                </div>
+                )}
                 {MOCK_MODE && (
                   <div className="py-3">
                     <div className="text-sm text-slate-700 mb-1">Reset Demo Data</div>
@@ -480,7 +553,7 @@ export function SettingsClient({
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-xs text-slate-500">{u.email}</td>
+                        <td className="px-4 py-3 text-xs text-slate-500">{u.email || "—"}</td>
                         <td className="px-4 py-3 text-xs text-slate-600">{u.job_title}</td>
                         <td className="px-4 py-3">
                           <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${ROLE_COLOR[u.role] ?? "bg-slate-100 text-slate-600"}`}>
@@ -628,7 +701,7 @@ export function SettingsClient({
             <Card>
               <CardHeader title="Integrations" subtitle="Connect external systems to SafetyIQ" />
               <div className="divide-y divide-slate-50 px-4">
-                {INTEGRATIONS.map(({ name, status, color, action }) => (
+                {integrations.map(({ name, status, color, action }) => (
                   <div key={name} className="flex items-center justify-between py-3">
                     <span className="text-sm text-slate-700">{name}</span>
                     <div className="flex items-center gap-2">

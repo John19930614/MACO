@@ -28,6 +28,7 @@ interface Props {
   legal: LegalRequirement[];
   chemicals: Chemical[];
   moduleScores: ModuleScore[];
+  oshaHours?: number;
 }
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
@@ -57,7 +58,7 @@ interface ReportData {
   chart?: ReportChart;
 }
 
-export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, courseMap, profileMap, legal, chemicals, moduleScores }: Props) {
+export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, courseMap, profileMap, legal, chemicals, moduleScores, oshaHours }: Props) {
   const { user } = useDemoUser();
   const co = user.company;
   const firstWord = co.split(" ")[0] || "SafetyIQ";
@@ -154,7 +155,7 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
         ["Regulatory Reportable", regulatory.length],
         ["Lost-Time Events", lostTime.length],
         ["Total Lost Days", totalLostDays],
-        ["TRIR (per 100 FTE)", oshaRate(oshaCases.length)],
+        ["TRIR (per 100 FTE)", oshaRate(oshaCases.length, oshaHours)],
       ],
       fileBase: "Incident-Analysis",
       accent: "DC2626",

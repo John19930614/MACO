@@ -21,6 +21,8 @@ interface Props {
   pickups: WastePickup[];
   vendors: WasteVendor[];
   inspections: WasteInspection[];
+  emergencyCoordinator?: string;
+  facilityPhone?: string;
 }
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -102,9 +104,11 @@ const TYPE_STYLE: Record<ObligationType, string> = {
   Disposal: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
 };
 
-export function WasteComplianceTab({ streams, pickups, vendors, inspections }: Props) {
+export function WasteComplianceTab({ streams, pickups, vendors, inspections, emergencyCoordinator, facilityPhone }: Props) {
   const { user } = useDemoUser();
   const company = user.company || "Your Company";
+  const coordLine = emergencyCoordinator && emergencyCoordinator.trim() ? emergencyCoordinator.trim() : "";
+  const phoneLine = facilityPhone && facilityPhone.trim() ? facilityPhone.trim() : "";
 
   const vendorName = (id: string | null): string =>
     (id ? vendors.find((v) => v.id === id)?.name : null) ?? "Vendor TBD";
@@ -224,8 +228,8 @@ export function WasteComplianceTab({ streams, pickups, vendors, inspections }: P
     <div class="sec">
       <h2>Emergency Contacts</h2>
       <div class="contacts">
-        <div class="field"><span class="k">Emergency Coordinator</span><span class="blank"></span></div>
-        <div class="field"><span class="k">Facility Phone</span><span class="blank"></span></div>
+        <div class="field"><span class="k">Emergency Coordinator</span>${coordLine ? `<span style="border-bottom:1px solid #000;min-width:180px;display:inline-block;padding:0 6px;font-weight:700;">${coordLine}</span>` : `<span class="blank"></span>`}</div>
+        <div class="field"><span class="k">Facility Phone</span>${phoneLine ? `<span style="border-bottom:1px solid #000;min-width:180px;display:inline-block;padding:0 6px;font-weight:700;">${phoneLine}</span>` : `<span class="blank"></span>`}</div>
       </div>
     </div>
 
@@ -338,8 +342,8 @@ export function WasteComplianceTab({ streams, pickups, vendors, inspections }: P
             <div className="text-sm text-slate-600 dark:text-slate-300">
               Generates a printable emergency-response poster listing the hazard classifications actually
               present in your waste streams, the standard spill / release response steps, and the National
-              Response Center number. Emergency Coordinator and facility phone are left blank for you to
-              complete on site.
+              Response Center number. Emergency Coordinator and facility phone are pre-filled from Company
+              Settings when available, otherwise left blank to complete on site.
             </div>
           </div>
           <button

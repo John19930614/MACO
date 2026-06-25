@@ -56,7 +56,7 @@ async function persistAiCall(call: AiCall): Promise<void> {
   }
 }
 
-interface AiTelemetryRow {
+export interface AiTelemetryRow {
   at: string;
   provider: string | null;
   model: string | null;
@@ -64,6 +64,19 @@ interface AiTelemetryRow {
   input_tokens: number | null;
   output_tokens: number | null;
   ok: boolean | null;
+}
+
+/** Map a persisted ai_telemetry row back to the in-app AiCall shape (pure). */
+export function mapTelemetryRow(r: AiTelemetryRow): AiCall {
+  return {
+    at: new Date(r.at).getTime(),
+    provider: r.provider ?? "",
+    model: r.model ?? "",
+    ms: r.ms ?? 0,
+    inputTokens: r.input_tokens ?? 0,
+    outputTokens: r.output_tokens ?? 0,
+    ok: r.ok ?? true,
+  };
 }
 
 /**
@@ -82,15 +95,7 @@ export async function getPersistedTelemetry(limit = 200): Promise<AiCall[]> {
       .order("at", { ascending: false })
       .limit(limit);
     if (error || !data) return [...buf];
-    return (data as AiTelemetryRow[]).map((r) => ({
-      at: new Date(r.at).getTime(),
-      provider: r.provider ?? "",
-      model: r.model ?? "",
-      ms: r.ms ?? 0,
-      inputTokens: r.input_tokens ?? 0,
-      outputTokens: r.output_tokens ?? 0,
-      ok: r.ok ?? true,
-    }));
+    return (data as AiTelemetryRow[]).map(mapTelemetryRow);
   } catch {
     return [...buf];
   }

@@ -51,7 +51,11 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const g = globalThis as unknown as { __macoAiBreakers?: Record<string, CircuitBreaker> };
 const breakers: Record<string, CircuitBreaker> = g.__macoAiBreakers ?? (g.__macoAiBreakers = {});
 function breakerFor(provider: string): CircuitBreaker {
-  return (breakers[provider] ??= new CircuitBreaker());
+  // Thresholds are ops-tunable via env (NaN/empty → defaults), so a noisy
+  // provider can be tightened/loosened without a redeploy.
+  const threshold = Number(process.env.SAFETYIQ_AI_BREAKER_THRESHOLD) || 4;
+  const cooldownMs = Number(process.env.SAFETYIQ_AI_BREAKER_COOLDOWN_MS) || 30_000;
+  return (breakers[provider] ??= new CircuitBreaker(threshold, cooldownMs));
 }
 
 export async function generateStructuredJson(call: StructuredCall): Promise<StructuredResult> {
@@ -116,8 +120,11 @@ async function viaAnthropic(call: StructuredCall): Promise<StructuredResult> {
     // caches the static request prefix (tools schema + system prompt), which is
     // identical across every record of a given job. The per-record user prompt
     // stays uncached. No-op below the model's cache minimum, so it's safe to
-    // leave on and it pays off as prompts/tool schemas grow.
-    system: [{ type: "text", text: call.system, cache_control: { type: "ephemeral" } }],
+    // leave on and it pays off as prompts/tool schemas grow. Guarded against an
+    // empty system (a cache_control text block must be non-empty).
+    system: call.system
+      ? [{ type: "text", text: call.system, cache_control: { type: "ephemeral" } }]
+      : call.system,
     messages: [{ role: "user", content: call.user }],
     // Structured output via a single forced tool — the most portable approach
     // across SDK versions, and pixel-equivalent to a strict JSON schema.

@@ -10,9 +10,10 @@ import {
   getLegalRequirements, getDocuments, getBiosafetyLabs, getEquipment,
   getWasteStreams, getAuditFindings, getChemicals, getProfiles,
   getOshaCases, getRiskAssessments, getComplianceScores, getTenantName,
-  getSavedReports,
+  getSavedReports, getTenantSettings,
 } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
+import { resolveOshaHours } from "@/lib/osha";
 
 function scoreColor(s: number) {
   if (s >= 85) return "text-emerald-600";
@@ -76,7 +77,7 @@ export default async function ReportsPage({
   const { view } = await searchParams;
   const tab = view ?? "executive";
 
-  const [capas, incidents, trainingRecs, courses, legal, docs, labs, equipment, waste, auditFindings, chemicals, profiles, oshaCases, riskItems, complianceScores, savedReports] =
+  const [capas, incidents, trainingRecs, courses, legal, docs, labs, equipment, waste, auditFindings, chemicals, profiles, oshaCases, riskItems, complianceScores, savedReports, settings] =
     await Promise.all([
       getCapaActions(tenantId),
       getIncidents(tenantId),
@@ -94,7 +95,10 @@ export default async function ReportsPage({
       getRiskAssessments(tenantId),
       getComplianceScores(tenantId),
       getSavedReports(tenantId),
+      getTenantSettings(tenantId),
     ]);
+  const oshaHours = resolveOshaHours(settings);
+  const logoUrl = typeof settings.logoUrl === "string" ? settings.logoUrl.trim() : "";
 
   const courseMap  = Object.fromEntries(courses.map((c) => [c.id, c.title]));
   const profileMap = Object.fromEntries(profiles.map((p) => [p.id, p.display_name]));
@@ -225,9 +229,15 @@ export default async function ReportsPage({
 
   return (
     <div className="flex flex-col overflow-hidden h-full">
-      <div className="print-only mb-6 border-b-2 border-slate-800 pb-3">
-        <div className="text-xl font-extrabold text-slate-900">{tenantName} — EHS Compliance Report</div>
-        <div className="text-sm text-slate-500">SafetyIQ · Generated {printDate} · Reliance Predictive Safety Technologies</div>
+      <div className="print-only mb-6 flex items-center gap-4 border-b-2 border-slate-800 pb-3">
+        {logoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logoUrl} alt={`${tenantName} logo`} className="h-12 w-auto object-contain" />
+        )}
+        <div>
+          <div className="text-xl font-extrabold text-slate-900">{tenantName} — EHS Compliance Report</div>
+          <div className="text-sm text-slate-500">SafetyIQ · Generated {printDate} · Reliance Predictive Safety Technologies</div>
+        </div>
       </div>
 
       <PageHeader
@@ -243,6 +253,7 @@ export default async function ReportsPage({
             chemicals={chemicals}
             moduleScores={MODULE_SCORES}
             overallScore={overallScore}
+            oshaHours={oshaHours}
           />
         }
       />
@@ -948,7 +959,7 @@ export default async function ReportsPage({
 
               <div className="grid grid-cols-2 gap-5">
                 <Card>
-                  <CardHeader title="Quick Reports" subtitle="One-click CSV export by module" />
+                  <CardHeader title="Quick Reports" subtitle="Export a PowerPoint deck or Excel workbook by module" />
                   <QuickReportsPanel
                     capas={capas}
                     incidents={incidents}
@@ -959,6 +970,7 @@ export default async function ReportsPage({
                     legal={legal}
                     chemicals={chemicals}
                     moduleScores={MODULE_SCORES}
+                    oshaHours={oshaHours}
                   />
                 </Card>
 
@@ -975,6 +987,7 @@ export default async function ReportsPage({
                     moduleScores={MODULE_SCORES}
                     courseMap={courseMap}
                     profileMap={profileMap}
+                    oshaHours={oshaHours}
                   />
                 </Card>
               </div>

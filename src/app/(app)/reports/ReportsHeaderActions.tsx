@@ -24,6 +24,7 @@ interface Props {
   chemicals: Chemical[];
   moduleScores: ModuleScore[];
   overallScore: number;
+  oshaHours?: number;
 }
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
@@ -72,7 +73,7 @@ const FILTER_OPTIONS = [
   { key: "chemical", label: "Chemical Only" },
 ];
 
-export function ReportsHeaderActions({ capas, incidents, oshaCases, trainingRecs, legal, chemicals, moduleScores, overallScore }: Props) {
+export function ReportsHeaderActions({ capas, incidents, oshaCases, trainingRecs, legal, chemicals, moduleScores, overallScore, oshaHours }: Props) {
   const { user } = useDemoUser();
   const [filterOpen, setFilterOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState("all");
@@ -88,7 +89,7 @@ export function ReportsHeaderActions({ capas, incidents, oshaCases, trainingRecs
     const ytdIncidents = incidents.filter((i) => new Date(i.occurred_at).getFullYear() === year);
     const lostTime     = ytdIncidents.filter((i) => (i.lost_time_days ?? 0) > 0);
     const regulatory   = ytdIncidents.filter((i) => i.regulatory_reportable);
-    const trir         = oshaRate(oshaCases.length);
+    const trir         = oshaRate(oshaCases.length, oshaHours);
     const gaps         = legal.filter((l) => l.status !== "compliant" && l.status !== "not_applicable");
 
     const lines: string[] = [];

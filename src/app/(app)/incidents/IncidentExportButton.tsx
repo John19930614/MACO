@@ -24,7 +24,7 @@ function humanize(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function IncidentExportButton({ incidents, profiles }: { incidents: Incident[]; profiles: Profile[] }) {
+export function IncidentExportButton({ incidents, profiles, oshaHours = OSHA_HOURS_WORKED }: { incidents: Incident[]; profiles: Profile[]; oshaHours?: number }) {
   const { user } = useDemoUser();
   function handleExport() {
     const now = new Date();
@@ -41,7 +41,7 @@ export function IncidentExportButton({ incidents, profiles }: { incidents: Incid
       (i) => i.regulatory_reportable || i.medical_treatment_required || (i.lost_time_days ?? 0) > 0,
     );
     // TRIR must be computed from OSHA-recordable cases, not all incidents.
-    const trirNum     = oshaRecordable.length > 0 ? (oshaRecordable.length / OSHA_HOURS_WORKED) * 200000 : 0;
+    const trirNum     = oshaRecordable.length > 0 ? (oshaRecordable.length / oshaHours) * 200000 : 0;
     const trir        = trirNum.toFixed(2);
     const trirStyle: XlsCell["s"] = trirNum >= 3.0 ? "kpi_red" : trirNum >= 1.5 ? "kpi_amber" : "kpi_grn";
 
@@ -96,7 +96,7 @@ export function IncidentExportButton({ incidents, profiles }: { incidents: Incid
       })),
       blankRow(D),
       {
-        cells: [{ v: `TRIR = (${oshaRecordable.length} recordable cases ÷ ${OSHA_HOURS_WORKED} hours worked) × 200,000 = ${trir}  (OSHA benchmark < 3.0 per 100 FTE)`, s: "meta", m: 4 }] as XlsCell[],
+        cells: [{ v: `TRIR = (${oshaRecordable.length} recordable cases ÷ ${oshaHours.toLocaleString()} hours worked) × 200,000 = ${trir}  (OSHA benchmark < 3.0 per 100 FTE)`, s: "meta", m: 4 }] as XlsCell[],
         h: 16,
       },
       {
