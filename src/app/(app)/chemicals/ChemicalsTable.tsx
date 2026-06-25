@@ -6,6 +6,7 @@ import type { Chemical } from "@/lib/types";
 import { Pill } from "@/components/ui/primitives";
 import { updateSdsUrl } from "@/lib/actions/ehs";
 import { X, ExternalLink } from "lucide-react";
+import { GhsLabelButton } from "./GhsLabelButton";
 
 const HIGH_HAZARD_H = ["H350", "H351", "H300", "H310", "H311", "H330", "H331"];
 
@@ -198,6 +199,7 @@ export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
               <th className="px-4 py-2.5 text-left">Hazard</th>
               <th className="px-4 py-2.5 text-left">SDS</th>
               <th className="px-4 py-2.5 text-left">Flags</th>
+              <th className="px-4 py-2.5 text-left">Label</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
@@ -266,12 +268,15 @@ export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
                       )}
                     </div>
                   </td>
+                  <td className="px-4 py-3">
+                    <GhsLabelButton chemical={c}/>
+                  </td>
                 </tr>
               );
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-400">
+                <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-400">
                   No chemicals match your search.
                 </td>
               </tr>

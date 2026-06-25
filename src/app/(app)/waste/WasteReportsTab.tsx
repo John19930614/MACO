@@ -3,7 +3,7 @@
 import { Presentation, Sheet, ShieldCheck, FileArchive } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/primitives";
 import { useDemoUser } from "@/lib/context/demo-user";
-import { downloadReportPptx, downloadMultiSectionPptx } from "@/lib/reports/pptx";
+import { downloadReportPptx, downloadMultiSectionPptx, type ReportChart } from "@/lib/reports/pptx";
 import { downloadReportXlsx, downloadMultiSheetXlsx } from "@/lib/reports/xlsx";
 import type { WasteStream, WastePickup, WasteVendor, WasteInspection, WasteProfile } from "@/lib/types";
 
@@ -29,6 +29,7 @@ interface ReportSection {
   headers: string[];
   rows: (string | number | boolean | null | undefined)[][];
   summary: [string, string | number][];
+  chart?: ReportChart;
 }
 
 const DAYS_90 = 90 * 86400000;
@@ -59,6 +60,15 @@ function buildSections(
       ["Manifested", streams.filter((s) => !!s.manifest_number).length],
       ["Disposed", streams.filter((s) => s.status === "disposed").length],
     ],
+    chart: (() => {
+      const classes = [...new Set(streams.map((s) => s.classification))];
+      return {
+        type: "bar",
+        title: "Waste Streams by Classification",
+        labels: classes.map(humanize),
+        series: [{ name: "Streams", values: classes.map((cl) => streams.filter((s) => s.classification === cl).length) }],
+      };
+    })(),
   };
 
   const pickupLog: ReportSection = {
@@ -74,6 +84,15 @@ function buildSections(
       ["Completed", pickups.filter((p) => p.status === "completed" || !!p.completed_date).length],
       ["Pending", pickups.filter((p) => p.status !== "completed" && !p.completed_date).length],
     ],
+    chart: {
+      type: "doughnut",
+      title: "Pickups — Completed vs Pending",
+      labels: ["Completed", "Pending"],
+      series: [{ name: "Pickups", values: [
+        pickups.filter((p) => p.status === "completed" || !!p.completed_date).length,
+        pickups.filter((p) => p.status !== "completed" && !p.completed_date).length,
+      ] }],
+    },
   };
 
   const vendorRegister: ReportSection = {
@@ -93,6 +112,15 @@ function buildSections(
         return diff >= 0 && diff <= DAYS_90;
       }).length],
     ],
+    chart: {
+      type: "doughnut",
+      title: "Vendor Approval Status",
+      labels: ["Active", "Other"],
+      series: [{ name: "Vendors", values: [
+        vendors.filter((v) => v.status === "active").length,
+        vendors.filter((v) => v.status !== "active").length,
+      ] }],
+    },
   };
 
   const inspectionLog: ReportSection = {
@@ -108,6 +136,15 @@ function buildSections(
       ["Passed", inspections.filter((i) => i.passed).length],
       ["Failed", inspections.filter((i) => !i.passed).length],
     ],
+    chart: {
+      type: "doughnut",
+      title: "Inspection Results",
+      labels: ["Pass", "Fail"],
+      series: [{ name: "Inspections", values: [
+        inspections.filter((i) => i.passed).length,
+        inspections.filter((i) => !i.passed).length,
+      ] }],
+    },
   };
 
   const profileRegister: ReportSection = {
@@ -123,6 +160,15 @@ function buildSections(
       ["Approved", profiles.filter((p) => p.state === "approved" || p.state === "active").length],
       ["In Review", profiles.filter((p) => p.state === "ehs_review").length],
     ],
+    chart: (() => {
+      const states = [...new Set(profiles.map((p) => p.state))];
+      return {
+        type: "bar",
+        title: "Profiles by Lifecycle State",
+        labels: states.map(humanize),
+        series: [{ name: "Profiles", values: states.map((st) => profiles.filter((p) => p.state === st).length) }],
+      };
+    })(),
   };
 
   return {
@@ -159,7 +205,7 @@ export function WasteReportsTab({
     const s = sections[key];
     void downloadReportPptx({
       title: s.title, description: s.description, headers: s.headers, rows: s.rows,
-      summary: s.summary, companyName: company, accent, fileName: `${firstWord}-${fileBase}.pptx`,
+      summary: s.summary, companyName: company, accent, chart: s.chart, fileName: `${firstWord}-${fileBase}.pptx`,
     });
   }
 

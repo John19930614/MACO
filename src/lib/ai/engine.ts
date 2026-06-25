@@ -21,6 +21,7 @@ import { recordAiCall } from "./telemetry";
 import { SYSTEM_PROMPT, buildUserPrompt, ANALYSIS_JSON_SCHEMA as ARC_CAUSALITY_SCHEMA } from "./prompt";
 import { aiAnalysisOutputSchema, aiCellAnalysisOutputSchema } from "@/lib/schemas";
 import { reviewAnalysisOutput, type GroundingContext } from "./grounding";
+import { requiresHumanReview } from "./review-policy";
 import { nextId } from "@/lib/data/store";
 import type { Chemical, LegalRequirement, AiFinding, AiAnalysisOutput, CausalityOutput, PredictabilityForecast, SafetyCell, TrainingCourse, TrainingRecord, Profile } from "@/lib/types";
 import { riskLevelFromScore100, COMPLIANCE_STATUS_META } from "@/lib/constants";
@@ -490,13 +491,18 @@ async function runAnalysis(p: RunParams): Promise<AiFinding> {
   }
 
   // AI-output grounding gateway — validate what the model/heuristic produced
-  // before it is trusted. A hard "fail" (e.g. a hallucinated CAS) forces human
-  // review; the full review is attached to the output for the reviewer.
+  // before it is trusted. The full review is attached for the reviewer.
   const review = reviewAnalysisOutput(output, p.groundingContext ?? {});
   output.gateway = review;
-  if (review.status === "fail") output.human_review_required = true;
 
-  if (p.forceReview) output.human_review_required = true;
+  // Calibrated review decision: escalate on a gateway fail, high stakes, or low
+  // confidence on a consequential finding — not the model's flag alone.
+  output.human_review_required = requiresHumanReview({
+    baseRequired: output.human_review_required || p.forceReview,
+    gatewayStatus: review.status,
+    confidence,
+    riskScore: output.risk_score,
+  });
 
   return {
     id: nextId("ai"),
@@ -658,10 +664,14 @@ export async function analyzeCell(cell: SafetyCell, candidates: SafetyCell[]): P
     confidence = Math.min(0.8, deriveCellConfidence(output));
   }
 
-  // Safety governance: force human review for high/critical severity regardless of model output.
-  if (cell.severity === "critical" || cell.severity === "high") {
-    output.human_review_required = true;
-  }
+  // Safety governance: high/critical severity always gets a human; otherwise the
+  // calibrated policy escalates low-confidence, consequential cells too.
+  output.human_review_required = requiresHumanReview({
+    baseRequired: output.human_review_required || cell.severity === "critical" || cell.severity === "high",
+    gatewayStatus: "pass", // cell output uses its own causality schema, not the AiAnalysisOutput grounding gateway
+    confidence,
+    riskScore: cell.risk_score,
+  });
 
   return {
     id: nextId("ai"),
