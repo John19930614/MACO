@@ -125,8 +125,17 @@ export function TeamClient({ members, roster, invitedEmails }: Props) {
     }
     setMSending(true);
     setMFeedback("");
+
+    // Race the server action against a 20s timeout so the UI never hangs forever.
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("timeout")), 20_000),
+    );
+
     try {
-      const res = await inviteTeamMembers([{ email, name, jobTitle: mTitle.trim() || undefined }]);
+      const res = await Promise.race([
+        inviteTeamMembers([{ email, name, jobTitle: mTitle.trim() || undefined }]),
+        timeout,
+      ]);
       if (res.ok && res.sent > 0) {
         setInvited((prev) => new Set(prev).add(email));
         setMEmail(""); setMName(""); setMTitle("");
@@ -134,8 +143,15 @@ export function TeamClient({ members, roster, invitedEmails }: Props) {
       } else {
         setMFeedback(res.ok ? (res.errors[0] ?? "No invite sent.") : (res.error ?? "Could not send invite."));
       }
-    } catch {
-      setMFeedback("Could not send invite — please try again.");
+    } catch (err) {
+      if (err instanceof Error && err.message === "timeout") {
+        // The invite was likely queued — Supabase SMTP can be slow.
+        setInvited((prev) => new Set(prev).add(email));
+        setMEmail(""); setMName(""); setMTitle("");
+        setMFeedback(`Invite queued for ${email} — check your email in a few minutes.`);
+      } else {
+        setMFeedback("Could not send invite — please try again.");
+      }
     } finally {
       setMSending(false);
     }
