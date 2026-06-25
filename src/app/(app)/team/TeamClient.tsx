@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Users, Mail, Check, Loader2, UserPlus, CircleUser } from "lucide-react";
+import { Users, Mail, Check, Loader2, UserPlus, CircleUser, Copy, Link2 } from "lucide-react";
 import { Card, CardHeader, Pill } from "@/components/ui/primitives";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { inviteTeamMembers, type EmployeeInvite } from "@/lib/actions/team";
@@ -38,8 +38,48 @@ function titleCase(s: string) {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+interface InviteLink { email: string; name: string; link: string }
+
+function InviteLinks({ links }: { links: InviteLink[] }) {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  function copy(email: string, link: string) {
+    navigator.clipboard.writeText(link).then(() => {
+      setCopied(email);
+      setTimeout(() => setCopied(null), 2500);
+    });
+  }
+
+  return (
+    <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-blue-700">
+        <Link2 className="h-3.5 w-3.5" />
+        Invite links ready — copy and share directly with each person
+      </div>
+      <div className="space-y-1.5">
+        {links.map(({ email, name, link }) => (
+          <div key={email} className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 shadow-sm">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-medium text-slate-800">{name}</div>
+              <div className="truncate text-[10px] text-slate-500">{email}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => copy(email, link)}
+              className="flex shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-blue-700"
+            >
+              {copied === email ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              {copied === email ? "Copied!" : "Copy link"}
+            </button>
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-[10px] text-blue-600">Links expire in 24 hours.</p>
+    </div>
+  );
+}
+
 export function TeamClient({ members, roster, invitedEmails }: Props) {
-  // Track invites locally so status updates without a reload.
   const [invited, setInvited] = useState<Set<string>>(
     new Set(invitedEmails.map((e) => e.toLowerCase())),
   );
@@ -51,20 +91,20 @@ export function TeamClient({ members, roster, invitedEmails }: Props) {
     return email ? invited.has(email.trim().toLowerCase()) : false;
   }
 
-  // Roster invite selection — default to those with an email not yet invited.
   const [selected, setSelected] = useState<Set<string>>(
     new Set(withEmail.filter((e) => !isInvited(e.email)).map((e) => e.email!.toLowerCase())),
   );
-  const [sending, setSending] = useState(false);
-  const [feedback, setFeedback] = useState<string>("");
+  const [sending, setSending]       = useState(false);
+  const [feedback, setFeedback]     = useState<string>("");
   const [feedbackErr, setFeedbackErr] = useState(false);
+  const [rosterLinks, setRosterLinks] = useState<InviteLink[]>([]);
 
-  // Manual single invite
-  const [mEmail, setMEmail] = useState("");
-  const [mName, setMName] = useState("");
-  const [mTitle, setMTitle] = useState("");
+  const [mEmail, setMEmail]     = useState("");
+  const [mName, setMName]       = useState("");
+  const [mTitle, setMTitle]     = useState("");
   const [mSending, setMSending] = useState(false);
   const [mFeedback, setMFeedback] = useState("");
+  const [mLinks, setMLinks]     = useState<InviteLink[]>([]);
 
   function toggle(email: string) {
     const key = email.toLowerCase();
@@ -90,6 +130,7 @@ export function TeamClient({ members, roster, invitedEmails }: Props) {
     setSending(true);
     setFeedback("");
     setFeedbackErr(false);
+    setRosterLinks([]);
     try {
       const res = await inviteTeamMembers(toInvite);
       if (res.ok) {
@@ -101,9 +142,10 @@ export function TeamClient({ members, roster, invitedEmails }: Props) {
         setSelected(new Set());
         setFeedbackErr(false);
         setFeedback(
-          `${res.sent} invite${res.sent !== 1 ? "s" : ""} sent.` +
-            (res.errors.length ? ` ${res.errors.length} could not be sent.` : ""),
+          `${res.sent} invite${res.sent !== 1 ? "s" : ""} ready.` +
+          (res.errors.length ? ` ${res.errors.length} failed.` : ""),
         );
+        if (res.links?.length) setRosterLinks(res.links);
       } else {
         setFeedbackErr(true);
         setFeedback(res.error ?? "Could not send invites — please try again.");
@@ -118,40 +160,31 @@ export function TeamClient({ members, roster, invitedEmails }: Props) {
 
   async function sendManualInvite() {
     const email = mEmail.trim().toLowerCase();
-    const name = mName.trim();
+    const name  = mName.trim();
     if (!email || !name) {
       setMFeedback("Enter both a name and an email.");
       return;
     }
     setMSending(true);
     setMFeedback("");
-
-    // Race the server action against a 20s timeout so the UI never hangs forever.
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("timeout")), 20_000),
-    );
+    setMLinks([]);
 
     try {
-      const res = await Promise.race([
-        inviteTeamMembers([{ email, name, jobTitle: mTitle.trim() || undefined }]),
-        timeout,
-      ]);
+      const res = await inviteTeamMembers([{ email, name, jobTitle: mTitle.trim() || undefined }]);
       if (res.ok && res.sent > 0) {
         setInvited((prev) => new Set(prev).add(email));
         setMEmail(""); setMName(""); setMTitle("");
-        setMFeedback(`Invite sent to ${email}.`);
+        setMFeedback("Invite ready! Copy the link below and send it to them.");
+        if (res.links?.length) setMLinks(res.links);
       } else {
-        setMFeedback(res.ok ? (res.errors[0] ?? "No invite sent.") : (res.error ?? "Could not send invite."));
+        setMFeedback(
+          res.ok
+            ? (res.errors[0] ?? "No invite generated.")
+            : (res.error ?? "Could not generate invite."),
+        );
       }
-    } catch (err) {
-      if (err instanceof Error && err.message === "timeout") {
-        // The invite was likely queued — Supabase SMTP can be slow.
-        setInvited((prev) => new Set(prev).add(email));
-        setMEmail(""); setMName(""); setMTitle("");
-        setMFeedback(`Invite queued for ${email} — check your email in a few minutes.`);
-      } else {
-        setMFeedback("Could not send invite — please try again.");
-      }
+    } catch {
+      setMFeedback("Could not generate invite — please try again.");
     } finally {
       setMSending(false);
     }
@@ -273,7 +306,7 @@ export function TeamClient({ members, roster, invitedEmails }: Props) {
                     className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
-                    {sending ? "Sending…" : `Send ${selected.size} invite${selected.size !== 1 ? "s" : ""}`}
+                    {sending ? "Generating…" : `Invite ${selected.size} person${selected.size !== 1 ? "s" : ""}`}
                   </button>
                   {feedback && (
                     <span className={`flex items-center gap-1 text-xs ${feedbackErr ? "text-red-600" : "text-emerald-700"}`}>
@@ -281,6 +314,7 @@ export function TeamClient({ members, roster, invitedEmails }: Props) {
                     </span>
                   )}
                 </div>
+                {rosterLinks.length > 0 && <InviteLinks links={rosterLinks} />}
               </>
             )}
 
@@ -321,10 +355,11 @@ export function TeamClient({ members, roster, invitedEmails }: Props) {
             className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
           >
             {mSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-            Invite
+            {mSending ? "Generating…" : "Invite"}
           </button>
         </div>
-        {mFeedback && <div className="px-4 pb-4 text-xs text-slate-600">{mFeedback}</div>}
+        {mFeedback && <div className="px-4 pb-3 text-xs text-slate-600">{mFeedback}</div>}
+        {mLinks.length > 0 && <div className="px-4 pb-4"><InviteLinks links={mLinks} /></div>}
       </Card>
     </div>
   );

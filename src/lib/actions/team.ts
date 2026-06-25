@@ -20,6 +20,19 @@ export interface EmployeeInvite {
   department?: string;
 }
 
+export interface InviteResult {
+  ok: true;
+  sent: number;
+  errors: string[];
+  links: Array<{ email: string; name: string; link: string }>;
+}
+
+export interface InviteError {
+  ok: false;
+  error: string;
+  sent: 0;
+}
+
 async function sendViaResend(to: string, name: string, inviteLink: string, apiKey: string) {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -54,26 +67,16 @@ async function sendViaResend(to: string, name: string, inviteLink: string, apiKe
   }
 }
 
-export async function inviteTeamMembers(employees: EmployeeInvite[]) {
+export async function inviteTeamMembers(
+  employees: EmployeeInvite[],
+): Promise<InviteResult | InviteError> {
   const tenantId = await getServerTenantId();
-  if (!tenantId) return { ok: false as const, error: "No tenant", sent: 0 };
+  if (!tenantId) return { ok: false, error: "No tenant", sent: 0 };
 
   const { serviceRoleKey, resendKey } = serverSecrets();
 
   if (!serviceRoleKey) {
-    return {
-      ok: false as const,
-      sent: 0,
-      error: "SUPABASE_SERVICE_ROLE_KEY is not configured.",
-    };
-  }
-
-  if (!resendKey) {
-    return {
-      ok: false as const,
-      sent: 0,
-      error: "RESEND_API_KEY is not configured.",
-    };
+    return { ok: false, sent: 0, error: "SUPABASE_SERVICE_ROLE_KEY is not configured." };
   }
 
   const svc = serviceClient();
@@ -81,13 +84,13 @@ export async function inviteTeamMembers(employees: EmployeeInvite[]) {
 
   let sent = 0;
   const errors: string[] = [];
+  const links: Array<{ email: string; name: string; link: string }> = [];
 
   for (const emp of employees) {
     const email = emp.email?.trim().toLowerCase();
     if (!email) continue;
 
     try {
-      // Generate the invite link without Supabase sending any email.
       const { data, error } = await svc.auth.admin.generateLink({
         type: "invite",
         email,
@@ -102,13 +105,9 @@ export async function inviteTeamMembers(employees: EmployeeInvite[]) {
         },
       });
 
-      if (error) {
-        // If user already exists / already invited, treat as success so we
-        // can still re-send the email.
-        if (!error.message.toLowerCase().includes("already")) {
-          errors.push(`${email}: ${error.message}`);
-          continue;
-        }
+      if (error && !error.message.toLowerCase().includes("already")) {
+        errors.push(`${email}: ${error.message}`);
+        continue;
       }
 
       const inviteLink = data?.properties?.action_link;
@@ -117,14 +116,22 @@ export async function inviteTeamMembers(employees: EmployeeInvite[]) {
         continue;
       }
 
-      await sendViaResend(email, emp.name, inviteLink, resendKey);
+      // Always provide the link in the response so the admin can share it manually.
+      links.push({ email, name: emp.name, link: inviteLink });
       sent++;
+
+      // Best-effort email send via Resend — may fail for non-owner emails on free plan.
+      if (resendKey) {
+        sendViaResend(email, emp.name, inviteLink, resendKey).catch(() => {
+          // silent — link is already in the response
+        });
+      }
     } catch (err) {
       errors.push(`${email}: ${String(err)}`);
     }
   }
 
-  // Record invited emails in onboarding_data so the banner knows they're done.
+  // Record invited emails in onboarding_data.
   try {
     const { data: tenantRow } = await svc.from("tenants").select("onboarding_data").eq("id", tenantId).single();
     const existing = (tenantRow?.onboarding_data as Record<string, unknown>) ?? {};
@@ -132,10 +139,12 @@ export async function inviteTeamMembers(employees: EmployeeInvite[]) {
     await svc.from("tenants").update({
       onboarding_data: {
         ...existing,
-        invited_emails: [...new Set([...alreadyInvited, ...employees.map(e => e.email.toLowerCase())])],
+        invited_emails: [
+          ...new Set([...alreadyInvited, ...employees.map((e) => e.email.toLowerCase())]),
+        ],
       },
     }).eq("id", tenantId);
   } catch { /* non-fatal */ }
 
-  return { ok: true as const, sent, errors };
+  return { ok: true, sent, errors, links };
 }
