@@ -63,13 +63,19 @@ export function reviewAnalysisOutput(o: AiAnalysisOutput, ctx: GroundingContext 
     }
   }
 
-  // 4. CAS grounding — any CAS number mentioned in the output text must be the
-  //    record's own CAS. A different CAS is a hallucination (hard fail).
+  // 4. CAS grounding. A wrong CAS in the SUMMARY (the model's headline about this
+  //    record) is a hallucination (hard fail). A different CAS elsewhere
+  //    (findings/gaps) may legitimately reference a related substance, so it is
+  //    only a warn — avoids false-failing valid multi-substance analyses.
   if (ctx.knownCas) {
-    const text = [o.plain_language_summary, ...o.findings.map((f) => f.description), ...o.gaps].join(" ");
-    for (const cas of text.match(CAS_RE) ?? []) {
-      if (cas !== ctx.knownCas) {
-        issues.push({ check: "cas_hallucination", status: "fail", message: `output cites CAS ${cas}, not the record's CAS ${ctx.knownCas}` });
+    const inSummary = new Set((o.plain_language_summary.match(CAS_RE) ?? []).filter((c) => c !== ctx.knownCas));
+    const elsewhere = new Set(([...o.findings.map((f) => f.description), ...o.gaps].join(" ").match(CAS_RE) ?? []));
+    for (const cas of inSummary) {
+      issues.push({ check: "cas_hallucination", status: "fail", message: `summary cites CAS ${cas}, not the record's CAS ${ctx.knownCas}` });
+    }
+    for (const cas of elsewhere) {
+      if (cas !== ctx.knownCas && !inSummary.has(cas)) {
+        issues.push({ check: "cas_mismatch", status: "warn", message: `output mentions CAS ${cas}, not the record's CAS ${ctx.knownCas} (possibly a related substance)` });
       }
     }
   }

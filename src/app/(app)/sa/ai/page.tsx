@@ -4,6 +4,9 @@ import { DarkPageHeader, DarkCard, DarkCardHeader, Pill } from "@/components/ui/
 import { runGatewayPipeline } from "@/lib/gateway/pipeline";
 import type { CheckStatus } from "@/lib/gateway/pipeline";
 import { PROMPT_VERSION } from "@/lib/env";
+import { getPersistedTelemetry } from "@/lib/ai/telemetry";
+import { summarizeTelemetry } from "@/lib/analytics/ai";
+import { detectAiAnomalies } from "@/lib/analytics/alerts";
 
 const JOB_CONFIGS = [
   { job: "chemical_hazard_analysis",   label: "Chemical Hazard Analysis",  trigger: "Chemical inventory update",    frequency: "On change",  model: "claude-sonnet-4-6", enabled: true  },
@@ -33,6 +36,10 @@ export default async function SAAIPage() {
   const report = await runGatewayPipeline().catch(() => null);
   const overall = report?.overall ?? "warn";
   const tone = STATUS_TONE[overall];
+
+  const telemetry = await getPersistedTelemetry(200).catch(() => []);
+  const tsum = summarizeTelemetry(telemetry);
+  const anomalies = detectAiAnomalies(tsum);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -121,6 +128,58 @@ export default async function SAAIPage() {
               <div className="rounded-lg border border-white/8 bg-slate-900/40 px-4 py-3 text-sm text-slate-400">
                 Gateway health check unavailable — ensure the EHS data layer is connected.
               </div>
+            )}
+          </div>
+        </DarkCard>
+
+        {/* AI Telemetry & Cost/Drift Alerts */}
+        <DarkCard className="mb-5">
+          <DarkCardHeader
+            title="AI Telemetry & Alerts"
+            subtitle="Per-call latency, token cost, and fallback rate — with drift/cost anomaly detection"
+          />
+          <div className="px-4 pb-4">
+            {tsum.calls === 0 ? (
+              <div className="rounded-lg border border-white/8 bg-slate-900/40 px-4 py-3 text-sm text-slate-400">
+                No AI calls recorded in the current window. Telemetry populates as the engine runs in live mode.
+              </div>
+            ) : (
+              <>
+                {anomalies.length > 0 ? (
+                  <div className="mb-3 space-y-2">
+                    {anomalies.map((a) => {
+                      const t = a.severity === "critical" ? STATUS_TONE.fail : STATUS_TONE.warn;
+                      return (
+                        <div key={a.key} className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${t.bg} ${t.border}`}>
+                          {t.icon}
+                          <span className={`text-xs font-semibold ${t.text}`}>{a.severity.toUpperCase()}</span>
+                          <span className="text-xs text-slate-300">{a.message}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="mb-3 flex items-center gap-2 rounded-lg border bg-emerald-900/20 border-emerald-800/50 px-3 py-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                    <span className="text-xs font-semibold text-emerald-300">No cost or drift anomalies detected</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  {[
+                    { label: "AI Calls",      value: String(tsum.calls) },
+                    { label: "Fallback Rate", value: `${Math.round(tsum.fallbackRate * 100)}%`, warn: tsum.fallbackRate >= 0.25 },
+                    { label: "Avg Latency",   value: `${Math.round(tsum.avgMs)}ms`, warn: tsum.avgMs >= 8000 },
+                    { label: "Tokens",        value: `${(tsum.totalInputTokens + tsum.totalOutputTokens).toLocaleString()}` },
+                    { label: "Est. Cost",     value: `$${tsum.estCostUsd.toFixed(2)}`, warn: tsum.estCostUsd >= 5 },
+                  ].map(({ label, value, warn }) => (
+                    <div key={label} className="rounded-lg border border-white/8 bg-slate-900/60 px-2 py-2 text-center">
+                      <div className={`text-lg font-bold ${warn ? "text-amber-400" : "text-white"}`}>{value}</div>
+                      <div className="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </DarkCard>

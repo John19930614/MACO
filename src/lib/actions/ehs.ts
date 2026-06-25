@@ -17,7 +17,7 @@ import { analyzeChemical, analyzeComplianceGap, analyzeTraining, buildPredictabi
 import {
   getChemicals, getLegalRequirements, getTrainingRecords, getTrainingCourses, getCapaActions,
   getIncidents, getAudits, getRiskAssessments, getEquipment, getWasteStreams,
-  getDocuments, getOshaCases, getBiosafetyLabs, getErgonomicsJobTasks, getProfiles,
+  getDocuments, getOshaCases, getBiosafetyLabs, getErgonomicsJobTasks, getProfiles, getAiFindings,
 } from "@/lib/data/ehsRepo";
 
 // ── Session context helper ─────────────────────────────────────────────────────
@@ -1696,18 +1696,25 @@ export async function runPredictabilityScan() {
     .filter((l) => l.status === "non_compliant" || l.status === "major_gap" || l.status === "minor_gap")
     .slice(0, 3);
 
+  // Analysis cache: reuse a prior pending finding when a record's inputs are
+  // unchanged, so this scan only re-calls the model for what actually changed.
+  const priorByKey = new Map<string, AiFinding>();
+  for (const f of await getAiFindings(tenantId)) {
+    if (f.review_status === "pending") priorByKey.set(`${f.source_type}|${f.source_id ?? ""}`, f);
+  }
+
   const findings: AiFinding[] = [];
   for (const c of topChems) {
     if (c.ghs_classes.length === 0 && !c.is_scheduled) continue;
-    try { findings.push(await analyzeChemical(c)); } catch { /* skip */ }
+    try { findings.push(await analyzeChemical(c, priorByKey.get(`chemical|${c.id}`))); } catch { /* skip */ }
   }
   for (const l of worstLegal) {
-    try { findings.push(await analyzeComplianceGap(l)); } catch { /* skip */ }
+    try { findings.push(await analyzeComplianceGap(l, priorByKey.get(`legal_requirement|${l.id}`))); } catch { /* skip */ }
   }
   // Training gap analysis — one tenant-level finding over role-based coverage.
   if (courses.length > 0 && profiles.length > 0) {
     try {
-      findings.push(await analyzeTraining({ tenant_id: tenantId, site_id: siteId, courses, records, profiles, now: now.getTime() }));
+      findings.push(await analyzeTraining({ tenant_id: tenantId, site_id: siteId, courses, records, profiles, now: now.getTime() }, priorByKey.get("training|")));
     } catch { /* skip */ }
   }
 

@@ -22,6 +22,8 @@ import { SYSTEM_PROMPT, buildUserPrompt, ANALYSIS_JSON_SCHEMA as ARC_CAUSALITY_S
 import { aiAnalysisOutputSchema, aiCellAnalysisOutputSchema } from "@/lib/schemas";
 import { reviewAnalysisOutput, type GroundingContext } from "./grounding";
 import { requiresHumanReview } from "./review-policy";
+import { tierForStakes, type ModelTier } from "./model-routing";
+import { inputHash } from "./cache";
 import { nextId } from "@/lib/data/store";
 import type { Chemical, LegalRequirement, AiFinding, AiAnalysisOutput, CausalityOutput, PredictabilityForecast, SafetyCell, TrainingCourse, TrainingRecord, Profile } from "@/lib/types";
 import { riskLevelFromScore100, COMPLIANCE_STATUS_META } from "@/lib/constants";
@@ -204,13 +206,14 @@ export function deriveConfidence(o: AiAnalysisOutput): number {
 
 // ── Live model call ───────────────────────────────────────────────────────────
 
-async function modelAnalysis(systemPrompt: string, userPrompt: string): Promise<{ output: AiAnalysisOutput; model: string }> {
+async function modelAnalysis(systemPrompt: string, userPrompt: string, tier: ModelTier): Promise<{ output: AiAnalysisOutput; model: string }> {
   const { data, model } = await generateStructuredJson({
     system: systemPrompt,
     user: userPrompt,
     schema: ANALYSIS_JSON_SCHEMA,
     maxTokens: 1400,
     timeoutMs: MODEL_TIMEOUT_MS,
+    tier,
   });
 
   // Validate at the trust boundary with the same Zod schema analyzeCell uses —
@@ -229,7 +232,7 @@ async function modelAnalysis(systemPrompt: string, userPrompt: string): Promise<
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /** Analyse a chemical inventory entry for hazards, gaps, and regulatory obligations. */
-export async function analyzeChemical(chem: Chemical): Promise<AiFinding> {
+export async function analyzeChemical(chem: Chemical, prior?: AiFinding): Promise<AiFinding> {
   const systemPrompt = `You are a senior EHS advisor specialising in chemical safety and GHS compliance. Analyse the chemical inventory record provided and return a structured JSON analysis covering hazards, regulatory gaps, storage requirements, and prioritised corrective actions. Be specific — reference the actual GHS H-statements and CAS number. Always recommend SDS review for chemicals with H300-H373 classifications.`;
   const userPrompt = `Chemical inventory record:
 Name: ${chem.name}
@@ -257,11 +260,13 @@ Supplier: ${chem.supplier ?? "not recorded"}`;
     heuristic: () => chemicalHeuristicAnalysis(chem),
     forceReview: chem.is_scheduled || chem.ghs_classes.some((c) => ["H340", "H350", "H360"].includes(c)),
     groundingContext: { knownCas: chem.cas_number },
+    tier: tierForStakes(chem.is_scheduled || chem.ghs_classes.some((c) => ["H340", "H350", "H360"].includes(c))),
+    prior,
   });
 }
 
 /** Detect compliance gaps for a legal requirement and recommend actions. */
-export async function analyzeComplianceGap(req: LegalRequirement): Promise<AiFinding> {
+export async function analyzeComplianceGap(req: LegalRequirement, prior?: AiFinding): Promise<AiFinding> {
   const systemPrompt = `You are a regulatory compliance specialist for EHS management. Analyse the legal requirement record provided and identify compliance gaps, missing evidence, and required actions. Reference the specific regulation code in all recommendations. Prioritise actions by enforcement risk and deadline proximity.`;
   const userPrompt = `Legal requirement:
 Regulation: ${req.regulation_ref}
@@ -286,6 +291,8 @@ Evidence on file: ${req.evidence_url ? "Yes" : "No"}`;
     heuristic: () => complianceGapHeuristicAnalysis(req),
     forceReview: req.status === "non_compliant",
     groundingContext: { knownRegRef: req.regulation_ref },
+    tier: tierForStakes(req.status === "non_compliant" || req.status === "major_gap"),
+    prior,
   });
 }
 
@@ -384,7 +391,7 @@ function trainingGapHeuristic(input: TrainingGapInput): AiAnalysisOutput {
 }
 
 /** Identify overdue / expiring role-based training across the tenant. */
-export async function analyzeTraining(input: TrainingGapInput): Promise<AiFinding> {
+export async function analyzeTraining(input: TrainingGapInput, prior?: AiFinding): Promise<AiFinding> {
   const pre = trainingGapHeuristic(input);
   const systemPrompt = `You are an EHS training-compliance specialist. Given a snapshot of role-based training requirements, completion records, and certification expiries, identify the most material training gaps, the regulatory exposure they create, and prioritised actions to close them. Be specific about counts and cite the referenced regulation where one is given.`;
   const userPrompt = `Training compliance snapshot:
@@ -406,6 +413,8 @@ Regulatory references cited by affected courses: ${pre.regulatory_refs.join(", "
     userPrompt,
     heuristic: () => pre,
     forceReview: false,
+    tier: "triage", // training analysis is largely deterministic; the model only narrates
+    prior,
   });
 }
 
@@ -464,16 +473,31 @@ interface RunParams {
   heuristic: () => AiAnalysisOutput;
   forceReview: boolean;
   groundingContext?: GroundingContext;
+  tier?: ModelTier;
+  /** A prior finding for the same source — reused if the inputs are unchanged. */
+  prior?: AiFinding;
 }
 
 async function runAnalysis(p: RunParams): Promise<AiFinding> {
+  const hash = inputHash([p.systemPrompt, p.userPrompt, p.tier ?? "deep", PROMPT_VERSION]);
+
+  // Cache: an unchanged record (same inputs → same hash) reuses its prior pending
+  // finding instead of re-calling the model.
+  if (
+    p.prior &&
+    p.prior.review_status === "pending" &&
+    (p.prior.output as Partial<AiAnalysisOutput> | undefined)?.input_hash === hash
+  ) {
+    return p.prior;
+  }
+
   let output: AiAnalysisOutput;
   let model: string;
   let confidence: number;
 
   if (!MOCK_MODE && hasLiveAi()) {
     try {
-      const r = await modelAnalysis(p.systemPrompt, p.userPrompt);
+      const r = await modelAnalysis(p.systemPrompt, p.userPrompt, p.tier ?? "deep");
       output = r.output;
       model  = r.model;
       confidence = deriveConfidence(output);
@@ -494,6 +518,7 @@ async function runAnalysis(p: RunParams): Promise<AiFinding> {
   // before it is trusted. The full review is attached for the reviewer.
   const review = reviewAnalysisOutput(output, p.groundingContext ?? {});
   output.gateway = review;
+  output.input_hash = hash;
 
   // Calibrated review decision: escalate on a gateway fail, high stakes, or low
   // confidence on a consequential finding — not the model's flag alone.
@@ -635,6 +660,7 @@ export async function analyzeCell(cell: SafetyCell, candidates: SafetyCell[]): P
         schema: ARC_CAUSALITY_SCHEMA,
         maxTokens: 1400,
         timeoutMs: MODEL_TIMEOUT_MS,
+        tier: tierForStakes(cell.severity === "high" || cell.severity === "critical"),
       });
 
       const parsed = aiCellAnalysisOutputSchema.safeParse(data);

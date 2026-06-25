@@ -8,12 +8,13 @@ import {
   getEquipment,
   getRiskAssessments,
 } from "@/lib/data/ehsRepo";
-import { getServerTenantId } from "@/lib/auth/session";
-import { MOCK_TENANT_ID } from "@/lib/data/mock";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import { EhsGatewayDashboard } from "./EhsGatewayDashboard";
 
 export default async function EhsGatewayPage() {
-  const tenantId = (await getServerTenantId()) ?? MOCK_TENANT_ID;
+  // Canonical tenant resolution — real tenant in live, NIL_UUID (safe empty) when
+  // unresolved, never the demo tenant. Matches the gateway pipeline.
+  const tenantId = await getEffectiveTenantId();
 
   const [
     incidents, capas, chemicals, audits, findings,

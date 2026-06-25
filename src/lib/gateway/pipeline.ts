@@ -19,6 +19,8 @@ import {
   getChemicals, getWasteStreams, getEquipment, getAiFindings,
 } from "@/lib/data/ehsRepo";
 import { getCells } from "@/lib/data/repo";
+import { getEffectiveTenantId } from "@/lib/auth/session";
+import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { countNearDuplicates } from "@/lib/text/similarity";
 import {
   SEVERITIES, CAPA_STATUSES, AUDIT_STATUSES, INCIDENT_TYPES,
@@ -324,25 +326,31 @@ export function evaluateGateways(d: EhsDataset, now: number): GatewayReport {
   };
 }
 
-export async function loadEhsDataset(): Promise<Omit<EhsDataset, "cells">> {
+export async function loadEhsDataset(tenantId: string = MOCK_TENANT_ID): Promise<Omit<EhsDataset, "cells">> {
   const [incidents, capas, risks, audits, chemicals, wasteStreams, equipment] = await Promise.all([
-    getIncidents(),
-    getCapaActions(),
-    getRiskAssessments(),
-    getAudits(),
-    getChemicals(),
-    getWasteStreams(),
-    getEquipment(),
+    getIncidents(tenantId),
+    getCapaActions(tenantId),
+    getRiskAssessments(tenantId),
+    getAudits(tenantId),
+    getChemicals(tenantId),
+    getWasteStreams(tenantId),
+    getEquipment(tenantId),
   ]);
   return { incidents, capas, risks, audits, chemicals, wasteStreams, equipment };
 }
 
-export async function loadGatewayDataset(): Promise<EhsDataset> {
-  const [ehs, cells, aiFindings] = await Promise.all([loadEhsDataset(), getCells(), getAiFindings()]);
+export async function loadGatewayDataset(tenantId: string = MOCK_TENANT_ID): Promise<EhsDataset> {
+  // getCells is tenant-scoped by RLS (live) / session (mock); the EHS getters and
+  // getAiFindings take an explicit tenant.
+  const [ehs, cells, aiFindings] = await Promise.all([loadEhsDataset(tenantId), getCells(), getAiFindings(tenantId)]);
   return { ...ehs, cells, aiFindings };
 }
 
 export async function runGatewayPipeline(): Promise<GatewayReport> {
-  const dataset = await loadGatewayDataset();
+  // Resolve the active tenant so the gateway validates the signed-in company's
+  // live data, not the demo tenant the getters default to. Falls back to the
+  // demo tenant only outside a request context (tests/scripts have no cookies).
+  const tenantId = await getEffectiveTenantId().catch(() => MOCK_TENANT_ID);
+  const dataset = await loadGatewayDataset(tenantId);
   return evaluateGateways(dataset, Date.now());
 }

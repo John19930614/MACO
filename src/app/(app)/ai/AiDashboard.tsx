@@ -12,7 +12,7 @@ import type {
 import { Pill } from "@/components/ui/primitives";
 import { RiskLevelBadge, ReviewStatusBadge } from "@/components/ui/badges";
 import type { RiskLevel } from "@/lib/constants";
-import type { AiAnalysisOutput } from "@/lib/types";
+import type { AiAnalysisOutput, AiGatewayReview } from "@/lib/types";
 import { RunScanButton } from "./RunScanButton";
 import { useDemoUser } from "@/lib/context/demo-user";
 
@@ -79,6 +79,26 @@ function chemRisk(c: Chemical): number {
 }
 
 function uid() { return Math.random().toString(36).slice(2, 9); }
+
+// Grounding-gateway review badge — surfaces the AI-output validation that runs
+// on every finding before it is trusted. Hover for the specific issues.
+const GATEWAY_TONE: Record<AiGatewayReview["status"], string> = {
+  pass: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  warn: "bg-amber-50 text-amber-700 border-amber-200",
+  fail: "bg-red-50 text-red-700 border-red-200",
+};
+function GatewayReviewBadge({ review }: { review?: AiGatewayReview }) {
+  if (!review) return <span className="text-xs text-slate-300">—</span>;
+  const n = review.issues.length;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${GATEWAY_TONE[review.status]}`}
+      title={n ? review.issues.map((i) => `[${i.status}] ${i.message}`).join("\n") : "No grounding issues"}
+    >
+      {review.status.toUpperCase()}{n > 0 ? ` · ${n}` : ""}
+    </span>
+  );
+}
 
 // ── Live EHS data → compact context string for the LLM ─────────────────────────
 // Mirrors what buildAiResponse has access to: counts + the key facts the model
@@ -830,6 +850,7 @@ function FindingsPanel({ findings, runs, latestRun }: {
                 <th className="px-4 py-2.5 text-left">Job</th>
                 <th className="px-4 py-2.5 text-left">Risk</th>
                 <th className="px-4 py-2.5 text-left">Score</th>
+                <th className="px-4 py-2.5 text-left">Gateway</th>
                 <th className="px-4 py-2.5 text-left">Date</th>
                 <th className="px-4 py-2.5 text-left">Review</th>
               </tr>
@@ -854,6 +875,7 @@ function FindingsPanel({ findings, runs, latestRun }: {
                     <td className="px-4 py-3 text-xs tabular-nums text-slate-600">
                       {output?.risk_score != null ? `${output.risk_score}/100` : "—"}
                     </td>
+                    <td className="px-4 py-3"><GatewayReviewBadge review={output?.gateway} /></td>
                     <td className="px-4 py-3 text-xs tabular-nums text-slate-600">{fmt(f.created_at)}</td>
                     <td className="px-4 py-3"><ReviewStatusBadge status={f.review_status} /></td>
                   </tr>
@@ -861,7 +883,7 @@ function FindingsPanel({ findings, runs, latestRun }: {
               })}
               {findings.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-sm text-slate-400">
+                  <td colSpan={7} className="px-5 py-8 text-center text-sm text-slate-400">
                     No AI findings. Run the P-Engine scan to generate findings.
                   </td>
                 </tr>

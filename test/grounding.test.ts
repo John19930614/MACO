@@ -64,6 +64,19 @@ describe("reviewAnalysisOutput", () => {
     expect(r.issues.some((i) => i.check === "cas_hallucination")).toBe(false);
   });
 
+  it("only warns (not fails) on a different CAS that appears outside the summary", () => {
+    const r = reviewAnalysisOutput(
+      base({
+        plain_language_summary: "Acetone (CAS 67-64-1) handling review.",
+        findings: [{ category: "hazard", description: "Incompatible with bleach (CAS 7681-52-9).", severity: "medium" }],
+      }),
+      { knownCas: "67-64-1" },
+    );
+    expect(r.issues.some((i) => i.check === "cas_hallucination")).toBe(false);
+    expect(r.issues.some((i) => i.check === "cas_mismatch" && i.status === "warn")).toBe(true);
+    expect(r.status).toBe("warn");
+  });
+
   it("warns when a high-risk output recommends no action", () => {
     const r = reviewAnalysisOutput(base({ risk_score: 70, risk_level: "high", recommended_actions: [] }));
     expect(r.issues.some((i) => i.check === "missing_actions")).toBe(true);

@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { extractCellDraft } from "@/lib/ai/extract";
-import { analyzeCell } from "@/lib/ai/engine";
+import { analyzeCell, analyzeChemical, analyzeComplianceGap } from "@/lib/ai/engine";
 import { PROMPT_VERSION } from "@/lib/env";
-import type { SafetyCell } from "@/lib/types";
+import { riskLevelFromScore100 } from "@/lib/constants";
+import { MOCK_CHEMICALS, MOCK_LEGAL_REQUIREMENTS } from "@/lib/data/mock";
+import type { SafetyCell, AiAnalysisOutput } from "@/lib/types";
 
 /**
  * Regression eval for the DETERMINISTIC engine — the heuristic that backs both
@@ -97,5 +99,23 @@ describe("AI regression eval (deterministic engine + extractor)", () => {
     expect(out.suggested_edges.some((e) => e.target_cell_id === "eval_other" && e.type === "same_location")).toBe(true);
     // governance: a high-severity cell is always flagged for human review
     expect(f.human_review_required).toBe(true);
+  });
+
+  it("every chemical & compliance analysis meets the engine output-quality floor", async () => {
+    const findings = await Promise.all([
+      ...MOCK_CHEMICALS.map((c) => analyzeChemical(c)),
+      ...MOCK_LEGAL_REQUIREMENTS.map((r) => analyzeComplianceGap(r)),
+    ]);
+    for (const f of findings) {
+      const out = f.output as AiAnalysisOutput;
+      // score in range, level consistent with the score band (no self-contradiction)
+      expect(out.risk_score).toBeGreaterThanOrEqual(0);
+      expect(out.risk_score).toBeLessThanOrEqual(100);
+      expect(out.risk_level).toBe(riskLevelFromScore100(out.risk_score));
+      // the deterministic engine grounds in the record — it must never self-fail the gateway
+      expect(out.gateway?.status).not.toBe("fail");
+      // every analysis is cache-stamped for reuse
+      expect(out.input_hash).toMatch(/^[0-9a-f]{16}$/);
+    }
   });
 });

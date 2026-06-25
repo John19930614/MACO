@@ -19,6 +19,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { serverSecrets, aiProvider } from "@/lib/env";
 import { recordAiCall } from "./telemetry";
 import { CircuitBreaker } from "./circuit";
+import { anthropicModelForTier, type ModelTier } from "./model-routing";
 
 /** OpenAI-shaped JSON schema spec; reused for both providers. */
 export interface JsonSchemaSpec {
@@ -33,6 +34,8 @@ export interface StructuredCall {
   schema: JsonSchemaSpec;
   maxTokens: number;
   timeoutMs?: number;
+  /** Model tier — "triage" routes to a cheaper model, "deep" to the strong one. */
+  tier?: ModelTier;
 }
 
 export interface StructuredResult {
@@ -112,9 +115,11 @@ async function viaOpenAI(call: StructuredCall): Promise<StructuredResult> {
 
 async function viaAnthropic(call: StructuredCall): Promise<StructuredResult> {
   const { anthropicKey, anthropicModel } = serverSecrets();
+  // Tier routing: "triage" → cheaper model, "deep"/unset → configured model.
+  const model = call.tier ? anthropicModelForTier(call.tier, anthropicModel) : anthropicModel;
   const client = new Anthropic({ apiKey: anthropicKey, timeout: call.timeoutMs ?? DEFAULT_TIMEOUT_MS, maxRetries: 2 });
   const resp = await client.messages.create({
-    model: anthropicModel,
+    model,
     max_tokens: call.maxTokens,
     // Prompt caching: a single cache_control breakpoint on the system block
     // caches the static request prefix (tools schema + system prompt), which is
@@ -141,7 +146,7 @@ async function viaAnthropic(call: StructuredCall): Promise<StructuredResult> {
   if (!block || block.type !== "tool_use") throw new Error("no tool_use block in response");
   return {
     data: block.input,
-    model: anthropicModel,
+    model,
     usage: { inputTokens: resp.usage.input_tokens, outputTokens: resp.usage.output_tokens },
   };
 }
