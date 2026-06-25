@@ -79,7 +79,6 @@ export async function embedAndStoreCells(cells: SafetyCell[]): Promise<{ embedde
 
   const stale = desired.filter((d) => priorContent.get(d.cell.id) !== d.content);
   if (stale.length === 0) {
-    console.info("[amaya] embeddings.skip_all", { count: cells.length });
     return { embedded: 0, skipped: cells.length };
   }
 
@@ -93,7 +92,6 @@ export async function embedAndStoreCells(cells: SafetyCell[]): Promise<{ embedde
     updated_at: now,
   }));
   await db.from("cell_embeddings").upsert(rows);
-  console.info("[amaya] embeddings.store", { embedded: stale.length, skipped: cells.length - stale.length });
   return { embedded: stale.length, skipped: cells.length - stale.length };
 }
 
@@ -138,7 +136,6 @@ export async function embedAndStoreEvents(events: EventCell[]): Promise<{ embedd
     updated_at: now,
   }));
   await db.from("event_embeddings").upsert(rows);
-  console.info("[amaya] event-embeddings.store", { embedded: stale.length, skipped: events.length - stale.length });
   return { embedded: stale.length, skipped: events.length - stale.length };
 }
 

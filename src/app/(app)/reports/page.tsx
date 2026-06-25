@@ -9,9 +9,9 @@ import {
   getLegalRequirements, getDocuments, getBiosafetyLabs, getEquipment,
   getWasteStreams, getAuditFindings, getChemicals, getProfiles,
   getOshaCases, getRiskAssessments, getComplianceScores, getTenantName,
+  getSavedReports,
 } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
-import { MOCK_MODE } from "@/lib/env";
 
 function scoreColor(s: number) {
   if (s >= 85) return "text-emerald-600";
@@ -75,7 +75,7 @@ export default async function ReportsPage({
   const { view } = await searchParams;
   const tab = view ?? "executive";
 
-  const [capas, incidents, trainingRecs, courses, legal, docs, labs, equipment, waste, auditFindings, chemicals, profiles, oshaCases, riskItems, complianceScores] =
+  const [capas, incidents, trainingRecs, courses, legal, docs, labs, equipment, waste, auditFindings, chemicals, profiles, oshaCases, riskItems, complianceScores, savedReports] =
     await Promise.all([
       getCapaActions(tenantId),
       getIncidents(tenantId),
@@ -92,30 +92,11 @@ export default async function ReportsPage({
       getOshaCases(tenantId),
       getRiskAssessments(tenantId),
       getComplianceScores(tenantId),
+      getSavedReports(tenantId),
     ]);
 
   const courseMap  = Object.fromEntries(courses.map((c) => [c.id, c.title]));
   const profileMap = Object.fromEntries(profiles.map((p) => [p.id, p.display_name]));
-
-  function latestDate(dates: (string | null | undefined)[]): string {
-    const valid = dates.filter(Boolean) as string[];
-    if (!valid.length) return new Date().toISOString().slice(0, 10);
-    return valid.sort((a, b) => b.localeCompare(a))[0].slice(0, 10);
-  }
-  const today = new Date().toISOString().slice(0, 10);
-  const lastIncidentDate  = latestDate(incidents.map((i) => i.occurred_at));
-  const lastCapaDate      = latestDate(capas.map((c) => c.created_at));
-  const lastTrainingDate  = latestDate(trainingRecs.map((r) => r.created_at));
-  const lastChemicalDate  = latestDate(chemicals.map((c) => c.updated_at));
-
-  // No saved-reports backend yet — empty in live mode (the panel shows an empty state).
-  const SAVED_REPORTS = MOCK_MODE ? [
-    { name: "Q2 2026 EHS Compliance Summary",    type: "Compliance", generated: today,           pages: 12 },
-    { name: "Chemical Inventory Audit Report",    type: "Chemical",   generated: lastChemicalDate, pages: 8  },
-    { name: "CAPA Aging Analysis — June",         type: "CAPA",       generated: lastCapaDate,     pages: 5  },
-    { name: "Training Completion Rate — H1 2026", type: "Training",   generated: lastTrainingDate, pages: 6  },
-    { name: "Incident Root Cause Analysis Q2",    type: "Incidents",  generated: lastIncidentDate, pages: 9  },
-  ] : [];
 
   const scoreByModule = Object.fromEntries(complianceScores.map((s) => [s.module, s.percentage]));
   function liveScore(key: string, fallback: number) { return scoreByModule[key] ?? fallback; }
@@ -126,7 +107,10 @@ export default async function ReportsPage({
   const incidentsYtd = incidents.filter((i) => new Date(i.occurred_at).getFullYear() === 2026).length;
   const passedRecs   = trainingRecs.filter((r) => r.passed).length;
   const totalCourses = courses.length;
-  const trainingPct  = trainingRecs.length > 0 ? Math.round((passedRecs / trainingRecs.length) * 100) : 0;
+  const rawTrainingPct = trainingRecs.length > 0 ? Math.round((passedRecs / trainingRecs.length) * 100) : 0;
+  // Use the P-Engine compliance score when available (it accounts for employees with no records).
+  // Fall back to the raw pass rate if no scan has been run yet — both will then agree.
+  const trainingPct = liveScore("training", rawTrainingPct);
 
   // Scores come from the latest P-Engine scan (compliance_scores). No live score → 0
   // (run a scan to populate). No real month-over-month source, so no trend/delta.
@@ -980,12 +964,13 @@ export default async function ReportsPage({
                 <Card>
                   <CardHeader title="Recent Reports" subtitle="Previously generated reports" />
                   <SavedReportsPanel
-                    reports={SAVED_REPORTS}
+                    reports={savedReports}
                     capas={capas}
                     incidents={incidents}
                     oshaCases={oshaCases}
                     trainingRecs={trainingRecs}
                     chemicals={chemicals}
+                    legal={legal}
                     moduleScores={MODULE_SCORES}
                     courseMap={courseMap}
                     profileMap={profileMap}

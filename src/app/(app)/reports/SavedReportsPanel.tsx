@@ -1,10 +1,12 @@
 "use client";
 
-import { FileText, Download } from "lucide-react";
+import { FileText, Download, Trash2 } from "lucide-react";
+import { useTransition } from "react";
 import { useDemoUser } from "@/lib/context/demo-user";
 import { Pill } from "@/components/ui/primitives";
 import { oshaRate } from "@/lib/osha";
-import type { CapaAction, Incident, OshaCase, TrainingRecord, Chemical } from "@/lib/types";
+import { deleteReport } from "@/lib/actions/ehs";
+import type { SavedReport, CapaAction, Incident, OshaCase, TrainingRecord, Chemical, LegalRequirement } from "@/lib/types";
 
 interface ModuleScore {
   module: string;
@@ -16,12 +18,13 @@ interface ModuleScore {
 }
 
 interface Props {
-  reports: Array<{ name: string; type: string; generated: string; pages: number }>;
+  reports: SavedReport[];
   capas: CapaAction[];
   incidents: Incident[];
   oshaCases: OshaCase[];
   trainingRecs: TrainingRecord[];
   chemicals: Chemical[];
+  legal: LegalRequirement[];
   moduleScores: ModuleScore[];
   courseMap: Record<string, string>;
   profileMap: Record<string, string>;
@@ -135,11 +138,7 @@ function exportChemicalInventory(chemicals: Chemical[], companyName: string) {
       "GHS Hazard Statements", "OSHA Scheduled?", "SDS On File", "SDS Expiry", "Status",
     ],
     rows: chemicals.map((c) => [
-      c.name,
-      c.cas_number ?? "—",
-      c.quantity ?? "",
-      c.unit ?? "",
-      c.storage_location,
+      c.name, c.cas_number ?? "—", c.quantity ?? "", c.unit ?? "", c.storage_location,
       c.hazard_statements.slice(0, 4).join("; "),
       c.is_scheduled ? `Yes — ${c.schedule_ref ?? "Controlled Substance"}` : "No",
       c.sds_url ? "On file" : "Missing — Action Required",
@@ -151,7 +150,6 @@ function exportChemicalInventory(chemicals: Chemical[], companyName: string) {
       ["Active Chemicals", active],
       ["OSHA Scheduled Substances", scheduled],
       ["Missing SDS — Action Required", missingSds],
-      ["OSHA 29 CFR 1910.1200 — HazCom requires current SDS for all hazardous chemicals, accessible to employees during work shifts.", ""],
     ],
     companyName,
   });
@@ -172,12 +170,8 @@ function exportCapaStatus(capas: CapaAction[], companyName: string) {
     rows: capas.map((c) => {
       const daysOpen = Math.floor((now.getTime() - new Date(c.created_at).getTime()) / 86400000);
       return [
-        c.title,
-        humanize(c.status),
-        c.kind === "corrective" ? "Corrective" : "Preventive",
-        humanize(c.severity),
-        humanize(c.source_type ?? "manual"),
-        c.owner_id ?? "Unassigned",
+        c.title, humanize(c.status), c.kind === "corrective" ? "Corrective" : "Preventive",
+        humanize(c.severity), humanize(c.source_type ?? "manual"), c.owner_id ?? "Unassigned",
         c.due_date ? fmtDate(c.due_date) : "No deadline",
         c.status === "closed" ? "Closed" : `${daysOpen} days`,
         fmtDate(c.created_at),
@@ -228,14 +222,10 @@ function exportTrainingReport(
         if (daysLeft <= 30) certStatus = `Expiring in ${Math.ceil(daysLeft)} days`;
       }
       return [
-        profileMap[r.profile_id] ?? r.profile_id,
-        courseMap[r.course_id] ?? r.course_id,
-        fmtDate(r.completed_date),
-        r.expiry_date ? fmtDate(r.expiry_date) : "No expiry",
-        certStatus,
-        r.score != null ? `${r.score}%` : "N/A",
-        humanize(r.delivery_method),
-        r.passed ? "Passed" : "Failed",
+        profileMap[r.profile_id] ?? r.profile_id, courseMap[r.course_id] ?? r.course_id,
+        fmtDate(r.completed_date), r.expiry_date ? fmtDate(r.expiry_date) : "No expiry",
+        certStatus, r.score != null ? `${r.score}%` : "N/A",
+        humanize(r.delivery_method), r.passed ? "Passed" : "Failed",
       ];
     }),
     summary: [
@@ -267,16 +257,11 @@ function exportIncidentAnalysis(incidents: Incident[], oshaCases: OshaCase[], co
       "Location", "Regulatory Reportable", "Medical Treatment", "Lost Time (Days)", "Description",
     ],
     rows: ytd.map((i) => [
-      i.title,
-      fmtDate(i.occurred_at),
-      humanize(i.severity ?? ""),
-      humanize(i.incident_type ?? ""),
-      humanize(i.status),
-      i.location ?? "—",
+      i.title, fmtDate(i.occurred_at), humanize(i.severity ?? ""),
+      humanize(i.incident_type ?? ""), humanize(i.status), i.location ?? "—",
       i.regulatory_reportable ? "Yes — Report Required" : "No",
       i.medical_treatment_required ? "Yes" : "No",
-      i.lost_time_days ?? 0,
-      i.description ?? "—",
+      i.lost_time_days ?? 0, i.description ?? "—",
     ]),
     summary: [
       ["Incidents YTD", ytd.length],
@@ -285,11 +270,44 @@ function exportIncidentAnalysis(incidents: Incident[], oshaCases: OshaCase[], co
       ["Lost-Time Events", lostTime.length],
       ["Total Lost Days", totalLostDays],
       ["TRIR (per 100 FTE)", oshaRate(oshaCases.length)],
-      ["Incident Rate (all incidents, per 100 FTE)", oshaRate(ytd.length)],
     ],
     companyName,
   });
   downloadCSV(`${companyName.split(" ")[0]}-Incident-Analysis-${isoDate}.csv`, csv);
+}
+
+function exportRegulatoryGap(legal: LegalRequirement[], companyName: string) {
+  const isoDate = new Date().toISOString().slice(0, 10);
+  const gaps = legal.filter((l) => l.status !== "compliant" && l.status !== "not_applicable");
+  const majorGaps = gaps.filter((l) => l.status === "major_gap" || l.status === "non_compliant");
+  const upcoming = legal.filter((l) => {
+    const days = (new Date(l.next_review_date).getTime() - new Date().getTime()) / 86400000;
+    return days >= 0 && days <= 90;
+  });
+
+  const csv = buildReport({
+    title: "Regulatory Gap Analysis",
+    description: "Legal and regulatory compliance obligations — gap status and review schedule",
+    headers: ["Regulation Reference", "Title", "Category", "Jurisdiction", "Compliance Status", "Owner", "Next Review Date", "Gap Severity"],
+    rows: legal.map((l) => {
+      const daysToReview = Math.ceil((new Date(l.next_review_date).getTime() - new Date().getTime()) / 86400000);
+      return [
+        l.regulation_ref, l.title, humanize(l.category), l.jurisdiction,
+        humanize(l.status), l.owner_id ?? "Unassigned",
+        fmtDate(l.next_review_date),
+        l.status === "non_compliant" ? "CRITICAL" : l.status === "major_gap" ? "HIGH" : l.status === "minor_gap" ? "MEDIUM" : "—",
+      ];
+    }),
+    summary: [
+      ["Total Obligations Tracked", legal.length],
+      ["Fully Compliant", legal.filter((l) => l.status === "compliant").length],
+      ["Minor Gaps", gaps.filter((l) => l.status === "minor_gap").length],
+      ["Major Gaps / Non-Compliant", majorGaps.length],
+      ["Reviews Due in Next 90 Days", upcoming.length],
+    ],
+    companyName,
+  });
+  downloadCSV(`${companyName.split(" ")[0]}-Regulatory-Gap-${isoDate}.csv`, csv);
 }
 
 // ── Badge colors ──────────────────────────────────────────────────────────────
@@ -300,47 +318,110 @@ const TYPE_COLOR: Record<string, string> = {
   CAPA:       "bg-orange-100 text-orange-700",
   Training:   "bg-green-100 text-green-700",
   Incidents:  "bg-red-100 text-red-700",
+  Regulatory: "bg-purple-100 text-purple-700",
 };
+
+// ── Single row with delete ────────────────────────────────────────────────────
+
+function ReportRow({
+  report, capas, incidents, oshaCases, trainingRecs, chemicals, legal, moduleScores, courseMap, profileMap, companyName,
+}: {
+  report: SavedReport;
+  capas: CapaAction[]; incidents: Incident[]; oshaCases: OshaCase[];
+  trainingRecs: TrainingRecord[]; chemicals: Chemical[]; legal: LegalRequirement[];
+  moduleScores: ModuleScore[]; courseMap: Record<string, string>; profileMap: Record<string, string>;
+  companyName: string;
+}) {
+  const [isPending, startTransition] = useTransition();
+
+  function handleDownload() {
+    switch (report.report_type) {
+      case "Compliance":  exportComplianceSummary(moduleScores, companyName); break;
+      case "Chemical":    exportChemicalInventory(chemicals, companyName); break;
+      case "CAPA":        exportCapaStatus(capas, companyName); break;
+      case "Training":    exportTrainingReport(trainingRecs, courseMap, profileMap, companyName); break;
+      case "Incidents":   exportIncidentAnalysis(incidents, oshaCases, companyName); break;
+      case "Regulatory":  exportRegulatoryGap(legal, companyName); break;
+    }
+  }
+
+  function handleDelete() {
+    startTransition(async () => {
+      await deleteReport(report.id);
+    });
+  }
+
+  const rows = typeof report.metadata.rows === "number" ? report.metadata.rows : null;
+
+  return (
+    <div className={`flex items-start gap-2.5 px-3 py-2.5 hover:bg-slate-50/60 transition-opacity ${isPending ? "opacity-40 pointer-events-none" : ""}`}>
+      <FileText className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
+      <div className="min-w-0 flex-1">
+        <div className="text-[11.5px] font-medium text-slate-800 leading-snug">{report.name}</div>
+        <div className="mt-0.5 flex items-center gap-1.5">
+          <Pill className={TYPE_COLOR[report.report_type] ?? "bg-slate-100 text-slate-600"} style={{ fontSize: "9.5px" }}>
+            {report.report_type}
+          </Pill>
+          <span className="text-[10px] text-slate-400">
+            {fmtDate(report.generated_at)}{rows != null ? ` · ${rows} rows` : ""}
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={handleDownload}
+          title="Re-download as CSV"
+          className="shrink-0 text-slate-300 transition-colors hover:text-blue-500"
+        >
+          <Download className="h-3.5 w-3.5" />
+        </button>
+        <button
+          onClick={handleDelete}
+          title="Remove from saved reports"
+          className="shrink-0 text-slate-200 transition-colors hover:text-red-400"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function SavedReportsPanel({
-  reports, capas, incidents, oshaCases, trainingRecs, chemicals, moduleScores, courseMap, profileMap,
+  reports, capas, incidents, oshaCases, trainingRecs, chemicals, legal, moduleScores, courseMap, profileMap,
 }: Props) {
   const { user } = useDemoUser();
-  function handleDownload(type: string) {
-    const co = user.company;
-    switch (type) {
-      case "Compliance": exportComplianceSummary(moduleScores, co); break;
-      case "Chemical":   exportChemicalInventory(chemicals, co); break;
-      case "CAPA":       exportCapaStatus(capas, co); break;
-      case "Training":   exportTrainingReport(trainingRecs, courseMap, profileMap, co); break;
-      case "Incidents":  exportIncidentAnalysis(incidents, oshaCases, co); break;
-    }
+  const co = user.company;
+
+  if (reports.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
+        <FileText className="h-8 w-8 text-slate-200 mb-2" />
+        <div className="text-xs font-medium text-slate-500">No saved reports yet</div>
+        <div className="mt-1 text-[10.5px] text-slate-400">Click a Quick Report to download and save it here</div>
+      </div>
+    );
   }
 
   return (
     <div className="divide-y divide-slate-50">
       {reports.map((r) => (
-        <div key={r.name} className="flex items-start gap-2.5 px-3 py-2.5 hover:bg-slate-50/60">
-          <FileText className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
-          <div className="min-w-0 flex-1">
-            <div className="text-[11.5px] font-medium text-slate-800 leading-snug">{r.name}</div>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <Pill className={TYPE_COLOR[r.type] ?? "bg-slate-100 text-slate-600"} style={{ fontSize: "9.5px" }}>
-                {r.type}
-              </Pill>
-              <span className="text-[10px] text-slate-400">{r.generated} · {r.pages}p</span>
-            </div>
-          </div>
-          <button
-            onClick={() => handleDownload(r.type)}
-            title={`Download ${r.type} report as CSV`}
-            className="shrink-0 text-slate-300 transition-colors hover:text-blue-500"
-          >
-            <Download className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <ReportRow
+          key={r.id}
+          report={r}
+          capas={capas}
+          incidents={incidents}
+          oshaCases={oshaCases}
+          trainingRecs={trainingRecs}
+          chemicals={chemicals}
+          legal={legal}
+          moduleScores={moduleScores}
+          courseMap={courseMap}
+          profileMap={profileMap}
+          companyName={co}
+        />
       ))}
     </div>
   );

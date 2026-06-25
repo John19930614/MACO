@@ -163,13 +163,13 @@ function OverviewTab(props: PlatformAnalysisDashboardProps) {
           <div className="font-mono text-[11px] text-slate-400 mt-1">Tenant compliance</div>
         </DCard>
 
-        {/* GUS insight */}
+        {/* AI insight */}
         <DCard className="col-span-1 lg:col-span-2 p-4">
           <div className="flex items-center gap-2 mb-3">
             <div className="flex h-6 w-6 items-center justify-center rounded border border-cyan-500/40 bg-cyan-500/10">
               <Brain className="h-3.5 w-3.5 text-cyan-400" />
             </div>
-            <span className="font-mono text-[11px] font-bold tracking-widest text-cyan-400 uppercase">GUS Analysis</span>
+            <span className="font-mono text-[11px] font-bold tracking-widest text-cyan-400 uppercase">AI Analysis</span>
             <span className="ml-auto font-mono text-[11px] text-slate-400">v2.6 · auto-generated</span>
           </div>
           <p className="text-sm text-slate-300 leading-relaxed">{gusInsight}</p>
@@ -672,7 +672,7 @@ export function PlatformAnalysisDashboard(props: PlatformAnalysisDashboardProps)
           </div>
           <div>
             <h1 className="font-mono text-sm font-bold tracking-wide text-white">
-              GUS — Platform Analysis
+              SafetyIQ Platform Analysis
             </h1>
             <p className="font-mono text-[11px] text-slate-400 tracking-wider uppercase">
               Reliance Internal · Cross-tenant intelligence · {new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})}

@@ -563,6 +563,7 @@ export function EditCapaForm({ capa, profiles }: { capa: CapaAction; profiles: P
   const [rootCause, setRootCause]     = useState(capa.root_cause ?? "");
   const [status, setStatus]           = useState(capa.status);
   const [closureNote, setClosureNote] = useState(capa.closure_note ?? "");
+  const [closureError, setClosureError] = useState(false);
   const [closedWithEvidence, setClosedWithEvidence] = useState(capa.closed_with_evidence);
   const [evidenceRef, setEvidenceRef] = useState("");
   const router = useRouter();
@@ -774,15 +775,20 @@ export function EditCapaForm({ capa, profiles }: { capa: CapaAction; profiles: P
             </label>
             <textarea
               value={closureNote}
-              onChange={(e) => setClosureNote(e.target.value)}
+              onChange={(e) => { setClosureNote(e.target.value); if (e.target.value.trim()) setClosureError(false); }}
               rows={3}
               placeholder="Describe what was done to resolve the issue, what evidence was gathered, and confirmation of effectiveness…"
               className={`w-full rounded-lg border px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 resize-none ${
-                isClosed
+                closureError
+                  ? "border-red-400 focus:border-red-400 focus:ring-red-100 bg-white"
+                  : isClosed
                   ? "border-emerald-200 bg-white focus:border-emerald-400 focus:ring-emerald-100"
                   : "border-violet-200 bg-white focus:border-violet-400 focus:ring-violet-100"
               }`}
             />
+            {closureError && (
+              <p className="text-red-500 text-sm mt-1">Please add a closure note before closing.</p>
+            )}
           </div>
 
           {/* Evidence reference */}
@@ -824,9 +830,10 @@ export function EditCapaForm({ capa, profiles }: { capa: CapaAction; profiles: P
                   type="button"
                   onClick={() => {
                     if (!closureNote.trim()) {
-                      alert("Please add a closure note before closing.");
+                      setClosureError(true);
                       return;
                     }
+                    setClosureError(false);
                     setClosureNote((prev) => {
                       const base = prev.trim();
                       const stamp = `— Verified by ${user.display_name} · ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;

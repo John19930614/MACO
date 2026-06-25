@@ -177,7 +177,7 @@ export const GUS = {
   title: "Per-vertical AI engine",
   subtitle: `${GUS_VERTICALS.length} verticals`,
   summary:
-    "GUS is the per-vertical engine. Each of the 19 verticals gets a tuned model that understands its own hazards, tasks, regulations, and language.",
+    "The per-vertical AI engine. Each of the 19 verticals gets a tuned model that understands its own hazards, tasks, regulations, and language.",
 } as const;
 
 // ── VELA — master cross-vertical intelligence ──────────────────────────────

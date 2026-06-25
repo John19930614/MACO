@@ -16,14 +16,14 @@
 import { MOCK_MODE } from "@/lib/env";
 import {
   getIncidents, getCapaActions, getRiskAssessments, getAudits,
-  getChemicals, getWasteStreams, getEquipment,
+  getChemicals, getWasteStreams, getEquipment, getAiFindings,
 } from "@/lib/data/ehsRepo";
 import { getCells } from "@/lib/data/repo";
 import {
   SEVERITIES, CAPA_STATUSES, AUDIT_STATUSES, INCIDENT_TYPES,
   EQUIPMENT_STATUSES, RISK_LEVELS, riskLevelFromScore,
 } from "@/lib/constants";
-import type { Incident, CapaAction, RiskAssessment, Audit, Chemical, WasteStream, Equipment, SafetyCell } from "@/lib/types";
+import type { Incident, CapaAction, RiskAssessment, Audit, Chemical, WasteStream, Equipment, SafetyCell, AiFinding } from "@/lib/types";
 
 export type CheckStatus = "pass" | "warn" | "fail";
 
@@ -94,6 +94,7 @@ export interface EhsDataset {
   wasteStreams: WasteStream[];
   equipment: Equipment[];
   cells: SafetyCell[];
+  aiFindings?: AiFinding[];
 }
 
 const worst = (statuses: CheckStatus[]): CheckStatus =>
@@ -111,7 +112,7 @@ const verdict = (
     : { status: sev, detail: badMsg(bad) };
 
 export function evaluateGateways(d: EhsDataset, now: number): GatewayReport {
-  const { incidents, capas, risks, audits, chemicals, wasteStreams, equipment, cells } = d;
+  const { incidents, capas, risks, audits, chemicals, wasteStreams, equipment, cells, aiFindings = [] } = d;
   const reject: RejectEntry[] = [];
   const rejected = new Set<string>();
   const block = (id: string, kind: string, category: string, reason: string, resolvable = false) => {
@@ -252,7 +253,7 @@ export function evaluateGateways(d: EhsDataset, now: number): GatewayReport {
   const openHighInc = incidents.filter((i) => (i.severity === "high" || i.severity === "critical") && i.status !== "closed");
   const incCapaIds = new Set(capas.filter((c) => c.source_type === "incident" && c.source_id).map((c) => c.source_id!));
   const highIncNoCapa = openHighInc.filter((i) => !incCapaIds.has(i.id));
-  const pendingReview = 0; // placeholder — wired to AI findings table in future
+  const pendingReview = aiFindings.filter((f) => f.review_status === "pending").length;
 
   const finalReview: FinalCheck[] = [
     { n: 1,  id: "f_incfields",    label: "Incident Field Check",            ...verdict(incRequiredBad.length, incidents.length, "fail", "all incidents have required fields", (n) => `${n} incident(s) missing required fields`) },
@@ -317,8 +318,8 @@ export async function loadEhsDataset(): Promise<Omit<EhsDataset, "cells">> {
 }
 
 export async function loadGatewayDataset(): Promise<EhsDataset> {
-  const [ehs, cells] = await Promise.all([loadEhsDataset(), getCells()]);
-  return { ...ehs, cells };
+  const [ehs, cells, aiFindings] = await Promise.all([loadEhsDataset(), getCells(), getAiFindings()]);
+  return { ...ehs, cells, aiFindings };
 }
 
 export async function runGatewayPipeline(): Promise<GatewayReport> {

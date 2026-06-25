@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
     // Empty completion → fall back rather than render a blank bubble.
     return NextResponse.json({ reply: reply || null });
   } catch (err) {
-    console.error("[ai/chat] completion failed:", err);
+    if (process.env.NODE_ENV !== "production") { console.error("[ai/chat] completion failed:", err); }
     // Never throw to the user — fall back to the local engine.
     return NextResponse.json({ reply: null });
   }

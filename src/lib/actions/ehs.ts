@@ -5,12 +5,13 @@ import { getStore, nextId } from "@/lib/data/store";
 import { MOCK_TENANT_ID, MOCK_SITE_ID } from "@/lib/data/mock";
 import { createSupabaseServerClient, DEMO_SARAH_ID } from "@/lib/supabase/server";
 import { getServerTenantId, getServerProfileId } from "@/lib/auth/session";
-import { MOCK_MODE, serverSecrets } from "@/lib/env";
+import { MOCK_MODE, serverSecrets, hasLiveAi } from "@/lib/env";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { PROGRAM_DEFS, generateProgram, type SourceBlock } from "@/lib/ai/programBuilder";
 import { KIND_DEFS, extractRows, type RowKind } from "@/lib/ai/extractDocuments";
+import { generateStructuredJson } from "@/lib/ai/provider";
 import type { Severity, IncidentType, CapaStatus, AuditStatus, DocumentStatus } from "@/lib/constants";
-import { COMPLIANCE_STATUS_META, type ComplianceStatus } from "@/lib/constants";
+import { COMPLIANCE_STATUS_META, type ComplianceStatus, WASTE_CLASSIFICATIONS } from "@/lib/constants";
 import type { CapaSourceType, AuditType, Incident, RiskAssessment, WasteStream, Equipment, LegalRequirement, TrainingRecord, OshaCase, AiFinding, Chemical, AiAnalysisOutput, BiosafetyLab, BiohazardAgent, ErgonomicsWorkstation, ErgonomicsJobTask } from "@/lib/types";
 import { analyzeChemical, analyzeComplianceGap, buildPredictabilityForecast } from "@/lib/ai/engine";
 import {
@@ -2398,4 +2399,186 @@ export async function logWasteInspection(_prev: unknown, formData: FormData) {
   }
   revalidatePath("/waste");
   return { ok: true };
+}
+
+
+// ── Waste Profiles (characterization + approval pipeline) ─────────────────────
+
+export interface WasteProfileDraft {
+  name: string;
+  waste_code: string;
+  classification: string;
+  physical_state: string;
+  process_description: string;
+  hazard_summary: string;
+}
+
+// Real LLM-assisted draft of a waste characterization profile. Uses the same
+// provider abstraction as the Predictability Engine. Degrades honestly: returns
+// ok:false with a clear message when no AI key is configured (no fake output).
+export async function draftWasteProfile(input: { description: string }) {
+  if (MOCK_MODE) return { ok: false as const, error: "AI drafting runs in live mode only." };
+  const ctx = await getCtx();
+  if (!ctx) return { ok: false as const, error: "Session expired — please reload." };
+  if (!hasLiveAi()) return { ok: false as const, error: "AI drafting is not configured — no AI API key is set. Fill the form manually." };
+  const description = input.description?.trim();
+  if (!description) return { ok: false as const, error: "Describe the waste stream first." };
+
+  try {
+    const result = await generateStructuredJson({
+      system:
+        "You are an EHS hazardous-waste characterization assistant. Given a plain-language description of a waste stream, draft a RCRA waste profile. Be conservative and accurate. Only assign an EPA waste code (e.g. D001, F003) when the description clearly supports it; otherwise return an empty string for waste_code. Keep descriptions concise and factual.",
+      user: `Draft a hazardous waste profile for this waste stream:\n\n${description}`,
+      schema: {
+        name: "waste_profile_draft",
+        strict: true,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            name:                { type: "string", description: "Short profile name" },
+            waste_code:          { type: "string", description: "EPA waste code or empty string" },
+            classification:      { type: "string", enum: [...WASTE_CLASSIFICATIONS] },
+            physical_state:      { type: "string", enum: ["solid", "liquid", "sludge", "gas"] },
+            process_description: { type: "string", description: "Source process generating the waste" },
+            hazard_summary:      { type: "string", description: "Key hazards, constituents, handling notes" },
+          },
+          required: ["name", "waste_code", "classification", "physical_state", "process_description", "hazard_summary"],
+        },
+      },
+      maxTokens: 700,
+    });
+    return { ok: true as const, draft: result.data as WasteProfileDraft };
+  } catch {
+    return { ok: false as const, error: "AI drafting failed — please fill the form manually." };
+  }
+}
+
+export async function createWasteProfile(_prev: unknown, formData: FormData) {
+  if (MOCK_MODE) return { ok: true as const };
+  const ctx = await getCtx();
+  if (!ctx) return { ok: false as const, error: "Session expired — please reload." };
+  const name = (formData.get("name") as string)?.trim();
+  if (!name) return { ok: false as const, error: "Profile name is required." };
+  const { error } = await ctx.client.from("waste_profiles").insert({
+    tenant_id:           ctx.tenantId,
+    site_id:             ctx.siteId,
+    waste_stream_id:     (formData.get("waste_stream_id") as string) || null,
+    name,
+    waste_code:          (formData.get("waste_code") as string) || null,
+    classification:      (formData.get("classification") as string) || "hazardous",
+    physical_state:      (formData.get("physical_state") as string) || null,
+    process_description: (formData.get("process_description") as string) || null,
+    hazard_summary:      (formData.get("hazard_summary") as string) || null,
+    state:               "draft",
+    created_by:          ctx.profileId,
+  });
+  if (error) return { ok: false as const, error: error.message };
+  revalidatePath("/waste");
+  return { ok: true as const };
+}
+
+type ProfileAction = "submit" | "approve" | "reject" | "activate" | "retire" | "revise";
+
+// Server-validated state machine: draft → ehs_review → approved → active → retired;
+// ehs_review can → rejected; rejected can → draft (revise).
+export async function transitionWasteProfile(id: string, action: ProfileAction, reason?: string) {
+  if (MOCK_MODE) return { ok: true as const };
+  const ctx = await getCtx();
+  if (!ctx) return { ok: false as const, error: "Session expired — please reload." };
+
+  const { data: current, error: readErr } = await ctx.client
+    .from("waste_profiles")
+    .select("state")
+    .eq("id", id)
+    .eq("tenant_id", ctx.tenantId)
+    .single();
+  if (readErr || !current) return { ok: false as const, error: "Profile not found." };
+
+  const nowIso = new Date().toISOString();
+  const patch: Record<string, unknown> = { updated_at: nowIso };
+
+  switch (action) {
+    case "submit":
+      if (current.state !== "draft") return { ok: false as const, error: "Only draft profiles can be submitted." };
+      patch.state = "ehs_review";
+      patch.submitted_by = ctx.profileId;
+      patch.submitted_at = nowIso;
+      patch.reject_reason = null;
+      break;
+    case "approve":
+      if (current.state !== "ehs_review") return { ok: false as const, error: "Only profiles in review can be approved." };
+      patch.state = "approved";
+      patch.reviewer_id = ctx.profileId;
+      patch.approved_at = nowIso;
+      break;
+    case "reject":
+      if (current.state !== "ehs_review") return { ok: false as const, error: "Only profiles in review can be rejected." };
+      patch.state = "rejected";
+      patch.reviewer_id = ctx.profileId;
+      patch.reject_reason = reason?.trim() || "No reason provided.";
+      break;
+    case "activate":
+      if (current.state !== "approved") return { ok: false as const, error: "Only approved profiles can be activated." };
+      patch.state = "active";
+      break;
+    case "retire":
+      if (current.state !== "active" && current.state !== "approved")
+        return { ok: false as const, error: "Only approved or active profiles can be retired." };
+      patch.state = "retired";
+      break;
+    case "revise":
+      if (current.state !== "rejected") return { ok: false as const, error: "Only rejected profiles can be revised." };
+      patch.state = "draft";
+      patch.reject_reason = null;
+      patch.submitted_at = null;
+      break;
+    default:
+      return { ok: false as const, error: "Unknown action." };
+  }
+
+  const { error } = await ctx.client
+    .from("waste_profiles")
+    .update(patch)
+    .eq("id", id)
+    .eq("tenant_id", ctx.tenantId);
+  if (error) return { ok: false as const, error: error.message };
+  revalidatePath("/waste");
+  return { ok: true as const };
+}
+
+
+// ── Saved Reports ─────────────────────────────────────────────────────────────
+
+export async function saveReport(input: {
+  name: string;
+  report_type: string;
+  metadata?: Record<string, unknown>;
+}) {
+  if (MOCK_MODE) return { ok: true as const };
+  const ctx = await getCtx();
+  if (!ctx) return { ok: false as const, error: "Not authorized." };
+  const { error } = await ctx.client.from("saved_reports").insert({
+    tenant_id: ctx.tenantId,
+    name: input.name,
+    report_type: input.report_type,
+    metadata: input.metadata ?? {},
+  });
+  if (error) return { ok: false as const, error: error.message };
+  revalidatePath("/reports");
+  return { ok: true as const };
+}
+
+export async function deleteReport(id: string) {
+  if (MOCK_MODE) return { ok: true as const };
+  const ctx = await getCtx();
+  if (!ctx) return { ok: false as const, error: "Not authorized." };
+  const { error } = await ctx.client
+    .from("saved_reports")
+    .delete()
+    .eq("id", id)
+    .eq("tenant_id", ctx.tenantId);
+  if (error) return { ok: false as const, error: error.message };
+  revalidatePath("/reports");
+  return { ok: true as const };
 }

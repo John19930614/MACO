@@ -1,6 +1,5 @@
-import { getWasteStreams, getChemicals, getWasteVendors, getWastePickups, getWasteInspections } from "@/lib/data/ehsRepo";
+import { getWasteStreams, getChemicals, getWasteVendors, getWastePickups, getWasteInspections, getWasteProfiles } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
-import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader } from "@/components/ui/primitives";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Trash2 } from "lucide-react";
@@ -10,12 +9,13 @@ import { WasteDashboard } from "./WasteDashboard";
 
 export default async function WastePage() {
   const tenantId = await getEffectiveTenantId();
-  const [streams, chemicals, vendors, pickups, inspections] = await Promise.all([
+  const [streams, chemicals, vendors, pickups, inspections, profiles] = await Promise.all([
     getWasteStreams(tenantId),
     getChemicals(tenantId),
     getWasteVendors(tenantId),
     getWastePickups(tenantId),
     getWasteInspections(tenantId),
+    getWasteProfiles(tenantId),
   ]);
 
   return (
@@ -44,6 +44,7 @@ export default async function WastePage() {
             vendors={vendors}
             pickups={pickups}
             inspections={inspections}
+            profiles={profiles}
           />
         )}
       </div>

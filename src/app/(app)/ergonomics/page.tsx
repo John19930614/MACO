@@ -216,7 +216,7 @@ export default async function ErgonomicsPage() {
                 <table className="w-full text-sm">
                   <thead className="border-b border-slate-100 bg-slate-50">
                     <tr>
-                      {["Workstation", "Dept", "Workers", "Last Assessed", "Next Due", "Risk", "Status"].map((h) => (
+                      {["Workstation", "Dept", "Workers", "Last Assessed", "Next Due", "Risk", "Status", ""].map((h) => (
                         <th key={h} className="px-4 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">{h}</th>
                       ))}
                     </tr>
@@ -241,10 +241,18 @@ export default async function ErgonomicsPage() {
                         </td>
                         <td className="px-4 py-2.5"><Pill className={riskColor(ws.risk_level)}>{ws.risk_level}</Pill></td>
                         <td className="px-4 py-2.5"><Pill className={statusColor(ws.status)}>{ws.status.replace(/_/g, " ")}</Pill></td>
+                        <td className="px-4 py-2.5">
+                          <Link
+                            href={`/ergonomics/${ws.id}`}
+                            className="flex items-center gap-0.5 text-[11px] font-medium text-blue-600 hover:underline whitespace-nowrap"
+                          >
+                            View <ChevronRight className="h-3 w-3" />
+                          </Link>
+                        </td>
                       </tr>
                     ))}
                     {workstations.length === 0 && (
-                      <tr><td colSpan={7} className="px-4 py-6 text-center text-xs text-slate-400">No workstations assessed</td></tr>
+                      <tr><td colSpan={8} className="px-4 py-6 text-center text-xs text-slate-400">No workstations assessed</td></tr>
                     )}
                   </tbody>
                 </table>

@@ -84,7 +84,7 @@ async function extractWithAI(
     try {
       fileData = await downloadFile(file.path);
     } catch {
-      console.warn(`[onboarding] skipping ${file.name}: download failed`);
+      if (process.env.NODE_ENV !== "production") { console.warn(`[onboarding] skipping ${file.name}: download failed`); }
       continue;
     }
 
@@ -143,7 +143,7 @@ async function extractWithAI(
         }
       }
     } catch (err) {
-      console.error(`[onboarding] AI extraction failed for ${file.name}:`, err);
+      if (process.env.NODE_ENV !== "production") { console.error(`[onboarding] AI extraction failed for ${file.name}:`, err); }
     }
   }
 
@@ -214,7 +214,7 @@ async function processChemicals(files: UploadedFile[], tenantId: string, userId:
   });
 
   const { error } = await svc.from("chemical_inventory").insert(records);
-  if (error) { console.error("[onboarding] chemicals insert:", error); return 0; }
+  if (error) { if (process.env.NODE_ENV !== "production") { console.error("[onboarding] chemicals insert:", error); } return 0; }
   return records.length;
 }
 
@@ -274,7 +274,7 @@ async function processWasteStreams(files: UploadedFile[], tenantId: string, user
   });
 
   const { error } = await svc.from("waste_streams").insert(records);
-  if (error) { console.error("[onboarding] waste_streams insert:", error); return 0; }
+  if (error) { if (process.env.NODE_ENV !== "production") { console.error("[onboarding] waste_streams insert:", error); } return 0; }
   return records.length;
 }
 
@@ -375,7 +375,7 @@ async function processTrainingCourses(files: UploadedFile[], tenantId: string) {
   });
 
   const { error } = await svc.from("training_courses").insert(records);
-  if (error) { console.error("[onboarding] training_courses insert:", error); return 0; }
+  if (error) { if (process.env.NODE_ENV !== "production") { console.error("[onboarding] training_courses insert:", error); } return 0; }
   return records.length;
 }
 
@@ -400,7 +400,7 @@ async function processSDS(files: UploadedFile[], tenantId: string) {
   }));
 
   const { error } = await svc.from("documents").insert(records);
-  if (error) { console.error("[onboarding] sds insert:", error); return 0; }
+  if (error) { if (process.env.NODE_ENV !== "production") { console.error("[onboarding] sds insert:", error); } return 0; }
   return records.length;
 }
 
@@ -425,7 +425,7 @@ async function processReferenceDocs(files: UploadedFile[], tenantId: string, cat
     regulation_ref: null,
   }));
   const { error } = await svc.from("documents").insert(records);
-  if (error) { console.error("[onboarding] reference docs insert:", error); return 0; }
+  if (error) { if (process.env.NODE_ENV !== "production") { console.error("[onboarding] reference docs insert:", error); } return 0; }
   return records.length;
 }
 
@@ -604,7 +604,7 @@ async function processSafetyManual(files: UploadedFile[], tenantId: string) {
         if (!error) riskCount += riskRecords.length;
       }
     } catch (err) {
-      console.error(`[onboarding] safety manual processing failed for ${file.name}:`, err);
+      if (process.env.NODE_ENV !== "production") { console.error(`[onboarding] safety manual processing failed for ${file.name}:`, err); }
     }
   }
 
@@ -753,7 +753,7 @@ async function processSOPs(files: UploadedFile[], tenantId: string) {
         if (!error) legalCount += legalRecords.length;
       }
     } catch (err) {
-      console.error(`[onboarding] SOP processing failed for ${file.name}:`, err);
+      if (process.env.NODE_ENV !== "production") { console.error(`[onboarding] SOP processing failed for ${file.name}:`, err); }
     }
   }
 
@@ -828,7 +828,7 @@ async function processOshaLogs(files: UploadedFile[], tenantId: string, siteId: 
   });
 
   const { error } = await svc.from("incidents").insert(records);
-  if (error) { console.error("[onboarding] osha_logs insert:", error); return 0; }
+  if (error) { if (process.env.NODE_ENV !== "production") { console.error("[onboarding] osha_logs insert:", error); } return 0; }
   return records.length;
 }
 
@@ -942,7 +942,7 @@ async function processEquipmentRegister(files: UploadedFile[], tenantId: string,
   });
 
   const { error } = await svc.from("equipment").insert(records);
-  if (error) { console.error("[onboarding] equipment insert:", error); return 0; }
+  if (error) { if (process.env.NODE_ENV !== "production") { console.error("[onboarding] equipment insert:", error); } return 0; }
   return records.length;
 }
 
@@ -1036,7 +1036,7 @@ async function processAuditReports(files: UploadedFile[], tenantId: string, site
         scope:           extracted.scope || "",
       }).select("id").single();
 
-      if (auditErr || !audit) { console.error("[onboarding] audit insert:", auditErr); continue; }
+      if (auditErr || !audit) { if (process.env.NODE_ENV !== "production") { console.error("[onboarding] audit insert:", auditErr); } continue; }
       auditCount++;
 
       // Insert findings
@@ -1085,7 +1085,7 @@ async function processAuditReports(files: UploadedFile[], tenantId: string, site
         }
       }
     } catch (err) {
-      console.error(`[onboarding] audit report processing failed for ${file.name}:`, err);
+      if (process.env.NODE_ENV !== "production") { console.error(`[onboarding] audit report processing failed for ${file.name}:`, err); }
     }
   }
 
@@ -1157,7 +1157,7 @@ async function processJSAs(files: UploadedFile[], tenantId: string) {
   });
 
   const { error } = await svc.from("risk_assessments").insert(records);
-  if (error) { console.error("[onboarding] jsa insert:", error); return 0; }
+  if (error) { if (process.env.NODE_ENV !== "production") { console.error("[onboarding] jsa insert:", error); } return 0; }
   return records.length;
 }
 
@@ -1287,7 +1287,7 @@ async function processERP(files: UploadedFile[], tenantId: string) {
         if (!error) trainingCount += courses.length;
       }
     } catch (err) {
-      console.error(`[onboarding] ERP processing failed for ${file.name}:`, err);
+      if (process.env.NODE_ENV !== "production") { console.error(`[onboarding] ERP processing failed for ${file.name}:`, err); }
     }
   }
 
@@ -1490,7 +1490,7 @@ async function processBiosafetyInventory(files: UploadedFile[], tenantId: string
         if (!error) agentCount += agentRecords.length;
       }
     } catch (err) {
-      console.error(`[onboarding] biosafety inventory processing failed for ${file.name}:`, err);
+      if (process.env.NODE_ENV !== "production") { console.error(`[onboarding] biosafety inventory processing failed for ${file.name}:`, err); }
     }
   }
 
@@ -1650,7 +1650,7 @@ async function processNearMissLog(files: UploadedFile[], tenantId: string, siteI
   });
 
   const { error } = await svc.from("incidents").insert(records);
-  if (error) { console.error("[onboarding] near_miss insert:", error); return 0; }
+  if (error) { if (process.env.NODE_ENV !== "production") { console.error("[onboarding] near_miss insert:", error); } return 0; }
   return records.length;
 }
 
@@ -1697,7 +1697,7 @@ export async function POST(req: NextRequest) {
   // cleanly (no crash — onboarding just completes with nothing auto-imported).
   const { serviceRoleKey: svcKey } = serverSecrets();
   if (!svcKey) {
-    console.warn("[onboarding] SUPABASE_SERVICE_ROLE_KEY missing — skipping document extraction");
+    if (process.env.NODE_ENV !== "production") { console.warn("[onboarding] SUPABASE_SERVICE_ROLE_KEY missing — skipping document extraction"); }
     return NextResponse.json({ ok: true, seeded: {}, total: 0, note: "no_service_key" });
   }
 
@@ -1774,7 +1774,7 @@ export async function POST(req: NextRequest) {
   seeded.biohazard_agents   = biosafetyResult.agents;
   seeded.reference_documents = coiCount + emrCount;
   } catch (err) {
-    console.error("[onboarding] document processing failed:", err);
+    if (process.env.NODE_ENV !== "production") { console.error("[onboarding] document processing failed:", err); }
     // Return whatever was seeded rather than crashing — onboarding still completes.
     return NextResponse.json({
       ok: true,
@@ -1786,7 +1786,6 @@ export async function POST(req: NextRequest) {
   }
 
   const total = Object.values(seeded).reduce((a, b) => a + b, 0);
-  console.info("[onboarding] processing complete", { tenantId, seeded, total });
 
   // Persist seeded counts into onboarding_data so the dashboard welcome banner can read them
   try {

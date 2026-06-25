@@ -126,6 +126,18 @@ export const WASTE_CLASSIFICATIONS = [
 ] as const;
 export type WasteClassification = (typeof WASTE_CLASSIFICATIONS)[number];
 
+// ── Waste Profile Lifecycle ───────────────────────────────────────────────────
+// draft → ehs_review → approved → active → retired; ehs_review can → rejected.
+export const WASTE_PROFILE_STATES = [
+  "draft",
+  "ehs_review",
+  "approved",
+  "active",
+  "rejected",
+  "retired",
+] as const;
+export type WasteProfileState = (typeof WASTE_PROFILE_STATES)[number];
+
 // ── Equipment Status ──────────────────────────────────────────────────────────
 export const EQUIPMENT_STATUSES = [
   "operational",

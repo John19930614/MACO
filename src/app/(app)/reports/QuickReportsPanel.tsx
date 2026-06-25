@@ -1,8 +1,10 @@
 "use client";
 
 import { BarChart3, PieChart, FileText, Download } from "lucide-react";
+import { useTransition } from "react";
 import { useDemoUser } from "@/lib/context/demo-user";
 import { oshaRate } from "@/lib/osha";
+import { saveReport } from "@/lib/actions/ehs";
 import type { CapaAction, Incident, OshaCase, TrainingRecord, LegalRequirement, Chemical } from "@/lib/types";
 
 interface ModuleScore {
@@ -299,12 +301,14 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
     downloadCSV(`${user.company.split(" ")[0]}-Regulatory-Gap-Analysis.csv`, csv);
   }
 
+  const [, startTransition] = useTransition();
+
   const REPORTS = [
-    { label: "Compliance Scorecard",     icon: BarChart3, color: "bg-blue-50 text-blue-600",    fn: exportComplianceSummary },
-    { label: "CAPA Status Report",       icon: FileText,  color: "bg-orange-50 text-orange-600", fn: exportCapaStatus },
-    { label: "Incident Analysis",        icon: BarChart3, color: "bg-red-50 text-red-600",       fn: exportIncidentAnalysis },
-    { label: "Training & Competency",    icon: PieChart,  color: "bg-green-50 text-green-600",   fn: exportTrainingReport },
-    { label: "Regulatory Gap Analysis",  icon: FileText,  color: "bg-purple-50 text-purple-600", fn: exportRegulatoryGap },
+    { label: "Compliance Scorecard",    type: "Compliance", icon: BarChart3, color: "bg-blue-50 text-blue-600",    fn: exportComplianceSummary },
+    { label: "CAPA Status Report",      type: "CAPA",       icon: FileText,  color: "bg-orange-50 text-orange-600", fn: exportCapaStatus },
+    { label: "Incident Analysis",       type: "Incidents",  icon: BarChart3, color: "bg-red-50 text-red-600",       fn: exportIncidentAnalysis },
+    { label: "Training & Competency",   type: "Training",   icon: PieChart,  color: "bg-green-50 text-green-600",   fn: exportTrainingReport },
+    { label: "Regulatory Gap Analysis", type: "Regulatory", icon: FileText,  color: "bg-purple-50 text-purple-600", fn: exportRegulatoryGap },
   ];
 
   return (
@@ -314,7 +318,12 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
         return (
           <button
             key={r.label}
-            onClick={r.fn}
+            onClick={() => {
+              r.fn();
+              startTransition(async () => {
+                await saveReport({ name: r.label, report_type: r.type });
+              });
+            }}
             className="flex w-full items-center gap-2.5 rounded-lg border border-slate-100 px-3 py-2 text-left transition hover:bg-slate-50"
           >
             <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${r.color}`}>

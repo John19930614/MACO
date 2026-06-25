@@ -11,10 +11,12 @@ import {
   FileText,
   FlaskConical,
   GraduationCap,
+  Info,
   LayoutGrid,
   Shield,
   ShieldCheck,
   Upload,
+  X,
   Zap,
 } from "lucide-react";
 
@@ -604,6 +606,7 @@ function fmtExp(d: string) {
 
 function SDSRegister({ chemicals }: { chemicals: Chemical[] }) {
   const [filter, setFilter] = useState<"all" | "issues">("all");
+  const [sdsInfoMsg, setSdsInfoMsg] = useState<string | null>(null);
 
   const today = new Date();
 
@@ -796,7 +799,7 @@ function SDSRegister({ chemicals }: { chemicals: Chemical[] }) {
                     ) : (
                       <button
                         className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-red-300 bg-red-50 px-3 py-1.5 text-[11px] font-semibold text-red-600 transition-colors hover:bg-red-100"
-                        onClick={() => alert("Contact your EHS Manager to upload the SDS for this chemical.")}
+                        onClick={() => setSdsInfoMsg("Contact your EHS Manager to upload the SDS for this chemical.")}
                       >
                         <Upload className="h-3 w-3" />
                         Request SDS
@@ -809,6 +812,21 @@ function SDSRegister({ chemicals }: { chemicals: Chemical[] }) {
           </tbody>
         </table>
       </div>
+
+      {/* Inline SDS request notice */}
+      {sdsInfoMsg && (
+        <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
+          <p className="flex-1 text-xs text-blue-800">{sdsInfoMsg}</p>
+          <button
+            onClick={() => setSdsInfoMsg(null)}
+            className="shrink-0 rounded p-0.5 text-blue-400 hover:bg-blue-100 hover:text-blue-600 transition-colors"
+            aria-label="Dismiss"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Regulatory footnote */}
       <div className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 text-[10.5px] text-slate-500">

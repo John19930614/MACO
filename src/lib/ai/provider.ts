@@ -2,7 +2,7 @@
  * LLM provider abstraction (server-only). A single entry point —
  * generateStructuredJson — that returns a schema-constrained JSON object from
  * whichever provider is configured (OpenAI or Anthropic). This lets the engine
- * and EXP extractor stay provider-agnostic: switch AMAYA_AI_PROVIDER (or just
+ * and EXP extractor stay provider-agnostic: switch SAFETYIQ_AI_PROVIDER (or just
  * the configured keys) to A/B gpt-4o-mini against claude-haiku-4-5 /
  * claude-sonnet-4-6 with no call-site changes.
  *
@@ -49,8 +49,7 @@ export async function generateStructuredJson(call: StructuredCall): Promise<Stru
   const started = Date.now();
   const result = provider === "anthropic" ? await viaAnthropic(call) : await viaOpenAI(call);
   const ms = Date.now() - started;
-  // Observability: one structured log line + an in-app telemetry entry per call.
-  console.info("[amaya] ai.call", { provider, model: result.model, ms, input_tokens: result.usage.inputTokens, output_tokens: result.usage.outputTokens });
+  // Observability: in-app telemetry entry per call (no console output in production).
   recordAiCall({ provider, model: result.model, ms, inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, ok: true });
   return result;
 }

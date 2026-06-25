@@ -213,7 +213,7 @@ async function modelAnalysis(systemPrompt: string, userPrompt: string): Promise<
 
   const out = data as AiAnalysisOutput;
   if (!out || typeof out.risk_score !== "number" || !Array.isArray(out.recommended_actions)) {
-    console.error("[safetyiq] AI analysis failed schema validation", { raw: data });
+    if (process.env.NODE_ENV !== "production") { console.error("[safetyiq] AI analysis failed schema validation", { raw: data }); }
     throw new Error("model output failed validation");
   }
   return { output: out, model };
@@ -348,7 +348,7 @@ async function runAnalysis(p: RunParams): Promise<AiFinding> {
       model  = r.model;
       confidence = deriveConfidence(output);
     } catch (err) {
-      console.error("[safetyiq] AI analysis fell back to heuristic", { job: p.job, error: String(err) });
+      if (process.env.NODE_ENV !== "production") { console.error("[safetyiq] AI analysis fell back to heuristic", { job: p.job, error: String(err) }); }
       recordAiCall({ provider: aiProvider(), model: "safetyiq-heuristic-fallback", ms: 0, inputTokens: 0, outputTokens: 0, ok: false });
       output = p.heuristic();
       model  = "safetyiq-heuristic-fallback";
@@ -497,18 +497,20 @@ export async function analyzeCell(cell: SafetyCell, candidates: SafetyCell[]): P
 
       const parsed = aiCellAnalysisOutputSchema.safeParse(data);
       if (!parsed.success) {
-        console.error("[safetyiq-arc] causality analysis failed schema validation", {
-          cell_id: cell.id,
-          issues: parsed.error.flatten(),
-          raw: data,
-        });
+        if (process.env.NODE_ENV !== "production") {
+          console.error("[safetyiq-arc] causality analysis failed schema validation", {
+            cell_id: cell.id,
+            issues: parsed.error.flatten(),
+            raw: data,
+          });
+        }
         throw new Error("model output failed causality schema validation");
       }
       output = parsed.data as CausalityOutput;
       model = m;
       confidence = deriveCellConfidence(output);
     } catch (err) {
-      console.error("[safetyiq-arc] causality analysis fell back to heuristic", { cell_id: cell.id, error: String(err) });
+      if (process.env.NODE_ENV !== "production") { console.error("[safetyiq-arc] causality analysis fell back to heuristic", { cell_id: cell.id, error: String(err) }); }
       recordAiCall({ provider: aiProvider(), model: "safetyiq-heuristic-fallback", ms: 0, inputTokens: 0, outputTokens: 0, ok: false });
       output = cellHeuristicAnalysis(cell, candidates);
       model = "safetyiq-heuristic-fallback";

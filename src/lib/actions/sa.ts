@@ -207,3 +207,62 @@ export async function updateTenantImplStage(tenantId: string, stage: string) {
   revalidatePath("/sa/companies");
   return { ok: true };
 }
+
+// ── Tenant provisioning ─────────────────────────────────────────────────────────
+
+export async function addTenant(input: {
+  name: string;
+  sector: string;
+  impl_status: string;
+  active: boolean;
+  contact_name: string | null;
+  contact_email: string | null;
+}) {
+  const ctx = await getSaCtx();
+  if (!ctx) return NOT_AUTHORIZED;
+  const base = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const slug = `${base}-${Math.random().toString(36).slice(2, 6)}`;
+  const { data: row, error } = await ctx.client
+    .from("tenants")
+    .insert({
+      name: input.name,
+      slug,
+      sector: input.sector || "General",
+      impl_status: input.impl_status || "prospect",
+      active: input.active,
+      onboarding_data: { contact_name: input.contact_name, contact_email: input.contact_email },
+    })
+    .select("id")
+    .single();
+  if (error) return { ok: false as const, error: error.message };
+  revalidatePath("/sa/companies");
+  return { ok: true as const, id: row.id };
+}
+
+export async function updateTenant(
+  id: string,
+  input: {
+    name: string;
+    sector: string;
+    impl_status: string;
+    active: boolean;
+    contact_name: string | null;
+    contact_email: string | null;
+  }
+) {
+  const ctx = await getSaCtx();
+  if (!ctx) return NOT_AUTHORIZED;
+  const { error } = await ctx.client
+    .from("tenants")
+    .update({
+      name: input.name,
+      sector: input.sector || "General",
+      impl_status: input.impl_status,
+      active: input.active,
+    })
+    .eq("id", id);
+  if (error) return { ok: false as const, error: error.message };
+  revalidatePath("/sa/companies");
+  revalidatePath(`/sa/companies/${id}`);
+  return { ok: true as const };
+}

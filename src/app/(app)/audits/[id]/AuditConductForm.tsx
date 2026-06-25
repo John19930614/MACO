@@ -826,6 +826,7 @@ export function AuditConductForm({ audit, profiles }: { audit: Audit; profiles: 
   const [auditorSelect, setAuditorSelect] = useState("");
   const [customAuditor, setCustomAuditor] = useState("");
   const conductorName = auditorSelect === "__custom__" ? customAuditor : auditorSelect;
+  const [nameError, setNameError] = useState(false);
   const [conductDate, setDate]          = useState(new Date().toISOString().slice(0, 10));
   const [overallNotes, setNotes]      = useState("");
   const [submitting, setSubmitting]   = useState(false);
@@ -967,9 +968,10 @@ export function AuditConductForm({ audit, profiles }: { audit: Audit; profiles: 
 
   async function handleSubmit() {
     if (!conductorName.trim()) {
-      alert("Please enter the auditor name before submitting.");
+      setNameError(true);
       return;
     }
+    setNameError(false);
     setSubmitting(true);
     const selectedOsha = oshaCode ? OSHA_CHECKLISTS.find((c) => c.code === oshaCode) : null;
     const itemSummary = JSON.stringify({
@@ -1082,8 +1084,8 @@ export function AuditConductForm({ audit, profiles }: { audit: Audit; profiles: 
             <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Conducted By <span className="text-red-500">*</span></label>
             <select
               value={auditorSelect}
-              onChange={(e) => setAuditorSelect(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              onChange={(e) => { setAuditorSelect(e.target.value); setNameError(false); }}
+              className={`w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 ${nameError && !conductorName.trim() ? "border-red-400 focus:border-red-400" : "border-slate-200 focus:border-blue-400"}`}
             >
               <option value="">Select auditor…</option>
               {profiles.map((p) => (
@@ -1096,9 +1098,12 @@ export function AuditConductForm({ audit, profiles }: { audit: Audit; profiles: 
                 autoFocus
                 value={customAuditor}
                 placeholder="Enter auditor name"
-                className="mt-1.5 w-full rounded-lg border border-blue-300 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                onChange={(e) => setCustomAuditor(e.target.value)}
+                className={`mt-1.5 w-full rounded-lg border px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 ${nameError && !customAuditor.trim() ? "border-red-400 focus:border-red-400" : "border-blue-300"}`}
+                onChange={(e) => { setCustomAuditor(e.target.value); setNameError(false); }}
               />
+            )}
+            {nameError && !conductorName.trim() && (
+              <p className="mt-1 text-xs text-red-600 font-medium">Auditor name is required before submitting.</p>
             )}
           </div>
           <div>

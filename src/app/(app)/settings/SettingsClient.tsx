@@ -48,12 +48,6 @@ const DEFAULT_SETTINGS: Omit<SettingsData, "notifs"> = {
   emergencyCoord:   "",
 };
 
-const BIOSTAR_DEFAULTS = {
-  biosafetyOfficer: "Dr. Kim Park",
-  chOfficer:        "Dr. Kim Park (designation pending)",
-  emergencyCoord:   "Tom Reed",
-};
-
 // Platform-level configuration (true for every tenant) — not tenant-specific data.
 const CONFIG_ROWS = [
   { label: "P-Engine Mode",    value: "Auto — runs daily at 02:00 UTC" },
@@ -103,19 +97,6 @@ const ROLE_COLOR: Record<string, string> = {
   viewer: "bg-slate-100 text-slate-500",
 };
 
-const BIOSTAR_SITES = [
-  {
-    id: "site-main", name: "Main Campus — Building A", address: "412 Research Drive, Princeton, NJ 08540",
-    bsl: "BSL-1 / BSL-2", sqft: "28,400 sq ft", contact: "Tom Reed", phone: "(609) 555-0142",
-    type: "Laboratory / Office", status: "Active",
-  },
-  {
-    id: "site-annex", name: "Annex Storage Facility", address: "418 Research Drive, Princeton, NJ 08540",
-    bsl: "N/A", sqft: "4,200 sq ft", contact: "James Wu", phone: "(609) 555-0198",
-    type: "Hazardous Materials Storage", status: "Active",
-  },
-];
-
 // Build the partial SettingsData persisted on the server (tenants.onboarding_data.settings).
 // `saveSettings` spreads config string fields onto settings.* and stores the notification
 // toggles under settings.notifications, so we read back from those shapes.
@@ -153,12 +134,11 @@ export function SettingsClient({
   const savedInit = fromSavedSettings(savedSettings);
   const [data, setData]         = useState<SettingsData>({
     ...DEFAULT_SETTINGS,
-    ...(user.tenant_id === "t-biostar-001" ? BIOSTAR_DEFAULTS : {}),
     companyName:  user.company,
     primarySite:  `${user.company.split(" ")[0]} Main Campus`,
     ehsManager:   user.display_name,
     qualifiedEhs: user.display_name,
-    // Persisted server state wins over per-tenant seed defaults when present.
+    // Persisted server state wins over defaults when present.
     ...savedInit,
     notifs: { ...DEFAULT_NOTIFS, ...(savedInit.notifs ?? {}) },
   });
@@ -167,6 +147,12 @@ export function SettingsClient({
   const [saveError, setSaveError]   = useState<string | null>(null);
   const [resetting, setResetting]   = useState(false);
   const [soundsMuted, setSoundsMuted] = useState(false);
+  const [infoMsg, setInfoMsg]       = useState<string | null>(null);
+
+  function showInfo(msg: string) {
+    setInfoMsg(msg);
+    setTimeout(() => setInfoMsg(null), 4000);
+  }
 
   // Load persisted settings on mount.
   // In live mode the server value (savedSettings) is authoritative and already
@@ -193,18 +179,12 @@ export function SettingsClient({
 
   // Re-seed company fields whenever the demo user/tenant switches
   useEffect(() => {
-    const isBioStar = user.tenant_id === "t-biostar-001";
     setData((d) => ({
       ...d,
       companyName:  user.company,
       primarySite:  `${user.company.split(" ")[0]} Main Campus`,
       ehsManager:   user.display_name,
       qualifiedEhs: user.display_name,
-      ...(isBioStar ? BIOSTAR_DEFAULTS : {
-        biosafetyOfficer: "",
-        chOfficer:        "",
-        emergencyCoord:   "",
-      }),
     }));
   }, [user.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -322,7 +302,7 @@ export function SettingsClient({
           ) : tab === "users" ? (
             <button
               type="button"
-              onClick={() => alert("User invitations are managed by Reliance. Contact your SA to add or remove users.")}
+              onClick={() => showInfo("User invitations are managed by Reliance. Contact your SA to add or remove users.")}
               className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
             >
               <UserPlus className="h-4 w-4" /> Invite user
@@ -330,7 +310,7 @@ export function SettingsClient({
           ) : tab === "sites" ? (
             <button
               type="button"
-              onClick={() => alert("Site management is configured by Reliance. Contact your SA to add or modify sites.")}
+              onClick={() => showInfo("Site management is configured by Reliance. Contact your SA to add or modify sites.")}
               className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
             >
               <MapPin className="h-4 w-4" /> Add site
@@ -356,6 +336,16 @@ export function SettingsClient({
           </button>
         ))}
       </div>
+
+      {/* Inline info banner — replaces alert() dialogs */}
+      {infoMsg && (
+        <div className="mx-6 mt-3 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-800">
+          <span className="mt-0.5 shrink-0 text-blue-500">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </span>
+          <span>{infoMsg}</span>
+        </div>
+      )}
 
       <div className="iq-scroll flex-1 overflow-y-auto p-6">
 
@@ -503,7 +493,7 @@ export function SettingsClient({
                         <td className="px-4 py-3 text-right">
                           <button
                             type="button"
-                            onClick={() => alert(`Role management for ${u.display_name} is administered by Reliance. Contact your SA to change roles.`)}
+                            onClick={() => showInfo(`Role management for ${u.display_name} is administered by Reliance. Contact your SA to change roles.`)}
                             className="rounded-md border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-500 transition hover:border-blue-300 hover:text-blue-600"
                           >
                             Manage role
@@ -539,24 +529,14 @@ export function SettingsClient({
         {/* ── Sites tab ── */}
         {tab === "sites" && (
           <div className="space-y-4">
-            {(MOCK_MODE
-              ? BIOSTAR_SITES.map(s => ({
-                  id:      s.id,
-                  name:    s.name,
-                  address: s.address,
-                  detail1: { label: "Type",         value: s.type    },
-                  detail2: { label: "BSL Level",    value: s.bsl     },
-                  detail3: { label: "Site Contact", value: s.contact },
-                }))
-              : serverSites.map(s => ({
-                  id:      s.id,
-                  name:    s.name,
-                  address: s.address ?? null,
-                  detail1: { label: "Sector",  value: s.sector   ?? s.vertical ?? "—" },
-                  detail2: { label: "Country", value: s.country  ?? "—" },
-                  detail3: { label: "State",   value: s.state    ?? "—" },
-                }))
-            ).map(site => (
+            {serverSites.map(s => ({
+                id:      s.id,
+                name:    s.name,
+                address: s.address ?? null,
+                detail1: { label: "Sector",  value: s.sector   ?? s.vertical ?? "—" },
+                detail2: { label: "Country", value: s.country  ?? "—" },
+                detail3: { label: "State",   value: s.state    ?? "—" },
+              })).map(site => (
               <Card key={site.id}>
                 <div className="p-5">
                   <div className="flex items-start justify-between gap-4 mb-4">
@@ -570,7 +550,7 @@ export function SettingsClient({
                     </div>
                     <button
                       type="button"
-                      onClick={() => alert("Site editing is managed by Reliance. Contact your SA to update site details.")}
+                      onClick={() => showInfo("Site editing is managed by Reliance. Contact your SA to update site details.")}
                       className="rounded-md border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-500 transition hover:border-blue-300 hover:text-blue-600 shrink-0"
                     >
                       Edit
@@ -587,7 +567,7 @@ export function SettingsClient({
                 </div>
               </Card>
             ))}
-            {!MOCK_MODE && serverSites.length === 0 && (
+            {serverSites.length === 0 && (
               <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center">
                 <ShieldCheck className="mx-auto h-6 w-6 text-slate-300" />
                 <p className="mt-2 text-sm font-medium text-slate-400">No sites configured yet</p>

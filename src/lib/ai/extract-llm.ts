@@ -29,7 +29,7 @@ async function modelExtract(text: string): Promise<ExtractResult> {
 
   const parsed = extractedCellSchema.safeParse(data);
   if (!parsed.success) {
-    console.error("[amaya] EXP extraction failed schema validation", { issues: parsed.error.flatten(), raw: data });
+    if (process.env.NODE_ENV !== "production") { console.error("[safetyiq] EXP extraction failed schema validation", { issues: parsed.error.flatten(), raw: data }); }
     throw new Error("extractor output failed validation");
   }
   const d = parsed.data;
@@ -62,7 +62,7 @@ export async function extractCellDraftSmart(text: string): Promise<ExtractResult
   try {
     return await modelExtract(text);
   } catch (err) {
-    console.error("[amaya] EXP extraction fell back to heuristic", { error: String(err) });
+    if (process.env.NODE_ENV !== "production") { console.error("[safetyiq] EXP extraction fell back to heuristic", { error: String(err) }); }
     return extractCellDraft(text);
   }
 }

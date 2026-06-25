@@ -23,7 +23,7 @@ interface DataCard { title: string; rows: DataRow[]; href?: string }
 
 interface ChatMessage {
   id: string;
-  role: "user" | "amaya";
+  role: "user" | "ai";
   text: string;
   cards?: DataCard[];
   followUps?: string[];
@@ -81,7 +81,7 @@ function chemRisk(c: Chemical): number {
 function uid() { return Math.random().toString(36).slice(2, 9); }
 
 // ── Live EHS data → compact context string for the LLM ─────────────────────────
-// Mirrors what buildAmayaResponse has access to: counts + the key facts the model
+// Mirrors what buildAiResponse has access to: counts + the key facts the model
 // needs to answer with real numbers. Kept compact to stay token-efficient.
 function buildContextSummary(ctx: AiCtx): string {
   const activeChems = ctx.chemicals.filter((c) => c.status === "active");
@@ -184,7 +184,7 @@ const PROMPT_GROUPS = [
 
 // ── AI Response Engine ────────────────────────────────────────────────────────
 
-function buildAmayaResponse(
+function buildAiResponse(
   msg: string,
   ctx: AiCtx,
 ): Omit<ChatMessage, "id" | "timestamp" | "role"> {
@@ -914,7 +914,7 @@ function FindingsPanel({ findings, runs, latestRun }: {
   );
 }
 
-// ── Main AmayaDashboard ───────────────────────────────────────────────────────
+// ── Main AmayaDashboard component ────────────────────────────────────────────
 
 const TABS = [
   { id: "chat",     label: "Chat with SafetyIQ AI",    icon: <Sparkles className="h-3.5 w-3.5" /> },
@@ -970,8 +970,8 @@ export function AmayaDashboard({
     // request fails, so the chat always works. Preserves the original cards /
     // follow-ups UX (the live LLM returns plain text only).
     const pushLocal = () => {
-      const response = buildAmayaResponse(trimmed, ctx);
-      setMessages((prev) => [...prev, { id: uid(), role: "amaya", timestamp: new Date(), ...response }]);
+      const response = buildAiResponse(trimmed, ctx);
+      setMessages((prev) => [...prev, { id: uid(), role: "ai", timestamp: new Date(), ...response }]);
       setTyping(false);
     };
 
@@ -985,7 +985,7 @@ export function AmayaDashboard({
         if (!res.ok) { pushLocal(); return; }
         const data = (await res.json()) as { reply?: string | null };
         if (data && typeof data.reply === "string" && data.reply.trim()) {
-          setMessages((prev) => [...prev, { id: uid(), role: "amaya", text: data.reply!, timestamp: new Date() }]);
+          setMessages((prev) => [...prev, { id: uid(), role: "ai", text: data.reply!, timestamp: new Date() }]);
           setTyping(false);
         } else {
           // { reply: null } → no live AI; fall back to the local engine.
@@ -1046,7 +1046,7 @@ export function AmayaDashboard({
         <div className="flex gap-5" style={{ minHeight: "600px" }}>
           {/* Left sidebar */}
           <div className="hidden w-52 shrink-0 flex-col gap-3 lg:flex">
-            {/* Amaya identity card */}
+            {/* SafetyIQ AI identity card */}
             <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
               <div className="mb-2 flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow">

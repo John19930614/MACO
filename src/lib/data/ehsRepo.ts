@@ -13,7 +13,7 @@ import type {
   WorkspaceTask, BiosafetyLab, BiohazardAgent, CapaSourceType,
   DocumentAcknowledgment, OshaCase,
   ErgonomicsWorkstation, ErgonomicsJobTask, ExposureReading,
-  WasteVendor, WastePickup, WasteInspection,
+  WasteVendor, WastePickup, WasteInspection, WasteProfile, SavedReport,
 } from "@/lib/types";
 import type { Severity, CapaStatus, AuditStatus, RiskLevel, TrainingDelivery } from "@/lib/constants";
 
@@ -402,6 +402,40 @@ export const getWasteInspections = cache(async (tenantId = MOCK_TENANT_ID): Prom
   }));
 });
 
+export const getWasteProfiles = cache(async (tenantId = MOCK_TENANT_ID): Promise<WasteProfile[]> => {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("waste_profiles")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? null,
+    waste_stream_id: r.waste_stream_id ?? null,
+    name: r.name,
+    waste_code: r.waste_code ?? null,
+    classification: r.classification,
+    physical_state: r.physical_state ?? null,
+    process_description: r.process_description ?? null,
+    hazard_summary: r.hazard_summary ?? null,
+    state: r.state as WasteProfile["state"],
+    version: r.version,
+    reviewer_id: r.reviewer_id ?? null,
+    submitted_by: r.submitted_by ?? null,
+    submitted_at: r.submitted_at ?? null,
+    approved_at: r.approved_at ?? null,
+    reject_reason: r.reject_reason ?? null,
+    created_by: r.created_by ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
+});
+
 // ── Equipment ─────────────────────────────────────────────────────────────────
 
 export const getEquipment = cache(async (tenantId = MOCK_TENANT_ID): Promise<Equipment[]> => {
@@ -578,6 +612,28 @@ export const getComplianceScores = cache(async (tenantId = MOCK_TENANT_ID): Prom
     status: r.status as ComplianceScore["status"],
     calculated_at: r.calculated_at,
     details: (r.details ?? {}) as Record<string, unknown>,
+  }));
+});
+
+export const getSavedReports = cache(async (tenantId = MOCK_TENANT_ID): Promise<SavedReport[]> => {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("saved_reports")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    name: r.name,
+    report_type: r.report_type,
+    generated_at: r.generated_at,
+    metadata: (r.metadata ?? {}) as Record<string, unknown>,
+    created_at: r.created_at,
   }));
 });
 
@@ -790,6 +846,26 @@ export async function getTrainingRecordById(id: string): Promise<TrainingRecord 
 export async function getDocumentById(id: string): Promise<Document | null> {
   const all = await getDocuments(await getEffectiveTenantId());
   return all.find((d) => d.id === id) ?? null;
+}
+
+export async function getWorkstationById(id: string): Promise<ErgonomicsWorkstation | null> {
+  const all = await getErgonomicsWorkstations(await getEffectiveTenantId());
+  return all.find((w) => w.id === id) ?? null;
+}
+
+export async function getJobTaskById(id: string): Promise<ErgonomicsJobTask | null> {
+  const all = await getErgonomicsJobTasks(await getEffectiveTenantId());
+  return all.find((t) => t.id === id) ?? null;
+}
+
+export async function getBiosafetyLabById(id: string): Promise<BiosafetyLab | null> {
+  const all = await getBiosafetyLabs(await getEffectiveTenantId());
+  return all.find((l) => l.id === id) ?? null;
+}
+
+export async function getBiohazardAgentById(id: string): Promise<BiohazardAgent | null> {
+  const all = await getBiohazardAgents(await getEffectiveTenantId());
+  return all.find((a) => a.id === id) ?? null;
 }
 
 // ── Biosafety Labs ────────────────────────────────────────────────────────────

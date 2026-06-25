@@ -174,7 +174,7 @@ export async function extractRows(kind: RowKind, sources: SourceBlock[]): Promis
       const rows = block?.type === "tool_use" ? (block.input as { items?: Record<string, unknown>[] }).items : null;
       if (Array.isArray(rows)) out.push(...rows);
     } catch (err) {
-      console.error(`[extractDocuments] ${kind} extraction failed for ${s.name}:`, err);
+      if (process.env.NODE_ENV !== "production") { console.error(`[extractDocuments] ${kind} extraction failed for ${s.name}:`, err); }
     }
   }
   return out;

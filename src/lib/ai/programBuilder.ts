@@ -134,7 +134,7 @@ export async function generateProgram(
     const sections = block?.type === "tool_use" ? (block.input as { sections?: DocSection[] }).sections : null;
     if (Array.isArray(sections) && sections.length) return sections;
   } catch (err) {
-    console.error("[programBuilder] generation failed:", err);
+    if (process.env.NODE_ENV !== "production") { console.error("[programBuilder] generation failed:", err); }
   }
   return def.outline.map((h) => ({ heading: h, body: "" }));
 }

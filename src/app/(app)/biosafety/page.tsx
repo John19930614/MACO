@@ -194,7 +194,7 @@ export default async function BiosafetyPage() {
                     {labs.map((lab) => (
                       <tr key={lab.id} className="hover:bg-slate-50/60">
                         <td className="px-4 py-2.5">
-                          <div className="font-medium text-slate-800 text-xs">{lab.name}</div>
+                          <Link href={`/biosafety/${lab.id}`} className="font-medium text-slate-800 text-xs hover:text-blue-600 hover:underline">{lab.name}</Link>
                           <div className="text-[10px] text-slate-400">{lab.lab_code} · {lab.open_findings > 0 ? `${lab.open_findings} open finding${lab.open_findings > 1 ? "s" : ""}` : "No open findings"}</div>
                         </td>
                         <td className="px-4 py-2.5"><Pill className={bslColor(lab.bsl_level)}>{lab.bsl_level}</Pill></td>
@@ -202,7 +202,17 @@ export default async function BiosafetyPage() {
                         <td className="px-4 py-2.5 text-xs text-slate-600">{fmtDate(lab.last_inspection)}</td>
                         <td className="px-4 py-2.5 text-xs text-slate-600">{fmtDate(lab.next_inspection)}</td>
                         <td className="px-4 py-2.5"><Pill className={statusColor(lab.status)}>{lab.status.replace(/_/g, " ")}</Pill></td>
-                        <td className="px-4 py-2.5 text-right"><EditLabButton lab={lab} /></td>
+                        <td className="px-4 py-2.5 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Link
+                              href={`/biosafety/${lab.id}`}
+                              className="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+                            >
+                              View
+                            </Link>
+                            <EditLabButton lab={lab} />
+                          </div>
+                        </td>
                       </tr>
                     ))}
                     {labs.length === 0 && (

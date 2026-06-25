@@ -6,6 +6,7 @@ import { DarkPageHeader, DarkCard, DarkCardHeader, Pill, DarkStat } from "@/comp
 import { Modal, Field, Input, Select as FormSelect, SubmitRow } from "@/components/modals/Modal";
 import { createClient } from "@/lib/supabase/client";
 import { MOCK_MODE } from "@/lib/env";
+import { addTenant, updateTenant } from "@/lib/actions/sa";
 import {
   Search, Download, Building2, Users, Rocket, TrendingUp,
   Pencil, Trash2, ChevronUp, ChevronDown, ExternalLink,
@@ -129,7 +130,7 @@ function CompanyModal({
 }: {
   company?: Company | null;
   onClose: () => void;
-  onSave: (c: Company) => void;
+  onSave: (c: Company) => Promise<boolean>;
 }) {
   const editing = Boolean(company);
   const [name,       setName]       = useState(company?.name ?? "");
@@ -142,12 +143,12 @@ function CompanyModal({
   const [users,      setUsers]      = useState(String(company?.users ?? 0));
   const [saving,     setSaving]     = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !industry.trim()) return;
     setSaving(true);
-    setTimeout(() => {
-      onSave({
+    try {
+      const ok = await onSave({
         id:            company?.id ?? `t-${Date.now()}`,
         name:          name.trim(),
         industry:      industry.trim(),
@@ -160,8 +161,10 @@ function CompanyModal({
         mrr:           PLAN_MRR[plan] ?? 0,
         created_at:    company?.created_at ?? new Date().toISOString().slice(0, 10),
       });
-      onClose();
-    }, 600);
+      if (ok) onClose();
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -234,57 +237,98 @@ export default function SACompaniesPage() {
   const [sortKey,      setSortKey]      = useState<SortKey>("name");
   const [sortDir,      setSortDir]      = useState<"asc" | "desc">("asc");
   const [toast,        setToast]        = useState("");
+  const [tick,         setTick]         = useState(0);
 
   // Load real tenants from Supabase in live mode. Mock mode keeps the fixtures.
   useEffect(() => {
+    if (MOCK_MODE) return;
     const sb = createClient();
     if (!sb) return;
     sb.from("tenants")
-      .select("id, name, slug, sector, active, created_at")
+      .select("id, name, slug, sector, active, created_at, impl_status, onboarding_data")
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
-        // Live mode: always reflect the real table (even when empty → empty state).
         if (error || !data) return;
-        setCompanies(data.map(t => ({
-          id:            t.id,
-          name:          t.name,
-          industry:      t.sector,
-          plan:          "Professional",
-          users:         0,
-          status:        t.active ? "active" : "churned",
-          implStatus:    "live",
-          contact:       "",
-          contact_email: "",
-          mrr:           0,
-          created_at:    String(t.created_at).slice(0, 10),
-        })));
+        setCompanies(data.map(t => {
+          const od = (t.onboarding_data ?? {}) as Record<string, string>;
+          return {
+            id:            t.id,
+            name:          t.name,
+            industry:      t.sector ?? "—",
+            plan:          "Professional",
+            users:         0,
+            status:        t.active ? "active" : "churned",
+            implStatus:    t.impl_status ?? "prospect",
+            contact:       od.contact_name ?? "",
+            contact_email: od.contact_email ?? "",
+            mrr:           0,
+            created_at:    String(t.created_at).slice(0, 10),
+          };
+        }));
       });
-  }, []);
+  }, [tick]);
 
   function showToast(msg: string) {
     setToast(msg);
-    setTimeout(() => setToast(""), 3000);
+    setTimeout(() => setToast(""), 3500);
   }
 
-  function handleSave(c: Company) {
-    setCompanies(prev =>
-      prev.some(x => x.id === c.id) ? prev.map(x => x.id === c.id ? c : x) : [...prev, c]
-    );
+  function refresh() { setTick(t => t + 1); }
+
+  async function handleSave(c: Company): Promise<boolean> {
+    if (MOCK_MODE) {
+      setCompanies(prev =>
+        prev.some(x => x.id === c.id) ? prev.map(x => x.id === c.id ? c : x) : [...prev, c]
+      );
+      showToast(editing ? `${c.name} updated` : `${c.name} added`);
+      return true;
+    }
+    const input = {
+      name: c.name, sector: c.industry,
+      impl_status: c.implStatus, active: c.status === "active",
+      contact_name: c.contact || null, contact_email: c.contact_email || null,
+    };
+    const result = editing
+      ? await updateTenant(c.id, input)
+      : await addTenant(input);
+    if (!result.ok) { showToast(`Error: ${result.error}`); return false; }
     showToast(editing ? `${c.name} updated` : `${c.name} added`);
+    refresh();
+    return true;
   }
 
-  function handleArchive(id: string) {
+  async function handleArchive(id: string) {
     const c = companies.find(x => x.id === id);
     if (!c) return;
     if (!confirm(`Archive "${c.name}"? It will be hidden from the active list.`)) return;
-    setCompanies(prev => prev.map(x => x.id === id ? { ...x, status: "archived" } : x));
+    if (!MOCK_MODE) {
+      const result = await updateTenant(id, {
+        name: c.name, sector: c.industry,
+        impl_status: c.implStatus, active: false,
+        contact_name: c.contact || null, contact_email: c.contact_email || null,
+      });
+      if (!result.ok) { showToast(`Error: ${result.error}`); return; }
+      refresh();
+    } else {
+      setCompanies(prev => prev.map(x => x.id === id ? { ...x, status: "archived" } : x));
+    }
     showToast(`${c.name} archived`);
   }
 
-  function handleRestore(id: string) {
+  async function handleRestore(id: string) {
     const c = companies.find(x => x.id === id);
     if (!c) return;
-    setCompanies(prev => prev.map(x => x.id === id ? { ...x, status: "prospect" } : x));
+    if (!MOCK_MODE) {
+      const result = await updateTenant(id, {
+        name: c.name, sector: c.industry,
+        impl_status: c.implStatus, active: true,
+        contact_name: c.contact || null, contact_email: c.contact_email || null,
+      });
+      if (!result.ok) { showToast(`Error: ${result.error}`); return; }
+      refresh();
+    } else {
+      setCompanies(prev => prev.map(x => x.id === id ? { ...x, status: "prospect" } : x));
+    }
     showToast(`${c.name} restored`);
   }
 
@@ -327,7 +371,11 @@ export default function SACompaniesPage() {
         <CompanyModal
           company={editing}
           onClose={() => { setEditing(null); setAddingNew(false); }}
-          onSave={c => { handleSave(c); setEditing(null); setAddingNew(false); }}
+          onSave={async c => {
+            const ok = await handleSave(c);
+            if (ok) { setEditing(null); setAddingNew(false); }
+            return ok;
+          }}
         />
       )}
       {toast && (

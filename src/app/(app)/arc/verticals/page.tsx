@@ -1,7 +1,7 @@
 import { getCells, getProofs, getActions, getSites, getHslReadings, getVelaInsights } from "@/lib/data/repo";
 import { VerticalsPage } from "@/components/arc/VerticalsView";
 
-export const metadata = { title: "GUS Verticals — SafetyIQ" };
+export const metadata = { title: "Platform Verticals — SafetyIQ" };
 
 export default async function Page() {
   const [sites, cells, proofs, actions, hslReadings, velaInsights] = await Promise.all([

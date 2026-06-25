@@ -16,6 +16,7 @@ import type {
   Role,
   IncidentType,
   WasteClassification,
+  WasteProfileState,
   EquipmentStatus,
   RiskLevel,
   GhsHazardClass,
@@ -523,6 +524,29 @@ export interface WasteInspection {
   created_at: string;
 }
 
+export interface WasteProfile {
+  id: string;
+  tenant_id: string;
+  site_id: string | null;
+  waste_stream_id: string | null;
+  name: string;
+  waste_code: string | null;
+  classification: string;
+  physical_state: string | null;
+  process_description: string | null;
+  hazard_summary: string | null;
+  state: WasteProfileState;
+  version: string;
+  reviewer_id: string | null;
+  submitted_by: string | null;
+  submitted_at: string | null;
+  approved_at: string | null;
+  reject_reason: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Equipment & Calibration ───────────────────────────────────────────────────
 
 export interface Equipment {
@@ -643,6 +667,18 @@ export interface ComplianceScore {
   status: ComplianceStatus;
   calculated_at: string;
   details: Record<string, unknown>;  // breakdown of sub-scores
+}
+
+// ── Saved Reports ─────────────────────────────────────────────────────────────
+
+export interface SavedReport {
+  id: string;
+  tenant_id: string;
+  name: string;
+  report_type: string;
+  generated_at: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
 }
 
 // ── AI Findings ───────────────────────────────────────────────────────────────
