@@ -23,7 +23,7 @@ export default async function SAValidationPage() {
   ];
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <DarkPageHeader
         title="EHS Records Validation Agent"
         subtitle="CSP-informed background validation with credentialed human review"
