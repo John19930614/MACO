@@ -6,6 +6,7 @@ import {
   recordReviewDecision, validateRecordInBackground, backfillValidations,
   setGuardrail, addQualification, setQualificationStatus, setMemoryActive, deleteMemory,
 } from "@/lib/csp/repo";
+import { runStandup } from "@/lib/csp/standup";
 import type { CspRecordType, CspQualKind } from "@/lib/csp/types";
 
 /**
@@ -134,4 +135,16 @@ export async function removeMemoryLesson(id: string) {
   const res = await deleteMemory(id);
   revalidatePath("/sa/validation");
   return res;
+}
+
+// ── Daily agent standup (GUS × EHS Validation Agent) ──────────────────────────
+
+export async function conveneAgentStandup() {
+  const client = await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Session expired — please reload." };
+  const meeting = await runStandup(client, { now: Date.now(), generatedBy: "superadmin", enrich: true });
+  revalidatePath("/sa/standup");
+  return meeting
+    ? { ok: true, gaps: meeting.gaps_found.length, actions: meeting.action_items.length }
+    : { ok: false, error: "Standup did not generate — superadmin rights and the meetings table are required." };
 }

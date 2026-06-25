@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/pclss",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/agent-standup",
+      "schedule": "0 13 * * *"
     }
   ]
 }

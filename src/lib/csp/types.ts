@@ -224,3 +224,40 @@ export interface CspAgentContext {
   qualifications: CspQualification[];
   memory: CspMemoryLesson[];
 }
+
+// ── Daily agent standup (GUS × EHS Validation Agent) ──────────────────────────
+
+export interface CspMeetingExchange {
+  speaker: string;        // "GUS" | "EHS Validation Agent"
+  message: string;
+}
+
+export interface CspMeetingGap {
+  title: string;
+  detail: string;
+  severity: "low" | "medium" | "high";
+}
+
+export interface CspMeetingActionItem {
+  item: string;
+  owner: string;          // "GUS" | "EHS Agent" | "Operator"
+  priority: "low" | "normal" | "high";
+}
+
+export interface CspMeeting {
+  id: string;
+  meeting_date: string;
+  title: string;
+  status: string;
+  participants: string[];
+  gus_briefing: string | null;
+  ehs_briefing: string | null;
+  exchange: CspMeetingExchange[];
+  gaps_found: CspMeetingGap[];
+  action_items: CspMeetingActionItem[];
+  shared_summary: string | null;
+  metrics: Record<string, unknown>;
+  model: string | null;
+  generated_by: string | null;
+  created_at: string;
+}
