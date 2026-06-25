@@ -26,6 +26,7 @@
     "lucide-react": "^0.469.0",
     "next": "^15.1.3",
     "openai": "^4.77.0",
+    "pptxgenjs": "^3.12.0",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
