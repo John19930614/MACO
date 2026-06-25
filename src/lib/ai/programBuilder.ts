@@ -8,16 +8,18 @@
  * regulation it satisfies, and surfaced where the platform needs it.
  *
  * Every document is authored in the Reliance Document Generator master structure
- * (Document Control → Purpose/Scope → Regulatory Basis → Roles → Definitions →
- * Risk/PPE/Stop-Work → Procedure → Records → Training → Corrective Actions →
- * the matching Type Module (SOP / Form / Program / Emergency / Regulatory) →
- * Final Review Checklist) so every generated doc shares one consistent format.
+ * (Purpose/Scope → Regulatory Basis → Roles → Definitions → Risk/PPE/Stop-Work →
+ * Procedure → Records → Training → Corrective Actions → the matching Type Module
+ * (SOP / Form / Program / Emergency / Regulatory) → Final Review Checklist) so
+ * every generated doc shares one consistent format. Section 1 (Document Control)
+ * is rendered/exported from the document's live metadata, not authored here.
  *
  * Never import into a client component — it reads server secrets.
  */
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { serverSecrets, hasLiveAi } from "@/lib/env";
+import { getHText, getPText } from "@/lib/ghsData";
 import type { Chemical, BiosafetyLab, WasteStream, DocSection } from "@/lib/types";
 
 export interface ProgramCtx {
@@ -81,12 +83,13 @@ export function requiredPrograms(ctx: ProgramCtx) {
 }
 
 // ── Reliance Document Generator — master template structure ───────────────────
-// The fixed section spine every generated document follows. Section 12 of the
-// Word master (Platform Formatting Standard) is a styling rule, not content, so
-// it is not authored here. `{module}` is replaced by the category's Type Module.
+// The fixed section spine every generated document follows. Section 1 of the
+// Word master (Document Control) is rendered/exported deterministically from the
+// document's live metadata (see DocSections.DocControlBlock + docExport), so it
+// is NOT authored here. Section 12 (Platform Formatting Standard) is a styling
+// rule, not content, so it is also omitted. `{module}` is replaced by the
+// category's Type Module.
 const MASTER_SECTIONS: { heading: string; intent: string }[] = [
-  { heading: "Document Control",
-    intent: "Present as labeled lines using the known metadata: Document Title, Regulatory Basis, Company, Site/Location, Document Owner / EHS lead, Revision (0.0 — initial release), Effective Date and Next Review Date (use [MM/DD/YYYY] where a real date is unknown)." },
   { heading: "Purpose, Scope & When to Use",
     intent: "Purpose in 2–4 sentences (the risk, process, site, and compliance reason). Scope (departments, tasks, equipment, chemicals/biological materials/waste streams, contractors, employees covered). When to Use (the trigger that requires this document)." },
   { heading: "Applicability & Regulatory Basis",
@@ -143,6 +146,35 @@ function masterSpine(category: string): { heading: string; intent: string }[] {
 
 export interface SourceBlock { name: string; text?: string; base64?: string; mimeType?: string }
 
+// ── Live-data grounding for the Risk/PPE and Applicability tables ──────────────
+// Builds factual anchors from the actual chemical inventory so those tables
+// reflect real hazards/regulations rather than AI guesses. The AI must cover
+// every anchor and supply the control/PPE/stop-work expertise around it.
+
+/** Hazardous chemicals with their real GHS hazard + precautionary statements. */
+function hazardProfile(chemicals: Chemical[]): string {
+  const hazardous = chemicals.filter(
+    (c) => (c.hazard_statements?.length ?? 0) > 0 || ghs(c).length > 0,
+  );
+  return hazardous.slice(0, 30).map((c) => {
+    const hs = (c.hazard_statements ?? []).slice(0, 6).map((h) => `${h} ${getHText(h)}`.trim()).join("; ");
+    const ps = (c.precautionary_statements ?? []).slice(0, 6).map((p) => `${p} ${getPText(p)}`.trim()).join("; ");
+    const tag = c.is_scheduled && c.schedule_ref ? ` [regulated: ${c.schedule_ref}]` : "";
+    return `- ${c.name}${c.cas_number ? ` (CAS ${c.cas_number})` : ""}${tag}`
+      + (hs ? `\n   Hazards: ${hs}` : "")
+      + (ps ? `\n   Precautions: ${ps}` : "");
+  }).join("\n");
+}
+
+/** The governing regulation plus any controlled-substance lists the inventory triggers. */
+function regulatoryAnchors(def: ProgramDef, chemicals: Chemical[]): string[] {
+  const set = new Set<string>([def.regulation]);
+  for (const c of chemicals) {
+    if (c.is_scheduled && c.schedule_ref) set.add(c.schedule_ref);
+  }
+  return [...set];
+}
+
 /** Author a complete, company-specific program, grounded in uploaded manuals + live data. */
 export async function generateProgram(
   def: ProgramDef,
@@ -183,6 +215,15 @@ export async function generateProgram(
       blocks.push({ type: "text", text: `Company source document "${s.name}":\n${s.text.slice(0, 12000)}` });
     }
   }
+  // Factual anchors derived from the live inventory — the tables must be built
+  // from these, not invented.
+  const hazards = hazardProfile(chemicals);
+  const regAnchors = regulatoryAnchors(def, chemicals);
+  if (hazards) {
+    blocks.push({ type: "text", text:
+      `LIVE HAZARD PROFILE — the company's actual hazardous chemicals with their real GHS hazard (H) and precautionary (P) statements:\n${hazards}` });
+  }
+
   const sectionSpec = spine.map((s, i) => `${i + 1}. ${s.heading} — ${s.intent}`).join("\n");
   blocks.push({ type: "text", text:
     `Author a complete, audit-ready ${def.title} for ${info.company} (site: ${info.site}). ` +
@@ -191,7 +232,15 @@ export async function generateProgram(
     `Where the company's uploaded source documents above contain relevant procedures, incorporate and build on them; otherwise write best-practice content that complies with ${def.regulation}. ` +
     `Reference the company's actual name, site, and chemicals. Each section body must be substantive, specific, and ready to adopt (not placeholders).\n\n` +
     `Produce EXACTLY these sections, in this order, using each heading verbatim:\n${sectionSpec}\n\n` +
-    `In addition, this document MUST substantively cover these regulation-specific topics within the sections above (especially Risk/PPE, Procedure, and the Type Module section): ${def.outline.join("; ")}.`,
+    `In addition, this document MUST substantively cover these regulation-specific topics within the sections above (especially Risk/PPE, Procedure, and the Type Module section): ${def.outline.join("; ")}.\n\n` +
+    `GROUNDING — build the data tables from the live facts, do not invent or omit:\n` +
+    (hazards
+      ? `• "Risk, PPE, Permits & Stop-Work Triggers": include a row for EVERY chemical/hazard in the LIVE HAZARD PROFILE above. Base the Hazard column on its actual H-statements and the PPE column on its actual P-statements; supply the minimum control and stop-work trigger. Do not list chemicals or hazards that are not in the profile.\n`
+      : ``) +
+    `• "Applicability & Regulatory Basis": include a row for each of these governing requirements that this document satisfies: ${regAnchors.join("; ")}. Mark Applies = Yes and give the plain-language requirement and the record/evidence that proves it.\n\n` +
+    `FORMATTING — write each section body in GitHub-flavored Markdown so it renders cleanly: ` +
+    `present tabular content as Markdown pipe tables with a header row and a |---| separator (Roles, Risk/PPE, Procedure (Step | Action | Acceptance Criteria | Record/Output), Inspection/Records, Corrective Actions, and the Type Module blocks as tables with clear column headers). ` +
+    `Use a numbered list for sequential procedure steps and "- [ ]" checkbox items for the Final Review Checklist. Use **bold** for field labels. Keep narrative sections (Purpose, Definitions) as short prose or simple tables.`,
   });
 
   try {
@@ -211,4 +260,4 @@ export async function generateProgram(
   return spine.map((s) => ({ heading: s.heading, body: "" }));
 }
 
-export { hasCarcinogen };
+export { hasCarcinogen, hazardProfile, regulatoryAnchors };
