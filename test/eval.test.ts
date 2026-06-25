@@ -11,7 +11,7 @@ import type { SafetyCell } from "@/lib/types";
  * pinned to PROMPT_VERSION: when the prompt/taxonomy changes, bump EXPECTED_*
  * deliberately and re-score rather than letting drift pass silently.
  */
-const EXPECTED_PROMPT_VERSION = "amaya-causality-2026-06-09";
+const EXPECTED_PROMPT_VERSION = "safetyiq-causality-2026-06-25";
 
 interface Golden {
   text: string;

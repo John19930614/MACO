@@ -486,7 +486,7 @@ describe("AI finding fixtures", () => {
 
   it("prompt_version matches the platform constant", () => {
     for (const f of fx.MOCK_AI_FINDINGS) {
-      expect(f.prompt_version).toBe("safetyiq-ehs-2026-06-17");
+      expect(f.prompt_version).toBe("safetyiq-causality-2026-06-25");
     }
   });
 

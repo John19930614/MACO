@@ -1,4 +1,4 @@
-import { getChemicals, getTrainingCourses } from "@/lib/data/ehsRepo";
+import { getChemicals, getTrainingCourses, getSdsDocuments } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader, Card, CardHeader } from "@/components/ui/primitives";
@@ -7,6 +7,10 @@ import { FlaskConical } from "lucide-react";
 import { AddChemicalButton } from "./AddChemicalButton";
 import { ChemicalExportButton } from "./ChemicalExportButton";
 import { ChemicalsDashboard } from "./ChemicalsDashboard";
+import { SdsUploadButton } from "./SdsUploadButton";
+import { SdsQueue } from "./SdsQueue";
+
+export const maxDuration = 60;
 
 function sdsStatus(c: { sds_url: string | null; sds_expiry: string | null }): "on_file" | "expiring" | "expired" | "missing" {
   if (!c.sds_url) return "missing";
@@ -39,9 +43,10 @@ function hazardClassLabel(h: string): string | null {
 
 export default async function ChemicalsPage() {
   const tenantId = await getEffectiveTenantId();
-  const [chemicals, courses] = await Promise.all([
+  const [chemicals, courses, sdsDocs] = await Promise.all([
     getChemicals(tenantId),
     getTrainingCourses(tenantId),
+    getSdsDocuments(tenantId),
   ]);
 
   const active = chemicals.filter((c) => c.status === "active");
@@ -91,16 +96,19 @@ export default async function ChemicalsPage() {
         actions={
           <div className="flex gap-2">
             <ChemicalExportButton chemicals={chemicals} />
+            <SdsUploadButton />
             <AddChemicalButton />
           </div>
         }
       />
       <div className="iq-scroll flex-1 overflow-y-auto p-6">
+        <SdsQueue docs={sdsDocs} />
+
         {chemicals.length === 0 ? (
           <EmptyState
             icon={<FlaskConical className="h-6 w-6" />}
             title="No chemicals in your inventory yet"
-            description="Add your first chemical with the button above, or import your full inventory during onboarding. SafetyIQ derives SDS tracking, hazard classes, and PPE from each entry."
+            description="Add your first chemical with the button above, or upload an SDS PDF to auto-populate the record using AI extraction."
           />
         ) : (
           <>

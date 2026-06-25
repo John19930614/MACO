@@ -274,7 +274,7 @@ export const aiAnalysisOutputSchema = z.object({
 export type AiAnalysisOutputValidated = z.infer<typeof aiAnalysisOutputSchema>;
 
 /**
- * Zod schema for the AMAYA Causality Engine output (Arc per-cell analysis).
+ * Zod schema for the Arc Causality Engine output (per-cell analysis).
  * Validated before the result is ever stored — a malformed payload triggers
  * the heuristic fallback. Numbers are coerced/clamped for model tolerance.
  */

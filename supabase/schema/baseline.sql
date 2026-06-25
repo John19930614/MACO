@@ -846,6 +846,29 @@ alter table public.ehs_ai_findings enable row level security;
 create policy "tenant_crud" on public.ehs_ai_findings for all to authenticated
   using ((tenant_id = auth_tenant_id()) or is_reliance_admin()) with check (tenant_id = auth_tenant_id());
 
+-- AI call telemetry: durable per-call latency/token/cost record so in-app
+-- observability survives serverless cold starts (was an in-memory ring buffer
+-- that reset on every cold start). Operational data, not tenant business data.
+create table if not exists public.ai_telemetry (
+  id            uuid        primary key default gen_random_uuid(),
+  at            timestamptz not null default now(),
+  provider      text        not null default '',
+  model         text        not null default '',
+  ms            integer     not null default 0,
+  input_tokens  integer     not null default 0,
+  output_tokens integer     not null default 0,
+  ok            boolean     not null default true,
+  tenant_id     uuid        references public.tenants(id) on delete set null
+);
+alter table public.ai_telemetry enable row level security;
+-- Reads: platform operators only. Writes: any authenticated session may append
+-- its own AI-call log row.
+create policy "ai_telemetry_admin_read" on public.ai_telemetry
+  for select to authenticated using (is_reliance_admin());
+create policy "ai_telemetry_insert" on public.ai_telemetry
+  for insert to authenticated with check (true);
+create index if not exists ai_telemetry_at_idx on public.ai_telemetry (at desc);
+
 create table if not exists public.document_acknowledgments (
   id              uuid        primary key default gen_random_uuid(),
   tenant_id       uuid        not null references public.tenants(id),

@@ -57,4 +57,4 @@ export function hasLiveAi(): boolean {
     : Boolean(process.env.OPENAI_API_KEY);
 }
 
-export const PROMPT_VERSION = "amaya-causality-2026-06-09";
+export const PROMPT_VERSION = "safetyiq-causality-2026-06-25";

@@ -18,6 +18,7 @@ import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { serverSecrets, aiProvider } from "@/lib/env";
 import { recordAiCall } from "./telemetry";
+import { CircuitBreaker } from "./circuit";
 
 /** OpenAI-shaped JSON schema spec; reused for both providers. */
 export interface JsonSchemaSpec {
@@ -44,14 +45,36 @@ export interface StructuredResult {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+// One breaker per provider, kept on globalThis so it survives dev hot-reload and
+// is shared across requests within a warm serverless instance — exactly where a
+// breaker helps (repeated calls during a provider outage).
+const g = globalThis as unknown as { __macoAiBreakers?: Record<string, CircuitBreaker> };
+const breakers: Record<string, CircuitBreaker> = g.__macoAiBreakers ?? (g.__macoAiBreakers = {});
+function breakerFor(provider: string): CircuitBreaker {
+  return (breakers[provider] ??= new CircuitBreaker());
+}
+
 export async function generateStructuredJson(call: StructuredCall): Promise<StructuredResult> {
   const provider = aiProvider();
+  const breaker = breakerFor(provider);
+  if (!breaker.canRequest(Date.now())) {
+    // Circuit open — skip the network entirely so the caller falls back to the
+    // heuristic immediately instead of waiting out the request timeout.
+    throw new Error(`AI provider circuit open for ${provider} — short-circuiting to fallback`);
+  }
+
   const started = Date.now();
-  const result = provider === "anthropic" ? await viaAnthropic(call) : await viaOpenAI(call);
-  const ms = Date.now() - started;
-  // Observability: in-app telemetry entry per call (no console output in production).
-  recordAiCall({ provider, model: result.model, ms, inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, ok: true });
-  return result;
+  try {
+    const result = provider === "anthropic" ? await viaAnthropic(call) : await viaOpenAI(call);
+    breaker.onSuccess();
+    const ms = Date.now() - started;
+    // Observability: in-app telemetry entry per call (no console output in production).
+    recordAiCall({ provider, model: result.model, ms, inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, ok: true });
+    return result;
+  } catch (err) {
+    breaker.onFailure(Date.now());
+    throw err;
+  }
 }
 
 async function viaOpenAI(call: StructuredCall): Promise<StructuredResult> {
@@ -89,7 +112,12 @@ async function viaAnthropic(call: StructuredCall): Promise<StructuredResult> {
   const resp = await client.messages.create({
     model: anthropicModel,
     max_tokens: call.maxTokens,
-    system: call.system,
+    // Prompt caching: a single cache_control breakpoint on the system block
+    // caches the static request prefix (tools schema + system prompt), which is
+    // identical across every record of a given job. The per-record user prompt
+    // stays uncached. No-op below the model's cache minimum, so it's safe to
+    // leave on and it pays off as prompts/tool schemas grow.
+    system: [{ type: "text", text: call.system, cache_control: { type: "ephemeral" } }],
     messages: [{ role: "user", content: call.user }],
     // Structured output via a single forced tool — the most portable approach
     // across SDK versions, and pixel-equivalent to a strict JSON schema.

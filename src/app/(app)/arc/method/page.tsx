@@ -55,7 +55,7 @@ export default function MethodPage() {
 
                   {/* Mapping note */}
                   <div className={`mt-4 rounded-lg px-3 py-2 ${meta.bg}`}>
-                    <p className="text-[11px] text-slate-600 leading-relaxed">{layer.amayaMapping}</p>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">{layer.safetyiqMapping}</p>
                   </div>
                 </div>
               </Card>

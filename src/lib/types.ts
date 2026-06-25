@@ -188,6 +188,57 @@ export interface Chemical {
   updated_at: string;
 }
 
+// ── SDS Upload & GHS AI Extraction ────────────────────────────────────────────
+
+/** Structured GHS data Claude extracts from an uploaded SDS PDF. */
+export interface SdsExtracted {
+  product_name: string;
+  chemical_name: string;
+  cas_number: string;
+  manufacturer: string;
+  supplier_name: string;
+  supplier_phone: string;
+  emergency_phone: string;
+  sds_revision_date: string;         // YYYY-MM-DD or ""
+  signal_word: string;               // "Danger" | "Warning" | ""
+  ghs_pictogram_codes: string[];     // ["GHS02", "GHS05", ...]
+  hazard_statements: string[];       // ["H225", "H319", ...]
+  hazard_statement_texts: string[];  // full text, same order
+  precautionary_statements: string[];
+  precautionary_statement_texts: string[];
+  hazard_classes: string[];
+  recommended_ppe: string[];
+  storage_requirements: string[];
+  disposal_guidance: string;
+  is_mixture: boolean;
+  physical_state: string;            // "solid" | "liquid" | "gas" | ""
+  flash_point: string;
+  recommended_use: string;
+  confidence_score: number;          // 0–100
+}
+
+export interface SdsDocument {
+  id: string;
+  tenant_id: string;
+  file_name: string;
+  file_path: string;
+  file_url: string | null;
+  manufacturer: string | null;
+  product_identifier: string | null;
+  sds_revision_date: string | null;
+  uploaded_by: string | null;
+  ai_extraction_status: "pending" | "processing" | "completed" | "failed";
+  ai_extraction_json: SdsExtracted | null;
+  ai_confidence_score: number | null;
+  approval_status: "draft" | "ai_extracted" | "in_review" | "approved" | "rejected";
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
+  chemical_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Legal & Regulatory Compliance ─────────────────────────────────────────────
 
 export interface LegalRequirement {
@@ -711,7 +762,7 @@ export interface AiFinding {
 }
 
 /**
- * Structured output for the AMAYA Causality Engine (Arc per-cell analysis).
+ * Structured output for the Arc Causality Engine (per-cell analysis).
  * Matches the safetyiq_causality_analysis JSON schema in prompt.ts.
  */
 export interface CausalityOutput {

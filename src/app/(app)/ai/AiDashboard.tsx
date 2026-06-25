@@ -914,7 +914,7 @@ function FindingsPanel({ findings, runs, latestRun }: {
   );
 }
 
-// ── Main AmayaDashboard component ────────────────────────────────────────────
+// ── Main AiDashboard component ────────────────────────────────────────────
 
 const TABS = [
   { id: "chat",     label: "Chat with SafetyIQ AI",    icon: <Sparkles className="h-3.5 w-3.5" /> },
@@ -923,7 +923,7 @@ const TABS = [
 
 type TabId = "chat" | "findings";
 
-export function AmayaDashboard({
+export function AiDashboard({
   chemicals, courses, records, profiles, capas, incidents,
   legal, audits, waste, findings, runs, latestRun,
 }: {

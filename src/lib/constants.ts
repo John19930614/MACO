@@ -312,7 +312,7 @@ export const EDGE_TYPES = [
   "inhibits",
   "precedes",
   "same_location",
-  "same_control_gap",   // Amaya causality engine: shared control gap pattern
+  "same_control_gap",   // Arc causality engine: shared control gap pattern
 ] as const;
 export type EdgeType = (typeof EDGE_TYPES)[number];
 

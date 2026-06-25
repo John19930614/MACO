@@ -3,6 +3,7 @@ import { CheckCircle2, AlertTriangle, XCircle, ArrowRight } from "lucide-react";
 import { DarkPageHeader, DarkCard, DarkCardHeader, Pill } from "@/components/ui/primitives";
 import { runGatewayPipeline } from "@/lib/gateway/pipeline";
 import type { CheckStatus } from "@/lib/gateway/pipeline";
+import { PROMPT_VERSION } from "@/lib/env";
 
 const JOB_CONFIGS = [
   { job: "chemical_hazard_analysis",   label: "Chemical Hazard Analysis",  trigger: "Chemical inventory update",    frequency: "On change",  model: "claude-sonnet-4-6", enabled: true  },
@@ -43,7 +44,7 @@ export default async function SAAIPage() {
 
         {/* Prompt version banner */}
         <div className="mb-4 rounded-xl border bg-violet-900/20 border-violet-800/50 p-4 text-sm text-violet-300">
-          <strong>PROMPT_VERSION:</strong> <code className="rounded bg-violet-900/50 px-1.5 py-0.5 font-mono text-xs">safetyiq-ehs-2026-06-17</code>
+          <strong>PROMPT_VERSION:</strong> <code className="rounded bg-violet-900/50 px-1.5 py-0.5 font-mono text-xs">{PROMPT_VERSION}</code>
           {" · "}
           <strong>Model:</strong> <code className="rounded bg-violet-900/50 px-1.5 py-0.5 font-mono text-xs">claude-sonnet-4-6</code>
           {" · "}

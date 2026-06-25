@@ -32,7 +32,7 @@ export interface ArcLayer {
   summary: string;
   stages: ArcStage[];
   /** How SafetyIQ's Safety-Cell product realizes this layer. */
-  amayaMapping: string;
+  safetyiqMapping: string;
 }
 
 // ── EXP — Experience Intelligence Protocol ─────────────────────────────────
@@ -43,7 +43,7 @@ export const EXP: ArcLayer = {
   color: "exp",
   summary:
     "Captures the tacit expertise of the workforce and freezes it into a living model — the knowledge ghost — so hard-won judgment is never lost to turnover.",
-  amayaMapping:
+  safetyiqMapping:
     "AI interviews and walk-floor capture feed Safety Cells. Hazard genome + pgvector embeddings convert experience into geo-tagged hazard memory that the Causality Engine reasons over.",
   stages: [
     { key: "elicit", name: "Elicit", blurb: "AI interviews · walk-floor" },
@@ -60,7 +60,7 @@ export const PCLSS: ArcLayer = {
   color: "pclss",
   summary:
     "The always-running engine. It does not wait for an incident report — it anticipates, hunts, forecasts, pre-empts, and evolves on its own clock.",
-  amayaMapping:
+  safetyiqMapping:
     "Scheduled engine runs scan open Safety Cells and control proof gaps, forecast where the next event clusters, and propose pre-emptive actions into the human review queue.",
   stages: [
     { key: "anticipate", name: "Anticipate", blurb: "Model the next failure before it happens" },
@@ -136,7 +136,7 @@ export const HSL: ArcLayer = {
   color: "hsl",
   summary:
     "The six human dimensions that conventional safety systems ignore. SafetyIQ treats each as a continuous, live measurement — not an annual survey.",
-  amayaMapping:
+  safetyiqMapping:
     "Each dimension is stored as a periodic reading per site and feeds the dashboard, the risk score, and the P-CLSS Anticipate stage.",
   stages: HSL_DIMENSIONS.map(({ key, name, blurb }) => ({ key, name, blurb })),
 };

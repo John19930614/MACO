@@ -8,7 +8,7 @@ import { EDGE_TYPES, type EdgeType } from "@/lib/constants";
 const MAX_AI_EDGES = 5;
 
 /**
- * POST /api/ai/analyze-cell — run the AMAYA Causality Engine for one cell.
+ * POST /api/ai/analyze-cell — run the Arc Causality Engine for one cell.
  * The finding is stored as PENDING and never mutates official records. Any
  * suggested causal edges are created as pending, AI-generated edges so a human
  * must accept them before they become part of the official safety record.

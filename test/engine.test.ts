@@ -64,7 +64,7 @@ describe("analyzeChemical()", () => {
   it("stamps the current PROMPT_VERSION", async () => {
     const chem = MOCK_CHEMICALS[0];
     const finding = await analyzeChemical(chem);
-    expect(finding.prompt_version).toBe("amaya-causality-2026-06-09");
+    expect(finding.prompt_version).toBe("safetyiq-causality-2026-06-25");
   });
 
   it("confidence is within 0.3–0.95 range", async () => {

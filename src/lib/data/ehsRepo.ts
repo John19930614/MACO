@@ -14,6 +14,7 @@ import type {
   DocumentAcknowledgment, OshaCase,
   ErgonomicsWorkstation, ErgonomicsJobTask, ExposureReading,
   WasteVendor, WastePickup, WasteInspection, WasteProfile, SavedReport,
+  SdsDocument,
 } from "@/lib/types";
 import type { Severity, CapaStatus, AuditStatus, RiskLevel, TrainingDelivery } from "@/lib/constants";
 
@@ -65,6 +66,18 @@ export const getEstablishment = cache(async (tenantId = MOCK_TENANT_ID): Promise
     contactEmail: str(obd.contactEmail),
     contactPhone: str(obd.contactPhone),
   };
+});
+
+// Tenant settings bag (onboarding_data.settings) — company config, OSHA
+// establishment data, EHS officers, notification toggles, logo, etc.
+export const getTenantSettings = cache(async (tenantId = MOCK_TENANT_ID): Promise<Record<string, unknown>> => {
+  if (MOCK_MODE) return {};
+  const client = await sb();
+  if (!client) return {};
+  const { data } = await client.from("tenants").select("onboarding_data").eq("id", tenantId).single();
+  const obd = (data?.onboarding_data ?? {}) as Record<string, unknown>;
+  const settings = obd.settings;
+  return settings && typeof settings === "object" ? (settings as Record<string, unknown>) : {};
 });
 
 // ── CAPA ─────────────────────────────────────────────────────────────────────
@@ -180,6 +193,21 @@ export const getChemicals = cache(async (tenantId = MOCK_TENANT_ID): Promise<Che
     updated_at: r.updated_at,
   }));
 });
+
+// ── SDS Documents ─────────────────────────────────────────────────────────────
+
+export async function getSdsDocuments(tenantId: string): Promise<SdsDocument[]> {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("sds_documents")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data as SdsDocument[];
+}
 
 // ── Audits ────────────────────────────────────────────────────────────────────
 

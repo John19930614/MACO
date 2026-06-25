@@ -2194,11 +2194,34 @@ export async function saveSettings(_prev: unknown, formData: FormData) {
       }
 
       const mergedSettings = { ...existingSettings, ...config, notifications: notifs };
+      const onboardingPatch: Record<string, unknown> = { ...onboarding, settings: mergedSettings };
+
+      // Mirror identity fields onto the canonical onboarding_data keys that
+      // getTenantName()/getEstablishment() read, so edits show across the app
+      // (not just on the settings page).
+      const IDENTITY: Record<string, string> = {
+        companyName: "legalName",
+        industry: "industry",
+        primarySite: "siteName",
+        primaryContact: "contactName",
+        hqPhone: "contactPhone",
+        contactEmail: "contactEmail",
+      };
+      for (const [field, canon] of Object.entries(IDENTITY)) {
+        const v = (config[field] ?? "").trim();
+        if (v) onboardingPatch[canon] = v;
+      }
+
+      const updatePayload: Record<string, unknown> = { onboarding_data: onboardingPatch };
+      const newName = (config.companyName ?? "").trim();
+      if (newName) updatePayload.name = newName; // first-class tenants.name column
+
       const { error } = await ctx.client
         .from("tenants")
-        .update({ onboarding_data: { ...onboarding, settings: mergedSettings } })
+        .update(updatePayload)
         .eq("id", ctx.tenantId);
       if (error) return { ok: false, error: error.message };
+      revalidatePath("/", "layout");
     }
   }
   // Mock mode: settings are not persisted in the in-memory store.

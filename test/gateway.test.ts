@@ -58,6 +58,25 @@ describe("AI Gateway pipeline", () => {
     expect(r.gateways.find((g) => g.id === "g2")!.status).toBe("fail"); // range
   });
 
+  it("blocks a CAPA whose source reference does not resolve (g1_reference)", async () => {
+    setSessionUser("u_admin");
+    const dataset = await loadGatewayDataset();
+    const base = dataset.capas[0];
+    const danglingCapa = {
+      ...base,
+      id: "capa_dangling",
+      title: `${base.title} (ref test)`,
+      source_type: "incident" as const,
+      source_id: "inc_DOES_NOT_EXIST",
+    };
+    const r = evaluateGateways({ ...dataset, capas: [...dataset.capas, danglingCapa] }, NOW);
+
+    const entry = r.rejectQueue.find((e) => e.recordId === "capa_dangling");
+    expect(entry).toBeTruthy();
+    expect(entry!.category).toContain("Reference");
+    expect(r.gateways.find((g) => g.id === "g1")!.status).toBe("fail");
+  });
+
   it("is deterministic for a fixed dataset + clock", async () => {
     const dataset = await loadGatewayDataset();
     const a = evaluateGateways(dataset, NOW);

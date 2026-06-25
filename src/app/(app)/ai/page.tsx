@@ -7,7 +7,7 @@ import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader } from "@/components/ui/primitives";
 import { RunScanButton } from "./RunScanButton";
-import { AmayaDashboard } from "./AmayaDashboard";
+import { AiDashboard } from "./AiDashboard";
 
 export default async function AiPage() {
   const tenantId = await getEffectiveTenantId();
@@ -38,7 +38,7 @@ export default async function AiPage() {
         actions={<RunScanButton />}
       />
       <div className="iq-scroll flex-1 overflow-y-auto p-6">
-        <AmayaDashboard
+        <AiDashboard
           findings={findings}
           runs={runs}
           latestRun={latestRun}

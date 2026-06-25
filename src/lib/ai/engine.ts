@@ -386,7 +386,7 @@ async function runAnalysis(p: RunParams): Promise<AiFinding> {
   };
 }
 
-// ── Arc Safety Cell analysis (AMAYA Causality Engine) ────────────────────────
+// ── Arc Safety Cell analysis (Causality Engine) ──────────────────────────────
 
 /**
  * Derive a confidence score from the SHAPE of the causality analysis output.
@@ -480,7 +480,7 @@ function cellHeuristicAnalysis(cell: SafetyCell, candidates: SafetyCell[]): Caus
 }
 
 /**
- * Analyse a single Safety Cell using the AMAYA Causality Engine and propose
+ * Analyse a single Safety Cell using the Arc Causality Engine and propose
  * causal links to nearby cells. In live mode this calls the LLM via the Arc
  * causality schema; in mock/fallback mode a deterministic heuristic runs.
  * The result is always stored as PENDING for human review.

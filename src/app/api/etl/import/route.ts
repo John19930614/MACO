@@ -4,7 +4,7 @@ import { createCell, getSessionUser, GatewayRejectionError } from "@/lib/data/re
 import { withAuthz } from "@/lib/api/guard";
 
 /**
- * POST /api/etl/import — import an existing platform's CSV export into AMAYA.
+ * POST /api/etl/import — import an existing platform's CSV export into SafetyIQ.
  * Body: { csv: string, mapping: EtlMapping, dry?: boolean }
  * Validates every row with the app's schema, inserts the valid ones (under the
  * caller's tenant via createCell), and returns a reconciliation report with the

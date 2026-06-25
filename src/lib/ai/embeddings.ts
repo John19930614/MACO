@@ -10,7 +10,9 @@ import { createClient } from "@supabase/supabase-js";
 import { serverSecrets, SUPABASE_URL } from "@/lib/env";
 import type { SafetyCell, EventCell } from "@/lib/types";
 
-export const EMBED_MODEL = process.env.AMAYA_EMBED_MODEL ?? "text-embedding-3-small";
+// Prefer SAFETYIQ_EMBED_MODEL; fall back to the legacy AMAYA_EMBED_MODEL so
+// existing deployment config keeps working until it's renamed.
+export const EMBED_MODEL = process.env.SAFETYIQ_EMBED_MODEL ?? process.env.AMAYA_EMBED_MODEL ?? "text-embedding-3-small";
 export const EMBED_DIM = 1536;
 
 /** pgvector accepts a textual array literal: "[1,2,3]". */

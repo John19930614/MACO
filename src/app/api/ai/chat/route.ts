@@ -17,7 +17,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { serverSecrets, hasLiveAi, MOCK_MODE } from "@/lib/env";
 
 interface IncomingMessage {
-  role: "user" | "amaya";
+  role: "user" | "assistant";
   text: string;
 }
 
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── No live AI key → let the client fall back to buildAmayaResponse ───────
+  // ── No live AI key → let the client fall back to its local response engine ─
   if (!hasLiveAi()) return NextResponse.json({ reply: null });
 
   // ── Parse body ────────────────────────────────────────────────────────────
@@ -61,8 +61,8 @@ export async function POST(req: NextRequest) {
   const history = Array.isArray(body.messages) ? body.messages : [];
   const contextSummary = typeof body.contextSummary === "string" ? body.contextSummary : "";
 
-  // Map the chat history onto Anthropic roles ("amaya" → "assistant"), keep only
-  // the most recent turns, and drop empty entries.
+  // Keep only the most recent turns, drop empty entries, and map any non-user
+  // role onto the Anthropic "assistant" role.
   const messages: Anthropic.MessageParam[] = history
     .filter((m) => m && typeof m.text === "string" && m.text.trim().length > 0)
     .slice(-MAX_MESSAGES)

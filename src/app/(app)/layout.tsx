@@ -3,7 +3,7 @@ import { TopBar } from "@/components/layout/TopBar";
 import { CommandPalette } from "@/components/layout/CommandPalette";
 import { GusStatusBriefing } from "@/components/layout/GusStatusBriefing";
 import { GusMaintenancePanel } from "@/components/layout/GusMaintenancePanel";
-import { AmayaDrawer } from "@/components/layout/AmayaDrawer";
+import { AssistantDrawer } from "@/components/layout/AssistantDrawer";
 import { MobileNavDrawer } from "@/components/layout/MobileNavDrawer";
 import { ModuleGateClient } from "@/components/layout/ModuleGateClient";
 import { DemoUserProvider } from "@/lib/context/demo-user";
@@ -96,7 +96,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <AuthGuard>
         <GusStatusBriefing />
         <GusMaintenancePanel capas={capas} incidents={incidents} />
-        <AmayaDrawer />
+        <AssistantDrawer />
         <MobileNavDrawer />
         <div className="flex h-screen flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
           <TopBar notifCount={notifCount} notifItems={notifItems} serverUser={serverUser} />

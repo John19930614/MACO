@@ -25,12 +25,12 @@ describe("ARC method definitions", () => {
     );
   });
 
-  it("each ARC layer has a code, summary, stages and an AMAYA mapping", () => {
+  it("each ARC layer has a code, summary, stages and a SafetyIQ mapping", () => {
     for (const layer of ARC_LAYERS) {
       expect(layer.code).toBeTruthy();
       expect(layer.summary.length).toBeGreaterThan(10);
       expect(layer.stages.length).toBeGreaterThan(0);
-      expect(layer.amayaMapping.length).toBeGreaterThan(10);
+      expect(layer.safetyiqMapping.length).toBeGreaterThan(10);
     }
   });
 });

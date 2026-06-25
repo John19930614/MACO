@@ -1,6 +1,6 @@
 /**
  * ETL import core (pure, testable). Transforms rows from an existing platform's
- * export (CSV) into validated AMAYA Safety Cell inputs, keeping a legacy id for
+ * export (CSV) into validated SafetyIQ Safety Cell inputs, keeping a legacy id for
  * traceability and producing a reconciliation report. The same zod schema the
  * app uses validates every row, so bad data is rejected — not silently imported.
  * See docs/migration-plan.md.
@@ -8,7 +8,7 @@
 import { safetyCellSchema, type SafetyCellInput } from "@/lib/schemas";
 
 export interface EtlMapping {
-  /** AMAYA field name -> source column header. */
+  /** SafetyIQ field name -> source column header. */
   fields: Record<string, string>;
   /** Per-field value translations (e.g. severity "1" -> "low"). */
   valueMaps?: Record<string, Record<string, string>>;

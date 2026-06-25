@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { X, Send, MessageCircle, ExternalLink, Sparkles } from "lucide-react";
 import Link from "next/link";
 
-interface Msg { id: string; role: "user" | "amaya"; text: string; }
+interface Msg { id: string; role: "user" | "assistant"; text: string; }
 
 const QUICK_PROMPTS = [
   "What are my highest-priority open CAPAs?",
@@ -34,7 +34,7 @@ function buildReply(q: string): string {
   return "I can give you a quick answer here, but for deeper analysis, linked data cards, and P-Engine insights, the full **AI Assistant** page has everything. [Open SafetyIQ AI →](/ai)";
 }
 
-export function AmayaDrawer() {
+export function AssistantDrawer() {
   const [open, setOpen]     = useState(false);
   const [msgs, setMsgs]     = useState<Msg[]>([]);
   const [input, setInput]   = useState("");
@@ -53,7 +53,7 @@ export function AmayaDrawer() {
     setTyping(true);
     setTimeout(() => {
       const reply = buildReply(text);
-      setMsgs((m) => [...m, { id: (Date.now() + 1).toString(), role: "amaya", text: reply }]);
+      setMsgs((m) => [...m, { id: (Date.now() + 1).toString(), role: "assistant", text: reply }]);
       setTyping(false);
     }, 700);
   }
@@ -150,7 +150,7 @@ export function AmayaDrawer() {
                     : "rounded-tl-sm bg-blue-50 text-slate-700"
                 }`}
               >
-                {m.role === "amaya" ? renderText(m.text) : m.text}
+                {m.role === "assistant" ? renderText(m.text) : m.text}
               </div>
             </div>
           ))}
