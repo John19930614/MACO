@@ -4,6 +4,9 @@ import { useState } from "react";
 import { Tag, Printer, X } from "lucide-react";
 import type { Chemical } from "@/lib/types";
 import { deriveSignalWord, derivePictograms, getHText, getPText } from "@/lib/ghsData";
+import { logLabelPrint, type LabelSnapshot } from "@/lib/actions/labels";
+
+const REGULATORY_BASIS = "OSHA 29 CFR 1910.1200 (HazCom 2012) / GHS Rev. 9 / WHMIS 2015";
 
 // ── GHS pictogram names ───────────────────────────────────────────────────────
 
@@ -218,6 +221,7 @@ function buildPrintHtml(chemical: Chemical): string {
 
 export function GhsLabelButton({ chemical }: { chemical: Chemical }) {
   const [open, setOpen] = useState(false);
+  const [logNote, setLogNote] = useState<{ ok: boolean; text: string } | null>(null);
 
   const h = chemical.hazard_statements ?? [];
   const p = chemical.precautionary_statements ?? [];
@@ -225,6 +229,29 @@ export function GhsLabelButton({ chemical }: { chemical: Chemical }) {
   const picCodes    = derivePictograms(h);
 
   if (h.length === 0) return null;
+
+  function recordPrint() {
+    const snapshot: LabelSnapshot = {
+      product_name:             chemical.name,
+      cas_number:               chemical.cas_number,
+      supplier:                 chemical.supplier,
+      storage_location:         chemical.storage_location || null,
+      signal_word:              signalWord,
+      pictogram_codes:          picCodes,
+      hazard_statements:        h.map((code) => ({ code, text: getHText(code) })),
+      precautionary_statements: p.map((code) => ({ code, text: getPText(code) })),
+      regulatory_basis:         REGULATORY_BASIS,
+    };
+    logLabelPrint({ chemicalId: chemical.id, snapshot })
+      .then((res) =>
+        setLogNote(
+          res.ok
+            ? { ok: true, text: "Print recorded to the label audit log." }
+            : { ok: false, text: `Print log failed: ${res.error}` },
+        ),
+      )
+      .catch((err) => setLogNote({ ok: false, text: `Print log failed: ${String(err)}` }));
+  }
 
   function handlePrint() {
     const html = buildPrintHtml(chemical);
@@ -237,11 +264,13 @@ export function GhsLabelButton({ chemical }: { chemical: Chemical }) {
       a.download = `GHS-Label-${chemical.name.replace(/[^a-zA-Z0-9]/g, "_")}.html`;
       a.click();
       URL.revokeObjectURL(url);
+      recordPrint();
       return;
     }
     w.document.write(html);
     w.document.close();
     w.focus();
+    recordPrint();
   }
 
   return (
@@ -386,9 +415,15 @@ export function GhsLabelButton({ chemical }: { chemical: Chemical }) {
 
             {/* Actions footer */}
             <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3">
-              <span className="text-xs text-slate-400">
-                {picCodes.length} pictogram{picCodes.length !== 1 ? "s" : ""} · {h.length} H-statement{h.length !== 1 ? "s" : ""} · {p.length} P-statement{p.length !== 1 ? "s" : ""}
-              </span>
+              {logNote ? (
+                <span className={`text-xs font-medium ${logNote.ok ? "text-emerald-600" : "text-red-600"}`}>
+                  {logNote.text}
+                </span>
+              ) : (
+                <span className="text-xs text-slate-400">
+                  {picCodes.length} pictogram{picCodes.length !== 1 ? "s" : ""} · {h.length} H-statement{h.length !== 1 ? "s" : ""} · {p.length} P-statement{p.length !== 1 ? "s" : ""}
+                </span>
+              )}
               <div className="flex gap-2">
                 <button
                   onClick={() => setOpen(false)}

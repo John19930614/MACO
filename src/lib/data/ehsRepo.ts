@@ -14,7 +14,7 @@ import type {
   DocumentAcknowledgment, OshaCase,
   ErgonomicsWorkstation, ErgonomicsJobTask, ExposureReading,
   WasteVendor, WastePickup, WasteInspection, WasteProfile, SavedReport,
-  SdsDocument,
+  SdsDocument, WasteReviewFlag, WasteFlagStatus,
 } from "@/lib/types";
 import type { Severity, CapaStatus, AuditStatus, RiskLevel, TrainingDelivery } from "@/lib/constants";
 
@@ -207,6 +207,38 @@ export async function getSdsDocuments(tenantId: string): Promise<SdsDocument[]> 
     .order("created_at", { ascending: false });
   if (error || !data) return [];
   return data as SdsDocument[];
+}
+
+// ── Chemical waste review flags (GHS build 2) ─────────────────────────────────
+// Resilient: returns [] in mock mode and on any error (e.g. before the
+// chemical_waste_review_flags migration is applied).
+export async function getWasteReviewFlags(tenantId: string): Promise<WasteReviewFlag[]> {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("chemical_waste_review_flags")
+    .select("*, chemical:chemical_inventory(name)")
+    .eq("tenant_id", tenantId)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data as any[]).map((r) => ({
+    id: r.id,
+    tenant_id: r.tenant_id,
+    site_id: r.site_id ?? null,
+    chemical_id: r.chemical_id,
+    chemical_name: r.chemical?.name ?? null,
+    trigger_source: r.trigger_source,
+    trigger_value: r.trigger_value,
+    potential_waste_concern: r.potential_waste_concern,
+    suggested_review_area: r.suggested_review_area ?? null,
+    status: r.status as WasteFlagStatus,
+    reviewer_notes: r.reviewer_notes ?? null,
+    final_determination: r.final_determination ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  }));
 }
 
 // ── Audits ────────────────────────────────────────────────────────────────────

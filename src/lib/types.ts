@@ -239,6 +239,28 @@ export interface SdsDocument {
   updated_at: string;
 }
 
+// ── Chemical waste review flags (GHS build 2) ─────────────────────────────────
+
+export type WasteFlagStatus =
+  | "open" | "under_review" | "not_applicable" | "confirmed" | "closed";
+
+export interface WasteReviewFlag {
+  id: string;
+  tenant_id: string;
+  site_id: string | null;
+  chemical_id: string;
+  chemical_name: string | null;       // joined from chemical_inventory
+  trigger_source: string;             // GHS class, pictogram, H-code, manual
+  trigger_value: string;
+  potential_waste_concern: string;
+  suggested_review_area: string | null;
+  status: WasteFlagStatus;
+  reviewer_notes: string | null;
+  final_determination: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Legal & Regulatory Compliance ─────────────────────────────────────────────
 
 export interface LegalRequirement {
@@ -821,6 +843,7 @@ export interface AiAnalysisOutput {
   plain_language_summary: string;
   human_review_required: boolean;
   gateway?: AiGatewayReview;        // grounding-gateway review, attached server-side
+  input_hash?: string;              // hash of the analysis inputs, for cache reuse
 }
 
 // ── Predictability Engine (MACO P-Engine) ────────────────────────────────────

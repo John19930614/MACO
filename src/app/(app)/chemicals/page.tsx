@@ -1,4 +1,4 @@
-import { getChemicals, getTrainingCourses, getSdsDocuments } from "@/lib/data/ehsRepo";
+import { getChemicals, getTrainingCourses, getSdsDocuments, getWasteReviewFlags } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader, Card, CardHeader } from "@/components/ui/primitives";
@@ -43,10 +43,11 @@ function hazardClassLabel(h: string): string | null {
 
 export default async function ChemicalsPage() {
   const tenantId = await getEffectiveTenantId();
-  const [chemicals, courses, sdsDocs] = await Promise.all([
+  const [chemicals, courses, sdsDocs, wasteFlags] = await Promise.all([
     getChemicals(tenantId),
     getTrainingCourses(tenantId),
     getSdsDocuments(tenantId),
+    getWasteReviewFlags(tenantId),
   ]);
 
   const active = chemicals.filter((c) => c.status === "active");
@@ -195,7 +196,7 @@ export default async function ChemicalsPage() {
 
         </div>
 
-        <ChemicalsDashboard chemicals={chemicals} courses={courses} />
+        <ChemicalsDashboard chemicals={chemicals} courses={courses} wasteFlags={wasteFlags} />
           </>
         )}
       </div>

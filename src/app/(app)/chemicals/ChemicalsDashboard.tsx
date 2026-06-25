@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { Chemical, TrainingCourse } from "@/lib/types";
+import type { Chemical, TrainingCourse, WasteReviewFlag } from "@/lib/types";
 import { Card, CardHeader, Pill, Stat } from "@/components/ui/primitives";
 import { ScoreGauge, DonutChart, Legend, type Segment } from "@/components/charts/Charts";
 import { ChemicalsTable } from "./ChemicalsTable";
+import { WasteReviewTab } from "./WasteReviewTab";
 import {
   AlertTriangle,
   BrainCircuit,
@@ -16,6 +17,7 @@ import {
   LayoutGrid,
   Shield,
   ShieldCheck,
+  Trash2,
   Upload,
   X,
   Zap,
@@ -839,21 +841,24 @@ function SDSRegister({ chemicals }: { chemicals: Chemical[] }) {
 
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 
-type Tab = "inventory" | "compatibility" | "ppe" | "sds";
+type Tab = "inventory" | "compatibility" | "ppe" | "sds" | "waste";
 
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
   { id: "inventory",     label: "Inventory",    Icon: FlaskConical },
   { id: "sds",           label: "SDS Register", Icon: FileText     },
   { id: "compatibility", label: "Compatibility", Icon: LayoutGrid   },
   { id: "ppe",           label: "PPE & Controls", Icon: Shield      },
+  { id: "waste",         label: "Waste Review", Icon: Trash2       },
 ];
 
 export function ChemicalsDashboard({
   chemicals,
   courses,
+  wasteFlags = [],
 }: {
   chemicals: Chemical[];
   courses: TrainingCourse[];
+  wasteFlags?: WasteReviewFlag[];
 }) {
   const [tab, setTab] = useState<Tab>("inventory");
 
@@ -1079,6 +1084,25 @@ export function ChemicalsDashboard({
             />
             <div className="p-5">
               <SDSRegister chemicals={chemicals} />
+            </div>
+          </Card>
+        )}
+
+        {/* Tab: Waste Review */}
+        {tab === "waste" && (
+          <Card>
+            <CardHeader
+              title="Waste Review Flags"
+              subtitle="GHS-hazard-driven prompts to review chemicals for regulated-waste classification — RCRA / state. Prompts only; never auto-assigns a waste code."
+              right={
+                <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                  <Trash2 className="h-3 w-3" />
+                  {wasteFlags.filter((f) => f.status === "open" || f.status === "under_review" || f.status === "confirmed").length} open
+                </div>
+              }
+            />
+            <div className="p-5">
+              <WasteReviewTab chemicals={chemicals} flags={wasteFlags} />
             </div>
           </Card>
         )}
