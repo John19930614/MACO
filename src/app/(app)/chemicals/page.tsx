@@ -57,7 +57,7 @@ export default async function ChemicalsPage() {
   const hazardCounts: Record<string, number> = {};
   for (const chem of active) {
     const seen = new Set<string>();
-    for (const h of chem.hazard_statements) {
+    for (const h of (chem.hazard_statements ?? [])) {
       const label = hazardClassLabel(h);
       if (label && !seen.has(label)) {
         seen.add(label);

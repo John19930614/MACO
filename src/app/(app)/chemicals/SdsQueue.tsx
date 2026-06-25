@@ -81,7 +81,7 @@ export function SdsQueue({ docs }: Props) {
                         {doc.file_name}
                       </td>
                       <td className="max-w-[180px] truncate px-4 py-2.5 text-xs text-slate-700">
-                        {doc.product_identifier ?? <span className="text-slate-300">—</span>}
+                        {doc.product_identifier || <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-4 py-2.5 text-xs">
                         <span className={confColor}>

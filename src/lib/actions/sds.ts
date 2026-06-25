@@ -218,6 +218,7 @@ export async function approveSdsExtraction(
     .single();
 
   if (!doc) return { ok: false, error: "Document not found" };
+  if (!doc.ai_extraction_json) return { ok: false, error: "No extraction data available — try re-uploading the document" };
 
   const ext: SdsExtracted = { ...(doc.ai_extraction_json as SdsExtracted), ...overrides };
 
@@ -232,11 +233,11 @@ export async function approveSdsExtraction(
       name:                    ext.product_name,
       cas_number:              ext.cas_number || null,
       chemical_formula:        null,
-      ghs_classes:             ext.hazard_classes,
+      ghs_classes:             ext.hazard_statements,
       quantity:                0,
       unit:                    "L",
       storage_location:        "",
-      sds_url:                 doc.file_url ?? null,
+      sds_url:                 doc.file_path ?? null,
       sds_expiry:              null,
       hazard_statements:       ext.hazard_statements,
       precautionary_statements: ext.precautionary_statements,
