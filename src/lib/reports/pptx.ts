@@ -71,6 +71,20 @@ async function savePptx(pptx: any, fileName: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+// pptxgenjs's autoPage throws "addTable: Array expected!" on some
+// column/option/data combinations (its internal continuation call gets an
+// empty array). We paginate manually instead: a fixed number of body rows per
+// slide, header repeated, autoPage off.
+const ROWS_PER_SLIDE = 16;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function chunkRows<T>(rows: T[]): T[][] {
+  if (rows.length === 0) return [[]];
+  const out: T[][] = [];
+  for (let i = 0; i < rows.length; i += ROWS_PER_SLIDE) out.push(rows.slice(i, i + ROWS_PER_SLIDE));
+  return out;
+}
+
 export async function downloadReportPptx(spec: PptxReportSpec): Promise<void> {
   const PptxGenJS = await loadPptxGenJS();
   const pptx = new PptxGenJS();
@@ -161,11 +175,7 @@ export async function downloadReportPptx(spec: PptxReportSpec): Promise<void> {
     footer(ch);
   }
 
-  // ── 3. Data table (auto-paginated) ───────────────────────────────────────────
-  const tableSlide = pptx.addSlide();
-  tableSlide.background = { color: BRAND.light };
-  headerBar(tableSlide, spec.title);
-
+  // ── 3. Data table (manually paginated across slides) ─────────────────────────
   const headerRow = spec.headers.map((h) => ({
     text: h,
     options: { bold: true, color: BRAND.white, fill: { color: accent }, fontSize: 9, align: "left" as const, valign: "middle" as const },
@@ -176,24 +186,26 @@ export async function downloadReportPptx(spec: PptxReportSpec): Promise<void> {
       options: { fontSize: 8, color: BRAND.slate, fill: { color: ri % 2 ? BRAND.white : BRAND.panel }, align: "left" as const, valign: "middle" as const },
     })),
   );
-  const tableRows = spec.rows.length
-    ? [headerRow, ...bodyRows]
-    : [headerRow, [{ text: "No records.", options: { fontSize: 9, italic: true, color: BRAND.muted, colspan: spec.headers.length, align: "center" as const } }]];
 
-  tableSlide.addTable(tableRows, {
-    x: 0.5,
-    y: 1.45,
-    w: WIDE_W - 1.0,
-    border: { type: "solid", color: BRAND.border, pt: 0.5 },
-    autoPage: true,
-    autoPageRepeatHeader: true,
-    autoPageHeaderRows: 1,
-    newSlideStartY: 1.45,
-    margin: 4,
-    fontFace: "Arial",
-    valign: "middle",
+  const chunks = chunkRows(bodyRows);
+  chunks.forEach((chunk, idx) => {
+    const slide = pptx.addSlide();
+    slide.background = { color: BRAND.light };
+    headerBar(slide, chunks.length > 1 ? `${spec.title} (${idx + 1}/${chunks.length})` : spec.title);
+    const rowsForSlide = chunk.length
+      ? [headerRow, ...chunk]
+      : [headerRow, [{ text: "No records.", options: { fontSize: 9, italic: true, color: BRAND.muted, colspan: spec.headers.length, align: "center" as const } }]];
+    slide.addTable(rowsForSlide, {
+      x: 0.5,
+      y: 1.45,
+      w: WIDE_W - 1.0,
+      border: { type: "solid", color: BRAND.border, pt: 0.5 },
+      margin: 4,
+      fontFace: "Arial",
+      valign: "middle",
+    });
+    footer(slide);
   });
-  footer(tableSlide);
 
   await savePptx(pptx, spec.fileName);
 }
@@ -243,13 +255,6 @@ export async function downloadMultiSectionPptx(opts: {
   );
 
   for (const section of opts.sections) {
-    const slide = pptx.addSlide();
-    slide.background = { color: BRAND.light };
-    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: WIDE_W, h: 0.9, fill: { color: BRAND.white }, line: { color: BRAND.border, width: 1 } });
-    slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.14, h: 0.9, fill: { color: accent } });
-    slide.addText(section.name, { x: 0.45, y: 0, w: 9.5, h: 0.9, fontSize: 18, bold: true, color: BRAND.slate, valign: "middle", fontFace: "Arial" });
-    slide.addText(`${section.rows.length} record${section.rows.length !== 1 ? "s" : ""}`, { x: 10, y: 0, w: 2.9, h: 0.9, fontSize: 11, color: BRAND.slate2, align: "right", valign: "middle", fontFace: "Arial" });
-
     const headerRow = section.headers.map((h) => ({
       text: h,
       options: { bold: true, color: BRAND.white, fill: { color: accent }, fontSize: 9, align: "left" as const, valign: "middle" as const },
@@ -260,17 +265,27 @@ export async function downloadMultiSectionPptx(opts: {
         options: { fontSize: 8, color: BRAND.slate, fill: { color: ri % 2 ? BRAND.white : BRAND.panel }, align: "left" as const, valign: "middle" as const },
       })),
     );
-    const rows = section.rows.length
-      ? [headerRow, ...bodyRows]
-      : [headerRow, [{ text: "No records.", options: { fontSize: 9, italic: true, color: BRAND.muted, colspan: section.headers.length, align: "center" as const } }]];
 
-    slide.addTable(rows, {
-      x: 0.5, y: 1.45, w: WIDE_W - 1.0,
-      border: { type: "solid", color: BRAND.border, pt: 0.5 },
-      autoPage: true, autoPageRepeatHeader: true, autoPageHeaderRows: 1, newSlideStartY: 1.45,
-      margin: 4, fontFace: "Arial", valign: "middle",
+    const chunks = chunkRows(bodyRows);
+    chunks.forEach((chunk, idx) => {
+      const slide = pptx.addSlide();
+      slide.background = { color: BRAND.light };
+      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: WIDE_W, h: 0.9, fill: { color: BRAND.white }, line: { color: BRAND.border, width: 1 } });
+      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.14, h: 0.9, fill: { color: accent } });
+      const heading = chunks.length > 1 ? `${section.name} (${idx + 1}/${chunks.length})` : section.name;
+      slide.addText(heading, { x: 0.45, y: 0, w: 9.5, h: 0.9, fontSize: 18, bold: true, color: BRAND.slate, valign: "middle", fontFace: "Arial" });
+      slide.addText(`${section.rows.length} record${section.rows.length !== 1 ? "s" : ""}`, { x: 10, y: 0, w: 2.9, h: 0.9, fontSize: 11, color: BRAND.slate2, align: "right", valign: "middle", fontFace: "Arial" });
+
+      const rows = chunk.length
+        ? [headerRow, ...chunk]
+        : [headerRow, [{ text: "No records.", options: { fontSize: 9, italic: true, color: BRAND.muted, colspan: section.headers.length, align: "center" as const } }]];
+      slide.addTable(rows, {
+        x: 0.5, y: 1.45, w: WIDE_W - 1.0,
+        border: { type: "solid", color: BRAND.border, pt: 0.5 },
+        margin: 4, fontFace: "Arial", valign: "middle",
+      });
+      footer(slide);
     });
-    footer(slide);
   }
 
   await savePptx(pptx, opts.fileName);
