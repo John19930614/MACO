@@ -62,7 +62,7 @@ export default async function DashboardPage({
 
   // Derived counts
   const openCapas       = capas.filter((c) => c.status !== "closed" && c.status !== "rejected");
-  const overdueCapas    = capas.filter((c) => c.status === "overdue");
+  const overdueCapas    = capas.filter((c) => c.due_date != null && new Date(c.due_date) < new Date() && !["closed", "rejected", "pending_verification"].includes(c.status));
   const pendingFindings = aiFindings.filter((f) => f.review_status === "pending");
   // High-risk chemicals: scheduled substances or bearing carcinogen/acute-toxic H-statements
   const HIGH_HAZARD_H = ["H350", "H351", "H300", "H310", "H311", "H330", "H331"];

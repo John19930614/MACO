@@ -654,13 +654,12 @@ export function SettingsClient({
                     <div className="flex items-center gap-2">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${color}`}>{status}</span>
                       {action && (
-                        <button
-                          type="button"
-                          className="rounded-md border border-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-500 transition hover:border-blue-300 hover:text-blue-600"
-                          onClick={() => alert("Integration setup coming soon — contact Reliance to configure.")}
+                        <span
+                          title="Managed by Reliance — contact your rep to configure this integration"
+                          className="rounded-md border border-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-400 cursor-default"
                         >
-                          Set up
-                        </button>
+                          Contact Reliance
+                        </span>
                       )}
                     </div>
                   </div>

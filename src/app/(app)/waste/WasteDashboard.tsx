@@ -546,7 +546,7 @@ interface PickupRequest {
   status: "draft" | "submitted" | "confirmed" | "completed";
 }
 
-const PICKUP_REQUESTS: PickupRequest[] = [
+const PICKUP_REQUESTS: PickupRequest[] = MOCK_MODE ? [
   {
     id: "PKR-2026-007", vendor: "Clean Harbors",
     streams: ["CTR-2026-001 · F001 Halogenated Solvents", "CTR-2026-004 · F003 Non-Halogenated Solvents"],
@@ -575,7 +575,7 @@ const PICKUP_REQUESTS: PickupRequest[] = [
       { item: "Pickup time window confirmed with facility security", done: false },
     ],
   },
-];
+] : [];
 
 // ── Drill Log + Spill Events mock data (BL-WMP-12) ───────────────────────────
 
@@ -585,11 +585,11 @@ interface DrillRecord {
   outcome: "passed" | "needs_improvement"; notes: string;
 }
 
-const DRILL_LOG: DrillRecord[] = [
+const DRILL_LOG: DrillRecord[] = MOCK_MODE ? [
   { id: "DRL-2026-004", date: "2026-06-01", type: "Chemical Spill — Tabletop", location: "Lab A / Lab B", participants: 8, duration: "45 min", facilitator: "Maria Lopez", outcome: "passed", notes: "All personnel demonstrated correct PPE donning, containment kit use, and EHS notification protocol." },
   { id: "DRL-2026-003", date: "2026-03-14", type: "Emergency Evacuation Drill", location: "Whole Site", participants: 47, duration: "12 min", facilitator: "Site Director", outcome: "passed", notes: "All areas cleared within the 10-minute target. Loading dock evacuation path review recommended." },
   { id: "DRL-2026-002", date: "2026-01-22", type: "Biohazardous Spill Response", location: "Lab B", participants: 5, duration: "30 min", facilitator: "Dr. Kim Park", outcome: "needs_improvement", notes: "Secondary containment cart location unknown to 2 of 5 participants. Reminder posted. Follow-up drill scheduled." },
-];
+] : [];
 
 interface SpillEvent {
   id: string; date: string; area: string; material: string; volume: string;
@@ -598,9 +598,9 @@ interface SpillEvent {
   reported: boolean; reportedTo: string | null; status: "closed" | "open";
 }
 
-const SPILL_EVENTS: SpillEvent[] = [
+const SPILL_EVENTS: SpillEvent[] = MOCK_MODE ? [
   { id: "SPL-2026-001", date: "2026-05-12", area: "Chemical SAA — Lab A", material: "F001 Halogenated Solvents", volume: "~0.5 L", cause: "Container tipped during handling — secondary containment captured spill", severity: "minor", responders: "Lab staff + EHS on call", cleanup: "Absorbent pads applied; waste containerized and labeled F001. Area inspected within 1 hour.", reported: false, reportedTo: null, status: "closed" },
-];
+] : [];
 
 // ── Annual WMP Review sign-off data (BL-WMP-16) ──────────────────────────────
 
@@ -612,7 +612,7 @@ interface WmpReviewer {
   name: string; role: string; signed: boolean; signedDate: string | null;
 }
 
-const WMP_SECTIONS: WmpSection[] = [
+const WMP_SECTIONS: WmpSection[] = MOCK_MODE ? [
   { id: "s01", title: "Waste Determination & Legal Register (BL-WMP-02–03)",     status: "reviewed", reviewer: "Maria Lopez",   notes: "All streams determined, legal register current, 7 CFRs mapped to generator category." },
   { id: "s02", title: "Waste Profile Management & AI Workflow (BL-WMP-04–05)",   status: "reviewed", reviewer: "Maria Lopez",   notes: "Profile pipeline reviewed. D002 draft — submission due 2026-07-15." },
   { id: "s03", title: "SAA/CAA Area Management (BL-WMP-06)",                     status: "reviewed", reviewer: "Maria Lopez",   notes: "Central Accumulation containment CAPA open — repair scheduled Jul 15." },
@@ -623,13 +623,13 @@ const WMP_SECTIONS: WmpSection[] = [
   { id: "s08", title: "Emergency Preparedness & Spill Records (BL-WMP-12)",      status: "reviewed", reviewer: "Dr. Kim Park", notes: "Fire extinguisher CAPA in progress. 3 drills completed YTD. Spill SPL-2026-001 closed." },
   { id: "s09", title: "Training & Compliance Calendar (BL-WMP-13–14)",           status: "reviewed", reviewer: "Maria Lopez",   notes: "2 training gaps (Lab Staff, Procurement) — remediation scheduled Aug 2026." },
   { id: "s10", title: "Waste Minimization & Improvement Plan (BL-WMP-15)",       status: "pending",  reviewer: null,            notes: "Minimization goals to be acknowledged by Site Director before final sign-off." },
-];
+] : [];
 
-const WMP_REVIEWERS: WmpReviewer[] = [
+const WMP_REVIEWERS: WmpReviewer[] = MOCK_MODE ? [
   { name: "Maria Lopez",   role: "EHS Manager",        signed: true,  signedDate: "2026-06-20" },
   { name: "Dr. Kim Park",  role: "Lab Safety Officer", signed: true,  signedDate: "2026-06-21" },
   { name: "Site Director", role: "Site Director",      signed: false, signedDate: null },
-];
+] : [];
 
 const MONTH_NAMES = [
   "January","February","March","April","May","June",

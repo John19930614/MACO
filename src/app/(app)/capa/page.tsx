@@ -13,7 +13,7 @@ export default async function CapaPage() {
 
   const open                = capas.filter((c) => c.status === "open").length;
   const inProgress          = capas.filter((c) => c.status === "in_progress").length;
-  const overdue             = capas.filter((c) => c.status === "overdue").length;
+  const overdue             = capas.filter((c) => c.due_date != null && new Date(c.due_date) < new Date() && !["closed", "pending_verification", "rejected"].includes(c.status)).length;
   const pendingVerification = capas.filter((c) => c.status === "pending_verification").length;
   const closed              = capas.filter((c) => c.status === "closed").length;
 

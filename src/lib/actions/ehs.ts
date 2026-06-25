@@ -16,7 +16,7 @@ import { analyzeChemical, analyzeComplianceGap, buildPredictabilityForecast } fr
 import {
   getChemicals, getLegalRequirements, getTrainingRecords, getTrainingCourses, getCapaActions,
   getIncidents, getAudits, getRiskAssessments, getEquipment, getWasteStreams,
-  getDocuments, getOshaCases, getBiosafetyLabs,
+  getDocuments, getOshaCases, getBiosafetyLabs, getErgonomicsJobTasks,
 } from "@/lib/data/ehsRepo";
 
 // ── Session context helper ─────────────────────────────────────────────────────
@@ -1620,12 +1620,12 @@ export async function runPredictabilityScan() {
   const { tenantId, siteId } = ctx;
   const now = new Date();
 
-  const [chemicals, legal, records, capas, incidents, audits, risks, equipment, waste, documents, oshaCases, bioLabs] =
+  const [chemicals, legal, records, capas, incidents, audits, risks, equipment, waste, documents, oshaCases, bioLabs, ergoTasks] =
     await Promise.all([
       getChemicals(tenantId), getLegalRequirements(tenantId), getTrainingRecords(tenantId),
       getCapaActions(tenantId), getIncidents(tenantId), getAudits(tenantId),
       getRiskAssessments(tenantId), getEquipment(tenantId), getWasteStreams(tenantId),
-      getDocuments(tenantId), getOshaCases(tenantId), getBiosafetyLabs(tenantId),
+      getDocuments(tenantId), getOshaCases(tenantId), getBiosafetyLabs(tenantId), getErgonomicsJobTasks(tenantId),
     ]);
 
   // ── Per-module compliance scores (derived from real data) ──
@@ -1669,11 +1669,14 @@ export async function runPredictabilityScan() {
 
   const docPct = documents.length ? clampPct(50 + documents.length * 3) : 40;
   const bioPct = bioLabs.length ? 70 : 100;
+  const oshaPct = oshaCases.length ? clampPct(100 - oshaCases.length * 8) : 100;
+  const ergoPct = ergoTasks.length ? 75 : 100;
 
   const moduleScores: Record<string, number> = {
     chemical: chemPct, legal: legalPct, training: trainingPct, capa: capaPct,
     audits: auditPct, incidents: incPct, risk: riskPct, waste: wastePct,
     equipment: equipPct, documents: docPct, biosafety: bioPct,
+    osha: oshaPct, ergonomics: ergoPct,
   };
 
   const scoreRows = Object.entries(moduleScores).map(([module, pct]) => ({
