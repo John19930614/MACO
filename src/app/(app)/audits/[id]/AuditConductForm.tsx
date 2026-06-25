@@ -677,6 +677,129 @@ function buildItems(audit: Audit): Item[] {
   );
 }
 
+// Build the blank checklist for a given OSHA standard (or fall back to the
+// audit's default template when no/unknown standard is selected).
+function buildItemsFor(audit: Audit, oshaCode: string): Item[] {
+  if (oshaCode) {
+    const checklist = OSHA_CHECKLISTS.find((c) => c.code === oshaCode);
+    if (checklist) {
+      return checklist.sections.flatMap((section, si) =>
+        section.items.map((itm, ii) => ({
+          id: `osha-${si}-${ii}`,
+          section: section.title,
+          text: itm.text,
+          result: null as ItemResult,
+          notes: "",
+          photos: [] as string[],
+          requiresEvidence: itm.requiresEvidence ?? false,
+        })),
+      );
+    }
+  }
+  return buildItems(audit);
+}
+
+interface SavedItem {
+  id: string;
+  section: string;
+  text: string;
+  result: ItemResult;
+  notes: string;
+  photos?: string[];
+  photoCount?: number;
+}
+
+interface SavedAudit {
+  conductedBy?: string;
+  conductedDate?: string;
+  score?: number;
+  overallNotes?: string;
+  items?: SavedItem[];
+  oshaStandard?: { code: string; title: string; cfr: string } | null;
+}
+
+// The submit action stores the full conduct snapshot in `audit.notes` as JSON.
+function parseSavedAudit(audit: Audit): SavedAudit {
+  try {
+    const p = JSON.parse(audit.notes ?? "{}");
+    return p && typeof p === "object" ? p : {};
+  } catch {
+    return {};
+  }
+}
+
+// Rebuild the checklist items for a completed audit by overlaying the saved
+// results/notes/photos onto the blank template. Falls back to a pure
+// reconstruction from the saved snapshot when the template ids no longer line up.
+function hydrateItems(audit: Audit, saved: SavedAudit, oshaCode: string): Item[] {
+  const base = buildItemsFor(audit, oshaCode);
+  const savedItems = saved.items;
+  if (!savedItems || savedItems.length === 0) return base;
+
+  const byId = new Map(savedItems.map((s) => [s.id, s]));
+  const merged = base.map((it) => {
+    const s = byId.get(it.id);
+    return s
+      ? { ...it, result: s.result ?? null, notes: s.notes ?? "", photos: s.photos ?? it.photos }
+      : it;
+  });
+
+  const matched = merged.filter((it) => byId.has(it.id)).length;
+  if (matched === 0) {
+    // Template changed since this audit was recorded — reconstruct from snapshot.
+    return savedItems.map((s) => ({
+      id: s.id,
+      section: s.section,
+      text: s.text,
+      result: s.result ?? null,
+      notes: s.notes ?? "",
+      photos: s.photos ?? [],
+      requiresEvidence: false,
+    }));
+  }
+  return merged;
+}
+
+const RESULT_VIEW: Record<string, { label: string; cls: string }> = {
+  pass:    { label: "✓ Pass",    cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+  partial: { label: "~ Partial", cls: "bg-amber-100 text-amber-700 border-amber-200"       },
+  fail:    { label: "✗ Fail",    cls: "bg-red-100 text-red-700 border-red-200"             },
+  na:      { label: "N/A",       cls: "bg-slate-100 text-slate-500 border-slate-200"       },
+};
+
+// Downscale a captured photo so evidence images can be stored inline in the
+// audit snapshot (`audit.notes`) without bloating the row. Caps the longest
+// edge and re-encodes as JPEG; falls back to the original on any failure.
+function downscaleImage(file: File, maxEdge = 1024, quality = 0.7): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const src = reader.result as string;
+      const img = new Image();
+      img.onerror = () => resolve(src);
+      img.onload = () => {
+        const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(src); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        try {
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        } catch {
+          resolve(src);
+        }
+      };
+      img.src = src;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function scoreColor(s: number) {
@@ -816,21 +939,40 @@ function printBlank(audit: Audit, sections: { title: string; items: Item[] }[], 
 export function AuditConductForm({ audit, profiles }: { audit: Audit; profiles: Profile[] }) {
   const router = useRouter();
   const { user } = useDemoUser();
-  const [items, setItems]               = useState<Item[]>(() => buildItems(audit));
+
+  // Saved snapshot of a previously-completed audit (empty for a fresh conduct).
+  const saved = useMemo(() => parseSavedAudit(audit), [audit]);
+  const savedConductor = saved.conductedBy ?? "";
+  const savedKnownProfile = profiles.some((p) => p.display_name === savedConductor);
+  const savedPhotoCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    (saved.items ?? []).forEach((s) => {
+      const n = s.photos?.length ?? s.photoCount ?? 0;
+      if (n) m[s.id] = n;
+    });
+    return m;
+  }, [saved]);
+
+  const [oshaCode, setOshaCode]         = useState(saved.oshaStandard?.code ?? "");
+  const [items, setItems]               = useState<Item[]>(() => hydrateItems(audit, saved, saved.oshaStandard?.code ?? ""));
   const [capaQueue, setCapaQueue]       = useState<Record<string, CapaQueueEntry>>({});
   const [creatingCapas, setCreatingCapas] = useState(false);
   const [capaResults, setCapaResults]   = useState<{ created: number } | null>(null);
   const itemsRef = useRef(items);
   useEffect(() => { itemsRef.current = items; }, [items]);
-  const [oshaCode, setOshaCode]         = useState("");
-  const [auditorSelect, setAuditorSelect] = useState("");
-  const [customAuditor, setCustomAuditor] = useState("");
+  const [auditorSelect, setAuditorSelect] = useState(
+    savedConductor ? (savedKnownProfile ? savedConductor : "__custom__") : "",
+  );
+  const [customAuditor, setCustomAuditor] = useState(
+    savedConductor && !savedKnownProfile ? savedConductor : "",
+  );
   const conductorName = auditorSelect === "__custom__" ? customAuditor : auditorSelect;
   const [nameError, setNameError] = useState(false);
-  const [conductDate, setDate]          = useState(new Date().toISOString().slice(0, 10));
-  const [overallNotes, setNotes]      = useState("");
+  const [conductDate, setDate]          = useState(saved.conductedDate || new Date().toISOString().slice(0, 10));
+  const [overallNotes, setNotes]      = useState(saved.overallNotes ?? "");
   const [submitting, setSubmitting]   = useState(false);
   const [submitted, setSubmitted]     = useState(audit.status === "completed");
+  const [showCompletedDetail, setShowCompletedDetail] = useState(false);
   const [paperFile, setPaperFile]     = useState<File | null>(null);
   const [collapsed, setCollapsed]     = useState<Record<string, boolean>>({});
 
@@ -917,20 +1059,16 @@ export function AuditConductForm({ audit, profiles }: { audit: Audit; profiles: 
   function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const forId = uploadingFor.current;
     if (!forId || !e.target.files?.length) return;
-    Array.from(e.target.files).slice(0, 3).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const dataUrl = ev.target?.result as string;
-        if (!dataUrl) return;
-        setItems((prev) =>
-          prev.map((it) =>
-            it.id === forId && it.photos.length < 4
-              ? { ...it, photos: [...it.photos, dataUrl] }
-              : it,
-          ),
-        );
-      };
-      reader.readAsDataURL(file);
+    Array.from(e.target.files).slice(0, 3).forEach(async (file) => {
+      const dataUrl = await downscaleImage(file);
+      if (!dataUrl) return;
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === forId && it.photos.length < 4
+            ? { ...it, photos: [...it.photos, dataUrl] }
+            : it,
+        ),
+      );
     });
   }
 
@@ -976,7 +1114,7 @@ export function AuditConductForm({ audit, profiles }: { audit: Audit; profiles: 
     const selectedOsha = oshaCode ? OSHA_CHECKLISTS.find((c) => c.code === oshaCode) : null;
     const itemSummary = JSON.stringify({
       oshaStandard: selectedOsha ? { code: selectedOsha.code, title: selectedOsha.title, cfr: selectedOsha.cfr } : null,
-      items: items.map((i) => ({ id: i.id, section: i.section, text: i.text, result: i.result, notes: i.notes, photoCount: i.photos.length })),
+      items: items.map((i) => ({ id: i.id, section: i.section, text: i.text, result: i.result, notes: i.notes, photos: i.photos, photoCount: i.photos.length })),
     });
     const res = await submitAuditConduct(audit.id, {
       conductorName: conductorName.trim(),
@@ -1017,9 +1155,7 @@ export function AuditConductForm({ audit, profiles }: { audit: Audit; profiles: 
   // ── Completed view ─────────────────────────────────────────────────────────
 
   if (submitted && audit.status === "completed") {
-    let parsed: { conductedBy?: string; conductedDate?: string; score?: number; overallNotes?: string } = {};
-    try { parsed = JSON.parse(audit.notes ?? "{}"); } catch { /* empty */ }
-    const s = parsed.score ?? score;
+    const s = saved.score ?? score;
     const c = s != null ? scoreColor(s) : null;
     return (
       <div className="space-y-5">
@@ -1029,17 +1165,20 @@ export function AuditConductForm({ audit, profiles }: { audit: Audit; profiles: 
             <div>
               <div className="text-base font-bold text-slate-800">Audit Completed</div>
               <div className="text-xs text-slate-500">
-                Conducted by {parsed.conductedBy ?? (conductorName || "—")} · {parsed.conductedDate ?? audit.completed_date ?? "—"}
+                Conducted by {saved.conductedBy ?? (conductorName || "—")} · {saved.conductedDate ?? audit.completed_date ?? "—"}
+                {saved.oshaStandard && (
+                  <span className="ml-2 text-slate-400">· {saved.oshaStandard.cfr}</span>
+                )}
               </div>
             </div>
             {s != null && (
               <div className={`ml-auto text-4xl font-black ${c?.text}`}>{s}%</div>
             )}
           </div>
-          {parsed.overallNotes && (
+          {saved.overallNotes && (
             <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-700">
               <span className="font-semibold text-slate-500 text-xs uppercase tracking-wide">Overall Notes: </span>
-              {parsed.overallNotes}
+              {saved.overallNotes}
             </div>
           )}
         </div>
@@ -1058,11 +1197,77 @@ export function AuditConductForm({ audit, profiles }: { audit: Audit; profiles: 
           ))}
         </div>
 
+        {/* Read-only recorded responses */}
+        <button
+          type="button"
+          onClick={() => setShowCompletedDetail((v) => !v)}
+          className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm hover:bg-slate-50 transition"
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <ClipboardCheck className="h-4 w-4 text-slate-500" />
+            Completed Checklist
+            <span className="text-xs font-normal text-slate-400">{answered} of {total} items recorded</span>
+          </span>
+          {showCompletedDetail
+            ? <ChevronDown className="h-4 w-4 text-slate-400" />
+            : <ChevronRight className="h-4 w-4 text-slate-400" />}
+        </button>
+
+        {showCompletedDetail && (
+          <div className="space-y-4">
+            {sections.map((section) => (
+              <div key={section.title} className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-800">
+                  {section.title}
+                </div>
+                <div className="divide-y divide-slate-50">
+                  {section.items.map((item) => {
+                    const view = item.result ? RESULT_VIEW[item.result] : null;
+                    const photoCount = savedPhotoCounts[item.id] ?? 0;
+                    return (
+                      <div key={item.id} className="px-4 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 text-sm text-slate-700 leading-snug">{item.text}</div>
+                          <span className={`shrink-0 rounded-lg border px-2 py-0.5 text-xs font-semibold ${view ? view.cls : "bg-slate-50 text-slate-400 border-slate-200"}`}>
+                            {view ? view.label : "Not recorded"}
+                          </span>
+                        </div>
+                        {item.notes && (
+                          <div className="mt-1.5 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+                            <span className="font-semibold text-slate-400">Notes: </span>{item.notes}
+                          </div>
+                        )}
+                        {item.photos.length > 0 ? (
+                          <div className="mt-1.5 flex flex-wrap gap-2">
+                            {item.photos.map((src, pi) => (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                key={pi}
+                                src={src}
+                                alt={`Evidence ${pi + 1}`}
+                                className="h-16 w-16 rounded-lg object-cover border border-slate-200"
+                              />
+                            ))}
+                          </div>
+                        ) : photoCount > 0 ? (
+                          <div className="mt-1.5 flex items-center gap-1 text-[11px] text-slate-400">
+                            <Camera className="h-3 w-3" /> {photoCount} photo{photoCount > 1 ? "s" : ""} attached
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <button
           onClick={() => setSubmitted(false)}
           className="text-sm text-blue-600 underline underline-offset-2"
         >
-          View / re-conduct checklist
+          Re-conduct audit
         </button>
       </div>
     );
