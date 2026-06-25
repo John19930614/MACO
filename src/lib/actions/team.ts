@@ -20,11 +20,18 @@ export interface EmployeeInvite {
   department?: string;
 }
 
+export interface InviteLink {
+  email: string;
+  name: string;
+  tempPassword: string;
+  loginUrl: string;
+}
+
 export interface InviteResult {
   ok: true;
   sent: number;
   errors: string[];
-  links: Array<{ email: string; name: string; link: string }>;
+  links: InviteLink[];
 }
 
 export interface InviteError {
@@ -33,38 +40,13 @@ export interface InviteError {
   sent: 0;
 }
 
-async function sendViaResend(to: string, name: string, inviteLink: string, apiKey: string) {
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: "SafetyIQ <onboarding@resend.dev>",
-      to,
-      subject: "You've been invited to SafetyIQ",
-      html: `
-        <div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:24px">
-          <h2 style="color:#1e40af;margin-bottom:8px">You're invited to SafetyIQ</h2>
-          <p style="color:#334155">Hi ${name},</p>
-          <p style="color:#334155">You've been invited to join your team's SafetyIQ workspace — your EHS management platform.</p>
-          <div style="margin:28px 0">
-            <a href="${inviteLink}"
-               style="background:#1e40af;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px">
-              Accept Invitation
-            </a>
-          </div>
-          <p style="color:#94a3b8;font-size:13px">This link expires in 24 hours. If you didn't expect this invitation, you can safely ignore this email.</p>
-        </div>
-      `,
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Resend ${res.status}: ${body}`);
-  }
+function makeTempPassword() {
+  // Simple readable temp password: word-word-4digits
+  const words = ["Maple","River","Stone","Tiger","Cloud","Eagle","Frost","Cedar"];
+  const a = words[Math.floor(Math.random() * words.length)];
+  const b = words[Math.floor(Math.random() * words.length)];
+  const n = Math.floor(1000 + Math.random() * 9000);
+  return `${a}${b}${n}!`;
 }
 
 export async function inviteTeamMembers(
@@ -73,59 +55,83 @@ export async function inviteTeamMembers(
   const tenantId = await getServerTenantId();
   if (!tenantId) return { ok: false, error: "No tenant", sent: 0 };
 
-  const { serviceRoleKey, resendKey } = serverSecrets();
-
+  const { serviceRoleKey } = serverSecrets();
   if (!serviceRoleKey) {
     return { ok: false, sent: 0, error: "SUPABASE_SERVICE_ROLE_KEY is not configured." };
   }
 
   const svc = serviceClient();
-  const redirectTo = `${APP_URL}/auth/callback`;
-
   let sent = 0;
   const errors: string[] = [];
-  const links: Array<{ email: string; name: string; link: string }> = [];
+  const links: InviteLink[] = [];
 
   for (const emp of employees) {
     const email = emp.email?.trim().toLowerCase();
     if (!email) continue;
 
     try {
-      const { data, error } = await svc.auth.admin.generateLink({
-        type: "invite",
+      const tempPassword = makeTempPassword();
+
+      // Try to create the user as confirmed with a temp password.
+      const { data: created, error: createError } = await svc.auth.admin.createUser({
         email,
-        options: {
-          data: {
-            display_name: emp.name,
-            job_title:    emp.jobTitle ?? null,
-            department:   emp.department ?? null,
-            tenant_id:    tenantId,
-          },
-          redirectTo,
+        password: tempPassword,
+        email_confirm: true,
+        user_metadata: {
+          display_name: emp.name,
+          job_title:    emp.jobTitle ?? null,
+          department:   emp.department ?? null,
+          tenant_id:    tenantId,
         },
       });
 
-      if (error && !error.message.toLowerCase().includes("already")) {
-        errors.push(`${email}: ${error.message}`);
+      let userId: string | undefined = created?.user?.id;
+
+      if (createError) {
+        if (createError.message.toLowerCase().includes("already") ||
+            createError.message.toLowerCase().includes("exists")) {
+          // User already exists — look them up and reset their password.
+          const { data: existing } = await svc.auth.admin.listUsers();
+          const match = existing?.users?.find((u) => u.email === email);
+          if (match) {
+            userId = match.id;
+            await svc.auth.admin.updateUserById(match.id, { password: tempPassword });
+          } else {
+            errors.push(`${email}: ${createError.message}`);
+            continue;
+          }
+        } else {
+          errors.push(`${email}: ${createError.message}`);
+          continue;
+        }
+      }
+
+      if (!userId) {
+        errors.push(`${email}: Could not create or find user.`);
         continue;
       }
 
-      const inviteLink = data?.properties?.action_link;
-      if (!inviteLink) {
-        errors.push(`${email}: Could not generate invite link.`);
-        continue;
-      }
+      // Provision profile if not already there.
+      const { data: existingProfile } = await svc
+        .from("profiles")
+        .select("id, tenant_id")
+        .eq("id", userId)
+        .maybeSingle();
 
-      // Always provide the link in the response so the admin can share it manually.
-      links.push({ email, name: emp.name, link: inviteLink });
-      sent++;
-
-      // Best-effort email send via Resend — may fail for non-owner emails on free plan.
-      if (resendKey) {
-        sendViaResend(email, emp.name, inviteLink, resendKey).catch(() => {
-          // silent — link is already in the response
+      if (!existingProfile) {
+        await svc.from("profiles").insert({
+          id:           userId,
+          tenant_id:    tenantId,
+          display_name: emp.name,
+          job_title:    emp.jobTitle ?? null,
+          department:   emp.department ?? null,
         });
+      } else if (!existingProfile.tenant_id) {
+        await svc.from("profiles").update({ tenant_id: tenantId }).eq("id", userId);
       }
+
+      links.push({ email, name: emp.name, tempPassword, loginUrl: `${APP_URL}/login` });
+      sent++;
     } catch (err) {
       errors.push(`${email}: ${String(err)}`);
     }
