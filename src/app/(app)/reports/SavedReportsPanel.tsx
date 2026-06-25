@@ -247,7 +247,7 @@ function incidentSpec(incidents: Incident[], oshaCases: OshaCase[], oshaHours?: 
       ["Regulatory Reportable", regulatory.length],
       ["Lost-Time Events", lostTime.length],
       ["Total Lost Days", totalLostDays],
-      ["TRIR (per 100 FTE)", oshaRate(oshaCases.length, oshaHours)],
+      ["TRIR (per 100 FTE)", oshaRate(oshaCases.filter((c) => new Date(c.date).getFullYear() === now.getFullYear()).length, oshaHours)],
     ],
     accent: "DC2626",
     fileBase: "Incident-Analysis",

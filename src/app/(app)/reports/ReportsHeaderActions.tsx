@@ -89,7 +89,7 @@ export function ReportsHeaderActions({ capas, incidents, oshaCases, trainingRecs
     const ytdIncidents = incidents.filter((i) => new Date(i.occurred_at).getFullYear() === year);
     const lostTime     = ytdIncidents.filter((i) => (i.lost_time_days ?? 0) > 0);
     const regulatory   = ytdIncidents.filter((i) => i.regulatory_reportable);
-    const trir         = oshaRate(oshaCases.length, oshaHours);
+    const trir         = oshaRate(oshaCases.filter((c) => new Date(c.date).getFullYear() === year).length, oshaHours);
     const gaps         = legal.filter((l) => l.status !== "compliant" && l.status !== "not_applicable");
 
     const lines: string[] = [];

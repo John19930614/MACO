@@ -19,6 +19,7 @@ import {
   getChemicals, getWasteStreams, getEquipment, getAiFindings,
 } from "@/lib/data/ehsRepo";
 import { getCells } from "@/lib/data/repo";
+import { countNearDuplicates } from "@/lib/text/similarity";
 import {
   SEVERITIES, CAPA_STATUSES, AUDIT_STATUSES, INCIDENT_TYPES,
   EQUIPMENT_STATUSES, RISK_LEVELS, riskLevelFromScore,
@@ -205,18 +206,11 @@ export function evaluateGateways(d: EhsDataset, now: number): GatewayReport {
 
   const capaOpenNoDue = capas.filter((c) => (c.status === "open" || c.status === "in_progress") && !c.due_date);
 
-  const incTitleSeen = new Map<string, number>();
-  for (const i of incidents) {
-    const k = i.title.trim().toLowerCase();
-    incTitleSeen.set(k, (incTitleSeen.get(k) ?? 0) + 1);
-  }
-  const nearDupeInc = [...incTitleSeen.values()].filter((n) => n > 1).reduce((a, b) => a + (b - 1), 0);
-  const capaTitleSeen = new Map<string, number>();
-  for (const c of capas) {
-    const k = c.title.trim().toLowerCase();
-    capaTitleSeen.set(k, (capaTitleSeen.get(k) ?? 0) + 1);
-  }
-  const nearDupeCapa = [...capaTitleSeen.values()].filter((n) => n > 1).reduce((a, b) => a + (b - 1), 0);
+  // Lexical near-duplicate detection (token-set Jaccard) — generalises the old
+  // exact-title match to also catch re-ordered words, punctuation/case
+  // differences, and minor edits. Pure + deterministic; see lib/text/similarity.
+  const nearDupeInc = countNearDuplicates(incidents.map((i) => i.title));
+  const nearDupeCapa = countNearDuplicates(capas.map((c) => c.title));
   const nearDupes = nearDupeInc + nearDupeCapa;
 
   const g2: GatewayResult = {

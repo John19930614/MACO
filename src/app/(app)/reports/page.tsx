@@ -320,7 +320,7 @@ export default async function ReportsPage({
                       right={<BarChart3 className="h-4 w-4 text-slate-400" />}
                     />
                     <div className="divide-y divide-slate-50">
-                      {MODULE_SCORES.sort((a, b) => b.score - a.score).map((mod) => (
+                      {[...MODULE_SCORES].sort((a, b) => b.score - a.score).map((mod) => (
                         <Link
                           key={mod.module}
                           href={MODULE_LINKS[mod.module] ?? "#"}
@@ -464,7 +464,7 @@ export default async function ReportsPage({
                   <Card>
                     <CardHeader title="Module Scores" subtitle="Compliance by area" />
                     <div className="divide-y divide-slate-50">
-                      {MODULE_SCORES.sort((a, b) => a.score - b.score).slice(0, 6).map((mod) => (
+                      {[...MODULE_SCORES].sort((a, b) => a.score - b.score).slice(0, 6).map((mod) => (
                         <Link key={mod.module} href={MODULE_LINKS[mod.module] ?? "#"} className="flex items-center gap-2 px-4 py-2 hover:bg-slate-50 group">
                           <div className="flex-1 text-xs text-slate-600 group-hover:text-blue-600">{mod.module}</div>
                           <div className={`text-xs font-bold ${scoreColor(mod.score)}`}>{mod.score}%</div>
