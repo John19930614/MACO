@@ -1,7 +1,7 @@
 "use client";
 
 import { BarChart3, PieChart, FileText, Presentation, Sheet } from "lucide-react";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useDemoUser } from "@/lib/context/demo-user";
 import { oshaRate } from "@/lib/osha";
 import { saveReport } from "@/lib/actions/ehs";
@@ -63,6 +63,8 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
   const co = user.company;
   const firstWord = co.split(" ")[0] || "SafetyIQ";
   const [, startTransition] = useTransition();
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
   void chemicals; // reserved for future chemical-inventory report
 
@@ -273,12 +275,21 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
   }
 
   async function exportPptx(d: ReportData, type: string, label: string) {
-    await downloadReportPptx({
-      title: d.title, description: d.description, headers: d.headers, rows: d.rows,
-      summary: d.summary, companyName: co, accent: d.accent, chart: d.chart,
-      fileName: `${firstWord}-${d.fileBase}.pptx`,
-    });
-    persist(type, label, d.rows.length);
+    setExportError(null);
+    setBusy(label);
+    try {
+      await downloadReportPptx({
+        title: d.title, description: d.description, headers: d.headers, rows: d.rows,
+        summary: d.summary, companyName: co, accent: d.accent, chart: d.chart,
+        fileName: `${firstWord}-${d.fileBase}.pptx`,
+      });
+      persist(type, label, d.rows.length);
+    } catch (e) {
+      console.error("PowerPoint export failed:", e);
+      setExportError(`PowerPoint export failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(null);
+    }
   }
 
   function exportExcel(d: ReportData, type: string, label: string) {
@@ -302,6 +313,11 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
       <div className="mb-1 px-1 text-[10.5px] text-slate-400">
         Download a branded <span className="font-semibold text-slate-500">PowerPoint</span> deck for presenting, or a formatted <span className="font-semibold text-slate-500">Excel</span> workbook for sortable list/register data.
       </div>
+      {exportError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-medium text-red-700">
+          {exportError}
+        </div>
+      )}
       {REPORTS.map((r) => {
         const Icon = r.icon;
         return (
@@ -313,10 +329,11 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
             <button
               type="button"
               onClick={() => exportPptx(r.data(), r.type, r.label)}
+              disabled={busy === r.label}
               title="Download a professional PowerPoint deck"
-              className="flex shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-blue-700"
+              className="flex shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
             >
-              <Presentation className="h-3 w-3" /> PowerPoint
+              <Presentation className="h-3 w-3" /> {busy === r.label ? "Building…" : "PowerPoint"}
             </button>
             <button
               type="button"

@@ -1,7 +1,7 @@
 "use client";
 
 import { FileText, Presentation, Sheet, Trash2 } from "lucide-react";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useDemoUser } from "@/lib/context/demo-user";
 import { Pill } from "@/components/ui/primitives";
 import { oshaRate } from "@/lib/osha";
@@ -328,6 +328,7 @@ function ReportRow({
   companyName: string; oshaHours?: number;
 }) {
   const [isPending, startTransition] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
 
   function specFor(): ReportSpec | null {
     switch (report.report_type) {
@@ -341,20 +342,26 @@ function ReportRow({
     }
   }
 
-  function download(fmt: "pptx" | "xlsx") {
+  async function download(fmt: "pptx" | "xlsx") {
     const s = specFor();
     if (!s) return;
+    setErr(null);
     const fileName = `${firstWord(companyName)}-${s.fileBase}.${fmt}`;
-    if (fmt === "pptx") {
-      void downloadReportPptx({
-        title: s.title, description: s.description, headers: s.headers, rows: s.rows,
-        summary: s.summary, companyName, accent: s.accent, chart: s.chart, fileName,
-      });
-    } else {
-      downloadReportXlsx({
-        title: s.title, description: s.description, headers: s.headers, rows: s.rows,
-        summary: s.summary, companyName, fileName,
-      });
+    try {
+      if (fmt === "pptx") {
+        await downloadReportPptx({
+          title: s.title, description: s.description, headers: s.headers, rows: s.rows,
+          summary: s.summary, companyName, accent: s.accent, chart: s.chart, fileName,
+        });
+      } else {
+        downloadReportXlsx({
+          title: s.title, description: s.description, headers: s.headers, rows: s.rows,
+          summary: s.summary, companyName, fileName,
+        });
+      }
+    } catch (e) {
+      console.error(`${fmt} export failed:`, e);
+      setErr(`${fmt === "pptx" ? "PowerPoint" : "Excel"} export failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -379,6 +386,7 @@ function ReportRow({
             {fmtDate(report.generated_at)}{rows != null ? ` · ${rows} rows` : ""}
           </span>
         </div>
+        {err && <div className="mt-1 text-[10px] font-medium text-red-600">{err}</div>}
       </div>
       <div className="flex items-center gap-1">
         <button

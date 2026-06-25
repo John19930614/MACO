@@ -44,8 +44,35 @@ export interface PptxReportSpec {
 
 const WIDE_W = 13.33;
 
+// Resolve the pptxgenjs constructor robustly across CJS/ESM bundler interop
+// (some bundlers expose it as the module namespace, others under `.default`).
+async function loadPptxGenJS() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mod: any = await import("pptxgenjs");
+  const Ctor = mod?.default ?? mod;
+  if (typeof Ctor !== "function") throw new Error("pptxgenjs failed to load");
+  return Ctor;
+}
+
+// Browser-reliable save: build a Blob and click an anchor. pptxgenjs's own
+// writeFile() can fail silently in bundled browser builds, so we download the
+// blob ourselves.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function savePptx(pptx: any, fileName: string): Promise<void> {
+  const name = fileName.toLowerCase().endsWith(".pptx") ? fileName : `${fileName}.pptx`;
+  const blob = (await pptx.write("blob")) as Blob;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
 export async function downloadReportPptx(spec: PptxReportSpec): Promise<void> {
-  const PptxGenJS = (await import("pptxgenjs")).default;
+  const PptxGenJS = await loadPptxGenJS();
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "SafetyIQ";
@@ -168,7 +195,7 @@ export async function downloadReportPptx(spec: PptxReportSpec): Promise<void> {
   });
   footer(tableSlide);
 
-  await pptx.writeFile({ fileName: spec.fileName });
+  await savePptx(pptx, spec.fileName);
 }
 
 /**
@@ -183,7 +210,7 @@ export async function downloadMultiSectionPptx(opts: {
   accent?: string;
   sections: { name: string; headers: string[]; rows: CellValue[][] }[];
 }): Promise<void> {
-  const PptxGenJS = (await import("pptxgenjs")).default;
+  const PptxGenJS = await loadPptxGenJS();
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "SafetyIQ";
@@ -246,5 +273,5 @@ export async function downloadMultiSectionPptx(opts: {
     footer(slide);
   }
 
-  await pptx.writeFile({ fileName: opts.fileName });
+  await savePptx(pptx, opts.fileName);
 }
