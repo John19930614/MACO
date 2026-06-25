@@ -26,9 +26,9 @@ export function Modal({ open, onClose, title, width = "max-w-lg", children }: Mo
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className={`relative w-full ${width} mx-4 rounded-2xl bg-white shadow-2xl`}>
+      <div className={`relative w-full ${width} mx-4 my-8 max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl`}>
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+        <div className="sticky top-0 z-10 flex items-center justify-between rounded-t-2xl border-b border-slate-100 bg-white px-6 py-4">
           <h2 className="text-base font-bold text-slate-900">{title}</h2>
           <button
             onClick={onClose}
