@@ -244,6 +244,18 @@ export interface CspMeetingActionItem {
   priority: "low" | "normal" | "high";
 }
 
+export interface CspAgendaItem {
+  key: string;
+  title: string;
+  covered: boolean;
+  note: string;
+}
+
+export interface CspReflection {
+  speaker: string;        // "GUS" | "EHS Validation Agent"
+  thought: string;
+}
+
 export interface CspMeeting {
   id: string;
   meeting_date: string;
@@ -253,6 +265,8 @@ export interface CspMeeting {
   gus_briefing: string | null;
   ehs_briefing: string | null;
   exchange: CspMeetingExchange[];
+  agenda: CspAgendaItem[];
+  reflections: CspReflection[];
   gaps_found: CspMeetingGap[];
   action_items: CspMeetingActionItem[];
   shared_summary: string | null;

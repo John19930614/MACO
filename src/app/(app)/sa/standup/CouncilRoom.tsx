@@ -45,7 +45,7 @@ export default function CouncilRoom({ meetings }: { meetings: CspMeeting[] }) {
   const [step, setStep] = useState(0);            // index into exchange; -1 = idle
   const [playing, setPlaying] = useState(false);
   const [convening, setConvening] = useState(false);
-  const [tab, setTab] = useState<"transcript" | "findings" | "actions" | "agents">("transcript");
+  const [tab, setTab] = useState<"agenda" | "transcript" | "findings" | "actions" | "reflections" | "agents">("agenda");
   const [modal, setModal] = useState<Seat | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -77,6 +77,8 @@ export default function CouncilRoom({ meetings }: { meetings: CspMeeting[] }) {
   ];
   const progress = exchange.length ? Math.round(((step + 1) / exchange.length) * 100) : 0;
   const topRisk = highRisks > 0 ? "High" : (meeting?.gaps_found.length ?? 0) > 0 ? "Medium" : "Low";
+  const agenda = meeting?.agenda ?? [];
+  const coveredCount = agenda.filter((a) => a.covered).length;
 
   const convene = async () => {
     setConvening(true);
@@ -109,7 +111,7 @@ export default function CouncilRoom({ meetings }: { meetings: CspMeeting[] }) {
           <div className="cr-hud">
             <span className="cr-chip">Active: Gus + EHS Agent</span>
             <span className="cr-chip">Shells: 8 preview only</span>
-            <span className="cr-chip cr-chip-id">{meeting ? `Gaps ${meeting.gaps_found.length} · Actions ${meeting.action_items.length}` : "—"}</span>
+            <span className="cr-chip cr-chip-id">{meeting ? `Agenda ${coveredCount}/${agenda.length} · Gaps ${meeting.gaps_found.length}` : "—"}</span>
           </div>
 
           {/* presentation screen */}
@@ -161,15 +163,25 @@ export default function CouncilRoom({ meetings }: { meetings: CspMeeting[] }) {
         <aside className="cr-aside">
           <div className="cr-aside-head"><h2>Council Decision Panel</h2></div>
           <div className="cr-tabs">
-            {(["transcript", "findings", "actions", "agents"] as const).map((t) => (
+            {(["agenda", "transcript", "findings", "actions", "reflections", "agents"] as const).map((t) => (
               <button key={t} className={`cr-tab ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>
-                {t === "transcript" ? "Transcript" : t === "findings" ? "Findings" : t === "actions" ? "Actions" : "Agents"}
+                {t === "agenda" ? "Agenda" : t === "transcript" ? "Transcript" : t === "findings" ? "Findings" : t === "actions" ? "Actions" : t === "reflections" ? "Open Thoughts" : "Agents"}
               </button>
             ))}
           </div>
           <div className="cr-panel">
             {!meeting ? (
               <div className="cr-empty">No standup yet. Click <b>Convene &amp; Brief</b> to hold the first meeting.</div>
+            ) : tab === "agenda" ? (
+              <div className="cr-list">
+                {agenda.map((a, i) => (
+                  <div key={i} className={`cr-agitem ${a.covered ? "done" : "todo"}`}>
+                    <span className="cr-check">{a.covered ? "✓" : "○"}</span>
+                    <div><b>{a.title}</b><p>{a.note}</p></div>
+                  </div>
+                ))}
+                {agenda.length === 0 && <div className="cr-empty">No agenda recorded — re-run “Convene &amp; Brief” to generate it.</div>}
+              </div>
             ) : tab === "transcript" ? (
               <div className="cr-log">
                 {exchange.map((e, i) => (
@@ -193,6 +205,16 @@ export default function CouncilRoom({ meetings }: { meetings: CspMeeting[] }) {
                   <div key={i} className="cr-action"><span className={`cr-pri ${a.priority}`}>{a.priority}</span><span className="cr-actitem">{a.item}</span><span className="cr-owner">{a.owner}</span></div>
                 ))}
                 {meeting.action_items.length === 0 && <div className="cr-empty">No action items.</div>}
+              </div>
+            ) : tab === "reflections" ? (
+              <div className="cr-list">
+                {meeting.reflections.map((r, i) => (
+                  <div key={i} className={`cr-reflect ${r.speaker === "GUS" ? "gus" : "ehs"}`}>
+                    <b>{r.speaker === "GUS" ? "Gus" : "EHS Agent"} — open thought</b>
+                    <p>{r.thought}</p>
+                  </div>
+                ))}
+                {meeting.reflections.length === 0 && <div className="cr-empty">No reflections recorded for this meeting.</div>}
               </div>
             ) : (
               <div className="cr-list">
@@ -308,6 +330,16 @@ function CouncilStyles() {
 .cr-av{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(59,130,246,.34),rgba(103,232,249,.1));border:1px solid rgba(103,232,249,.27);font-size:8.5px;font-weight:900}
 .cr-logmeta{font-size:10px;font-weight:800;color:#cfe2f6}.cr-logbody{font-size:10.5px;line-height:1.42;color:#dbe8f6;margin-top:2px}
 .cr-list{display:grid;gap:8px}
+.cr-agitem{display:grid;grid-template-columns:24px 1fr;gap:9px;padding:10px;border-radius:13px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09)}
+.cr-agitem.done{border-color:rgba(74,222,128,.28)}
+.cr-agitem.todo{border-color:rgba(251,191,36,.25)}
+.cr-check{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-weight:900;font-size:12px;background:rgba(74,222,128,.12);color:#baffd5;border:1px solid rgba(74,222,128,.35)}
+.cr-agitem.todo .cr-check{background:rgba(251,191,36,.1);color:#ffe9a7;border-color:rgba(251,191,36,.32)}
+.cr-agitem b{font-size:11px}.cr-agitem p{font-size:10px;line-height:1.4;color:#b8c8db;margin:4px 0 0}
+.cr-reflect{padding:11px;border-radius:13px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09)}
+.cr-reflect.gus{border-color:rgba(103,232,249,.3);background:rgba(103,232,249,.05)}
+.cr-reflect.ehs{border-color:rgba(167,139,250,.3);background:rgba(167,139,250,.05)}
+.cr-reflect b{font-size:10.5px;color:#cfe2f6}.cr-reflect p{font-size:11px;line-height:1.5;color:#dbe8f6;margin:6px 0 0;font-style:italic}
 .cr-card{padding:10px;border-radius:13px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09)}
 .cr-cardtop{display:flex;justify-content:space-between;gap:8px;align-items:center}.cr-card b{font-size:11px}.cr-card p{font-size:10px;line-height:1.4;color:#b8c8db;margin:5px 0 0}
 .cr-risk{padding:3px 6px;border-radius:999px;font-size:8px;font-weight:900;text-transform:uppercase}

@@ -17,6 +17,7 @@ import { generateStructuredJson } from "@/lib/ai/provider";
 import { recordAiCall } from "@/lib/ai/telemetry";
 import type {
   CspMeeting, CspMeetingExchange, CspMeetingGap, CspMeetingActionItem,
+  CspAgendaItem, CspReflection,
 } from "./types";
 
 type DB = SupabaseClient;
@@ -129,6 +130,7 @@ function nice(s: string) { return s.replace(/_/g, " "); }
 function buildMeeting(d: StandupData): {
   gus: string; ehs: string; exchange: CspMeetingExchange[];
   gaps: CspMeetingGap[]; actions: CspMeetingActionItem[]; summary: string;
+  agenda: CspAgendaItem[]; reflections: CspReflection[];
 } {
   const { ehs, platform } = d;
 
@@ -195,7 +197,46 @@ function buildMeeting(d: StandupData): {
     ? "No structural gaps today — both agents operating within tolerance."
     : `${gaps.length} gap(s) surfaced, ${actions.length} action item(s). Top: ${gaps[0].title}.`;
 
-  return { gus, ehs: ehsB, exchange, gaps, actions, summary };
+  // ── Standing agenda — every standup checks off the same key items ──────────
+  const agenda: CspAgendaItem[] = [
+    { key: "critical", title: "Critical / immediate-risk check", covered: true,
+      note: ehs.recordable > 0 ? `${ehs.recordable} possible recordable/reportable case(s) flagged for immediate human review.` : "No critical or immediate-risk conditions in this window." },
+    { key: "ehs_brief", title: "EHS Agent briefing — records & escalations", covered: true, note: ehsB },
+    { key: "gus_brief", title: "GUS briefing — platform health & forecast", covered: true, note: gus },
+    { key: "reconcile", title: "Evidence reconciliation", covered: true,
+      note: platform.overdueCapas > 0 ? "Cross-checking overdue corrective actions against incident findings to rank them." : "Both agents agree on the review window; no conflicting counts." },
+    { key: "gaps", title: "Gaps & blind spots", covered: gaps.length > 0,
+      note: gaps.length > 0 ? `${gaps.length} gap(s) surfaced — see Findings.` : "No structural gaps surfaced this window." },
+    { key: "actions", title: "Action items assigned", covered: actions.length > 0,
+      note: actions.length > 0 ? `${actions.length} action item(s), each with an owner and priority.` : "No actions required today." },
+    { key: "learning", title: "Learning & qualification coverage", covered: true,
+      note: `${ehs.memoryLessons} learned lesson(s) in memory.${ehs.recordTypesWithoutAutonomy.length ? ` No autonomy qualification for: ${ehs.recordTypesWithoutAutonomy.map(nice).join(", ")}.` : ""}` },
+    { key: "open", title: "Open thoughts & improvement ideas", covered: true, note: "Each agent shares its own reflection to close." },
+  ];
+
+  // ── Closing open thoughts — each agent's own reflection ────────────────────
+  const gusThought = platform.weakestModule && platform.weakestModule.score < 80
+    ? `${nice(platform.weakestModule.module)} keeps lagging at ${platform.weakestModule.score}% — one focused cycle there would move the platform score more than anything else I'm tracking.`
+    : platform.overdueCapas > 0
+      ? `I'd close the loop on those ${platform.overdueCapas} overdue action(s) first; stale CAPAs are usually where the next surprise is hiding.`
+      : "Platform is steady. What would sharpen my forecasts most is a live schedule feed — I'd rather see exposure before it arrives than after.";
+
+  const ehsThought = ehs.topMissingFields[0] && ehs.topMissingFields[0].count >= 2
+    ? `My single biggest lever is the "${nice(ehs.topMissingFields[0].field)}" intake gap — it isn't judgment, it's a blank field. Close it and my auto-accept rate climbs while your queue shrinks.`
+    : ehs.pendingReviews >= 5
+      ? "I have the signal; what I need is reviewer time. Every sign-off also teaches me, so clearing the backlog compounds — it makes me sharper, not just emptier."
+      : ehs.memoryLessons === 0
+        ? "I'm validating cleanly, but I haven't learned your house standards yet. A few sign-offs would let me start calibrating to how you actually decide."
+        : "Running clean. I'll keep feeding anything anomalous forward so tomorrow's standup starts sharper than today's.";
+
+  const reflections: CspReflection[] = [
+    { speaker: "GUS", thought: gusThought },
+    { speaker: "EHS Validation Agent", thought: ehsThought },
+  ];
+  exchange.push({ speaker: "GUS", message: `Open thought — ${gusThought}` });
+  exchange.push({ speaker: "EHS Validation Agent", message: `Open thought — ${ehsThought}` });
+
+  return { gus, ehs: ehsB, exchange, gaps, actions, summary, agenda, reflections };
 }
 
 // ── Optional LLM rewrite of the dialogue (live mode only) ──────────────────────
@@ -260,6 +301,8 @@ export async function runStandup(client: DB, opts: { now: number; generatedBy: s
     gus_briefing: base.gus,
     ehs_briefing: base.ehs,
     exchange,
+    agenda: base.agenda,
+    reflections: base.reflections,
     gaps_found: base.gaps,
     action_items: base.actions,
     shared_summary: summary,
@@ -284,6 +327,8 @@ function mapMeeting(r: Record<string, unknown>): CspMeeting {
     gus_briefing: (r.gus_briefing as string) ?? null,
     ehs_briefing: (r.ehs_briefing as string) ?? null,
     exchange: (r.exchange as CspMeetingExchange[]) ?? [],
+    agenda: (r.agenda as CspAgendaItem[]) ?? [],
+    reflections: (r.reflections as CspReflection[]) ?? [],
     gaps_found: (r.gaps_found as CspMeetingGap[]) ?? [],
     action_items: (r.action_items as CspMeetingActionItem[]) ?? [],
     shared_summary: (r.shared_summary as string) ?? null,
