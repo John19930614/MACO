@@ -214,6 +214,13 @@ export function WasteLabelButton({ stream, className, label = "Label / QR" }: Pr
               <div className="text-center text-[9px] text-slate-400">Encodes stream ID, code & manifest</div>
             </div>
           </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[11px] text-slate-600">
+            <span className="font-bold text-slate-700">Recommended label printers: </span>
+            <span className="font-semibold text-slate-800">Brady BMP61</span> (chemical-resistant, EPA/DOT rated — industry standard) ·{" "}
+            <span className="font-semibold text-slate-800">Brother QL-1110NWB</span> (4″ WiFi, best value for indoor storage) ·{" "}
+            <span className="font-semibold text-slate-800">Zebra ZD620</span> (industrial/network environments).{" "}
+            Print at 4-inch width for full compliance label size.
+          </div>
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
             <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
               Close
