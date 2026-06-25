@@ -22,12 +22,15 @@ export interface GroundingContext {
 }
 
 // Recognised regulatory authorities / citation tokens. A regulatory_ref that
-// names none of these is suspicious (the model may have invented it).
+// names none of these is suspicious (the model may have invented it). Matched on
+// token boundaries (letters only, digits allowed) so short tokens like "EC"
+// don't false-match inside words such as "dirECtive".
 const REG_AUTHORITIES = [
   "OSHA", "EPA", "CFR", "ISO", "NFPA", "ANSI", "GHS", "TSCA", "RCRA", "DOT",
   "NIOSH", "ACGIH", "REACH", "CLP", "COSHH", "HSE", "WHMIS", "CERCLA", "SARA",
   "CAA", "CWA", "HAZCOM", "USC", "EU", "EC",
 ];
+const REG_AUTHORITY_RE = new RegExp(`(?<![A-Za-z])(?:${REG_AUTHORITIES.join("|")})(?![A-Za-z])`, "i");
 
 // CAS Registry Number shape: 2–7 digits - 2 digits - 1 check digit.
 const CAS_RE = /\b\d{2,7}-\d{2}-\d\b/g;
@@ -55,8 +58,7 @@ export function reviewAnalysisOutput(o: AiAnalysisOutput, ctx: GroundingContext 
 
   // 3. Every regulatory_ref should name a recognised authority.
   for (const ref of o.regulatory_refs) {
-    const upper = ref.toUpperCase();
-    if (!REG_AUTHORITIES.some((a) => upper.includes(a))) {
+    if (!REG_AUTHORITY_RE.test(ref)) {
       issues.push({ check: "reg_ref_unrecognized", status: "warn", message: `regulatory ref "${ref}" cites no recognised authority` });
     }
   }

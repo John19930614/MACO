@@ -10,6 +10,7 @@ import type { RiskAssessment, CapaAction, ComplianceScore, AiFinding, Incident, 
 import type { RiskLevel } from "@/lib/constants";
 import type { AiAnalysisOutput, PredictabilityRun } from "@/lib/types";
 import { Pill } from "@/components/ui/primitives";
+import { ScoreGauge, DonutChart, Legend, type Segment } from "@/components/charts/Charts";
 import { RiskLevelBadge } from "@/components/ui/badges";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -810,6 +811,32 @@ export function RiskDashboard({ assessments, capas, scores, findings, incidents,
               </div>
             ))}
           </div>
+
+          {/* Visual analytics */}
+          {assessments.length > 0 && (() => {
+            const riskSegments: Segment[] = [
+              { label: "Extreme",    value: assessments.filter((r) => r.risk_level === "extreme").length,    color: "#7f1d1d" },
+              { label: "High",       value: high,   color: "#dc2626" },
+              { label: "Medium",     value: medium, color: "#f59e0b" },
+              { label: "Low",        value: assessments.filter((r) => r.risk_level === "low").length,        color: "#84cc16" },
+              { label: "Negligible", value: assessments.filter((r) => r.risk_level === "negligible").length, color: "#10b981" },
+            ].filter((s) => s.value > 0);
+            return (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <div className="rounded-2xl border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm lg:col-span-2">
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Risk Register by Level</div>
+                  <div className="flex items-center gap-5">
+                    <DonutChart segments={riskSegments} centerValue={assessments.length} centerLabel="Risks" />
+                    <div className="flex-1"><Legend segments={riskSegments} /></div>
+                  </div>
+                </div>
+                <div className="flex flex-col items-center rounded-2xl border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm">
+                  <div className="mb-2 self-start text-[11px] font-semibold uppercase tracking-wider text-slate-400">Overall Compliance</div>
+                  <ScoreGauge value={overall} label="Score" />
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Active Risk Alerts */}
           {totalAlerts > 0 && (

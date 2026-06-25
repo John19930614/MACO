@@ -22,7 +22,7 @@ import { SYSTEM_PROMPT, buildUserPrompt, ANALYSIS_JSON_SCHEMA as ARC_CAUSALITY_S
 import { aiAnalysisOutputSchema, aiCellAnalysisOutputSchema } from "@/lib/schemas";
 import { reviewAnalysisOutput, type GroundingContext } from "./grounding";
 import { nextId } from "@/lib/data/store";
-import type { Chemical, LegalRequirement, AiFinding, AiAnalysisOutput, CausalityOutput, PredictabilityForecast, SafetyCell } from "@/lib/types";
+import type { Chemical, LegalRequirement, AiFinding, AiAnalysisOutput, CausalityOutput, PredictabilityForecast, SafetyCell, TrainingCourse, TrainingRecord, Profile } from "@/lib/types";
 import { riskLevelFromScore100, COMPLIANCE_STATUS_META } from "@/lib/constants";
 import type { EdgeType } from "@/lib/constants";
 
@@ -285,6 +285,126 @@ Evidence on file: ${req.evidence_url ? "Yes" : "No"}`;
     heuristic: () => complianceGapHeuristicAnalysis(req),
     forceReview: req.status === "non_compliant",
     groundingContext: { knownRegRef: req.regulation_ref },
+  });
+}
+
+// ── Training Gap Analysis ─────────────────────────────────────────────────────
+
+export interface TrainingGapInput {
+  tenant_id: string;
+  site_id: string | null;
+  courses: TrainingCourse[];
+  records: TrainingRecord[];
+  profiles: Profile[];
+  now: number;
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Deterministic training-gap analysis: matches each active, role-required course
+ * to the staff whose role mandates it and flags those without a current passing
+ * record, plus expired and soon-to-expire certifications. Pure over its input.
+ */
+function trainingGapHeuristic(input: TrainingGapInput): AiAnalysisOutput {
+  const { courses, records, profiles, now } = input;
+  const activeCourses  = courses.filter((c) => c.active && c.required_roles.length > 0);
+  const activeProfiles = profiles.filter((p) => p.active);
+
+  const covered = (profileId: string, courseId: string): boolean =>
+    records.some((r) =>
+      r.profile_id === profileId && r.course_id === courseId && r.passed &&
+      (!r.expiry_date || new Date(r.expiry_date).getTime() >= now));
+
+  const courseGaps: { course: TrainingCourse; required: number; missing: number }[] = [];
+  let totalRequired = 0;
+  let totalMissing = 0;
+  for (const course of activeCourses) {
+    const required = activeProfiles.filter((p) => course.required_roles.includes(p.role));
+    const missing  = required.filter((p) => !covered(p.id, course.id));
+    totalRequired += required.length;
+    totalMissing  += missing.length;
+    if (missing.length > 0) courseGaps.push({ course, required: required.length, missing: missing.length });
+  }
+  courseGaps.sort((a, b) => b.missing - a.missing);
+
+  const expired = records.filter((r) => r.passed && r.expiry_date && new Date(r.expiry_date).getTime() < now);
+  const expiringSoon = records.filter((r) =>
+    r.passed && r.expiry_date &&
+    new Date(r.expiry_date).getTime() >= now &&
+    new Date(r.expiry_date).getTime() < now + 30 * DAY_MS);
+
+  const coverage = totalRequired > 0 ? (totalRequired - totalMissing) / totalRequired : 1;
+  const risk_score = Math.min(100, Math.round((1 - coverage) * 80) + Math.min(20, expired.length * 4));
+
+  const findings: AiAnalysisOutput["findings"] = courseGaps.slice(0, 5).map((g) => ({
+    category: "training",
+    description: `${g.missing} of ${g.required} required staff have not completed "${g.course.title}"${g.course.regulatory_ref ? ` (${g.course.regulatory_ref})` : ""}.`,
+    severity: g.required > 0 && g.missing / g.required >= 0.5 ? "high" : "medium",
+  }));
+  if (expired.length > 0) {
+    findings.push({ category: "training", description: `${expired.length} certification(s) have lapsed past their expiry date and are no longer valid.`, severity: expired.length > 5 ? "high" : "medium" });
+  }
+
+  const gaps: string[] = [];
+  if (totalMissing > 0)      gaps.push(`${totalMissing} required training assignment(s) outstanding across ${courseGaps.length} course(s)`);
+  if (expired.length > 0)    gaps.push(`${expired.length} expired certification(s) need renewal`);
+  if (expiringSoon.length > 0) gaps.push(`${expiringSoon.length} certification(s) expiring within 30 days`);
+
+  const regulatory_refs = [...new Set(courseGaps.map((g) => g.course.regulatory_ref).filter((r): r is string => !!r))];
+
+  const recommended_actions: AiAnalysisOutput["recommended_actions"] = [];
+  if (courseGaps.length > 0) {
+    const top = courseGaps[0];
+    recommended_actions.push({ action: `Schedule "${top.course.title}" for the ${top.missing} outstanding staff`, priority: "short_term", rationale: `Largest single training gap — ${top.missing} of ${top.required} required staff uncovered${top.course.regulatory_ref ? `, mandated by ${top.course.regulatory_ref}` : ""}`, capa_kind: "corrective" });
+  }
+  if (expired.length > 0) {
+    recommended_actions.push({ action: `Renew ${expired.length} lapsed certification(s) before affected staff continue regulated work`, priority: "immediate", rationale: "Expired certifications are not valid evidence of competency and may breach regulatory training requirements", capa_kind: "corrective" });
+  }
+  if (expiringSoon.length > 0) {
+    recommended_actions.push({ action: `Book refresher training for ${expiringSoon.length} certification(s) expiring within 30 days`, priority: "short_term", rationale: "Proactive renewal avoids a lapse in coverage", capa_kind: "preventive" });
+  }
+  if (recommended_actions.length === 0) {
+    recommended_actions.push({ action: "Maintain the current training schedule and monitor upcoming expiries", priority: "long_term", rationale: "Role-based training coverage is complete — sustain it", capa_kind: "preventive" });
+  }
+
+  return {
+    risk_level: riskLevelFromScore100(risk_score),
+    risk_score,
+    findings,
+    gaps,
+    regulatory_refs,
+    recommended_actions,
+    plain_language_summary: totalRequired === 0
+      ? "No role-based training requirements are configured, so no gaps could be assessed. Set required roles on each mandatory course to enable gap analysis."
+      : `${Math.round(coverage * 100)}% of required role-based training is current. ${totalMissing} outstanding assignment(s), ${expired.length} expired, ${expiringSoon.length} expiring within 30 days.${courseGaps.length > 0 ? ` Largest gap: "${courseGaps[0].course.title}".` : ""}`,
+    human_review_required: coverage < 0.6 || expired.length > 5,
+  };
+}
+
+/** Identify overdue / expiring role-based training across the tenant. */
+export async function analyzeTraining(input: TrainingGapInput): Promise<AiFinding> {
+  const pre = trainingGapHeuristic(input);
+  const systemPrompt = `You are an EHS training-compliance specialist. Given a snapshot of role-based training requirements, completion records, and certification expiries, identify the most material training gaps, the regulatory exposure they create, and prioritised actions to close them. Be specific about counts and cite the referenced regulation where one is given.`;
+  const userPrompt = `Training compliance snapshot:
+${pre.plain_language_summary}
+
+Outstanding gaps:
+${pre.findings.map((f) => `- ${f.description}`).join("\n") || "- none"}
+
+Regulatory references cited by affected courses: ${pre.regulatory_refs.join(", ") || "none"}`;
+
+  return runAnalysis({
+    job: "training_gap_analysis",
+    source_type: "training",
+    source_id: null,
+    tenant_id: input.tenant_id,
+    site_id: input.site_id,
+    input_summary: `Training gap analysis — ${pre.findings.length} finding(s), risk ${pre.risk_score}`,
+    systemPrompt,
+    userPrompt,
+    heuristic: () => pre,
+    forceReview: false,
   });
 }
 

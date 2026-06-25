@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import type { Chemical, TrainingCourse } from "@/lib/types";
 import { Card, CardHeader, Pill, Stat } from "@/components/ui/primitives";
+import { ScoreGauge, DonutChart, Legend, type Segment } from "@/components/charts/Charts";
 import { ChemicalsTable } from "./ChemicalsTable";
 import {
   AlertTriangle,
@@ -887,6 +888,44 @@ export function ChemicalsDashboard({
           accent={sdsProblem > 0 ? "#dc2626" : "#10b981"}
         />
       </div>
+
+      {/* Visual analytics */}
+      {chemicals.length > 0 && (() => {
+        const has = (c: Chemical, arr: string[]) => c.hazard_statements.some((h) => arr.some((p) => h.startsWith(p)));
+        let cmr = 0, acute = 0, flam = 0, corr = 0, oxid = 0, other = 0;
+        for (const c of chemicals) {
+          if (has(c, ["H350", "H351", "H340", "H341", "H360", "H361"])) cmr++;
+          else if (has(c, ["H300", "H310", "H330", "H301", "H311", "H331"])) acute++;
+          else if (has(c, ["H224", "H225", "H226", "H220", "H221", "H222", "H223"])) flam++;
+          else if (has(c, ["H314", "H318", "H290"])) corr++;
+          else if (has(c, ["H270", "H271", "H272"])) oxid++;
+          else other++;
+        }
+        const hazardSegments: Segment[] = [
+          { label: "Carcinogen / CMR", value: cmr,   color: "#7f1d1d" },
+          { label: "Acute Toxic",      value: acute, color: "#dc2626" },
+          { label: "Flammable",        value: flam,  color: "#ea580c" },
+          { label: "Corrosive",        value: corr,  color: "#f59e0b" },
+          { label: "Oxidizer",         value: oxid,  color: "#8b5cf6" },
+          { label: "Other / Lower",    value: other, color: "#94a3b8" },
+        ].filter((s) => s.value > 0);
+        const sdsPct = Math.round((sdsOnFile / chemicals.length) * 100);
+        return (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div className="flex flex-col items-center rounded-2xl border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm">
+              <div className="mb-2 self-start text-[11px] font-semibold uppercase tracking-wider text-slate-400">SDS Coverage</div>
+              <ScoreGauge value={sdsPct} label="On file" />
+            </div>
+            <div className="rounded-2xl border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm lg:col-span-2">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Inventory by Primary Hazard</div>
+              <div className="flex items-center gap-5">
+                <DonutChart segments={hazardSegments} centerValue={chemicals.length} centerLabel="Chemicals" />
+                <div className="flex-1"><Legend segments={hazardSegments} /></div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* AI scan alert */}
       {highHazard.length > 0 && (

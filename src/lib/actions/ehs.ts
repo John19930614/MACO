@@ -13,11 +13,11 @@ import { generateStructuredJson } from "@/lib/ai/provider";
 import type { Severity, IncidentType, CapaStatus, AuditStatus, DocumentStatus } from "@/lib/constants";
 import { COMPLIANCE_STATUS_META, type ComplianceStatus, WASTE_CLASSIFICATIONS } from "@/lib/constants";
 import type { CapaSourceType, AuditType, Incident, RiskAssessment, WasteStream, Equipment, LegalRequirement, TrainingRecord, OshaCase, AiFinding, Chemical, AiAnalysisOutput, BiosafetyLab, BiohazardAgent, ErgonomicsWorkstation, ErgonomicsJobTask } from "@/lib/types";
-import { analyzeChemical, analyzeComplianceGap, buildPredictabilityForecast } from "@/lib/ai/engine";
+import { analyzeChemical, analyzeComplianceGap, analyzeTraining, buildPredictabilityForecast } from "@/lib/ai/engine";
 import {
   getChemicals, getLegalRequirements, getTrainingRecords, getTrainingCourses, getCapaActions,
   getIncidents, getAudits, getRiskAssessments, getEquipment, getWasteStreams,
-  getDocuments, getOshaCases, getBiosafetyLabs, getErgonomicsJobTasks,
+  getDocuments, getOshaCases, getBiosafetyLabs, getErgonomicsJobTasks, getProfiles,
 } from "@/lib/data/ehsRepo";
 
 // ── Session context helper ─────────────────────────────────────────────────────
@@ -1621,12 +1621,13 @@ export async function runPredictabilityScan() {
   const { tenantId, siteId } = ctx;
   const now = new Date();
 
-  const [chemicals, legal, records, capas, incidents, audits, risks, equipment, waste, documents, oshaCases, bioLabs, ergoTasks] =
+  const [chemicals, legal, records, capas, incidents, audits, risks, equipment, waste, documents, oshaCases, bioLabs, ergoTasks, courses, profiles] =
     await Promise.all([
       getChemicals(tenantId), getLegalRequirements(tenantId), getTrainingRecords(tenantId),
       getCapaActions(tenantId), getIncidents(tenantId), getAudits(tenantId),
       getRiskAssessments(tenantId), getEquipment(tenantId), getWasteStreams(tenantId),
       getDocuments(tenantId), getOshaCases(tenantId), getBiosafetyLabs(tenantId), getErgonomicsJobTasks(tenantId),
+      getTrainingCourses(tenantId), getProfiles(tenantId),
     ]);
 
   // ── Per-module compliance scores (derived from real data) ──
@@ -1702,6 +1703,12 @@ export async function runPredictabilityScan() {
   }
   for (const l of worstLegal) {
     try { findings.push(await analyzeComplianceGap(l)); } catch { /* skip */ }
+  }
+  // Training gap analysis — one tenant-level finding over role-based coverage.
+  if (courses.length > 0 && profiles.length > 0) {
+    try {
+      findings.push(await analyzeTraining({ tenant_id: tenantId, site_id: siteId, courses, records, profiles, now: now.getTime() }));
+    } catch { /* skip */ }
   }
 
   const actionsProposed = findings.reduce((s, f) => s + ((f.output as AiAnalysisOutput)?.recommended_actions?.length ?? 0), 0);

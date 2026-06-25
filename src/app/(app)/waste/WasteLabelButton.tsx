@@ -34,7 +34,7 @@ function getHazardTheme(stream: WasteStream) {
   const code = (stream.waste_code ?? "").toUpperCase().trim();
 
   // Green — non-hazardous general waste
-  if (cls === "general") {
+  if (cls === "general" || cls === "non_hazardous") {
     return { bg: "#16a34a", text: "#fff", headerText: "NON-HAZARDOUS WASTE",
              twBorder: "border-green-600", twHdr: "bg-green-600 text-white" };
   }

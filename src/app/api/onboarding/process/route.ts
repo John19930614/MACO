@@ -20,6 +20,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import { read as xlsxRead, utils as xlsxUtils } from "xlsx";
 import { serverSecrets, aiProvider, hasLiveAi } from "@/lib/env";
+import { WASTE_CLASSIFICATIONS } from "@/lib/constants";
 
 // ── Supabase service-role client (bypasses RLS for seeding) ───────────────────
 
@@ -218,6 +219,30 @@ async function processChemicals(files: UploadedFile[], tenantId: string, userId:
   return records.length;
 }
 
+// Coerce an AI-supplied classification onto the canonical enum. The schema enum
+// already constrains the model, but documents and older extractions can still
+// surface variants (e.g. "non-hazardous", "universal waste", "biohazard"); this
+// maps the common ones and falls back to "hazardous" (the safe default).
+function normalizeWasteClassification(raw: unknown): string {
+  const v = String(raw ?? "").toLowerCase().trim().replace(/[\s-]+/g, "_");
+  if ((WASTE_CLASSIFICATIONS as readonly string[]).includes(v)) return v;
+  const aliases: Record<string, string> = {
+    "non_haz": "non_hazardous",
+    "nonhazardous": "non_hazardous",
+    "universal_waste": "hazardous",
+    "mixed": "hazardous",
+    "biohazard": "clinical",
+    "biohazardous": "clinical",
+    "medical": "clinical",
+    "infectious": "clinical",
+    "acutely_hazardous": "scheduled",
+    "p_listed": "scheduled",
+    "recycle": "recyclable",
+    "recycling": "recyclable",
+  };
+  return aliases[v] ?? "hazardous";
+}
+
 async function processWasteStreams(files: UploadedFile[], tenantId: string, userId: string) {
   const schema: Anthropic.Tool.InputSchema = {
     type: "object",
@@ -233,7 +258,7 @@ async function processWasteStreams(files: UploadedFile[], tenantId: string, user
           properties: {
             waste_name:         { type: "string" },
             waste_code:         { type: ["string", "null"] },
-            classification:     { type: "string" },
+            classification:     { type: "string", enum: [...WASTE_CLASSIFICATIONS] },
             quantity:           { type: "number" },
             unit:               { type: "string" },
             disposal_method:    { type: "string" },
@@ -247,7 +272,7 @@ async function processWasteStreams(files: UploadedFile[], tenantId: string, user
 
   const rows = await extractWithAI(
     files,
-    "You are an EHS data specialist. Extract hazardous waste stream records from the provided manifest or record document. For classification use standard values like 'hazardous', 'non-hazardous', 'universal-waste', 'mixed'. For disposal_method use values like 'incineration', 'landfill', 'recycling', 'treatment', 'other'.",
+    "You are an EHS data specialist. Extract hazardous waste stream records from the provided manifest or record document. For classification you MUST use exactly one of these values: 'hazardous' (RCRA/listed/characteristic hazardous waste), 'non_hazardous' (non-regulated solid waste), 'radioactive', 'clinical' (medical/biohazardous/infectious), 'scheduled' (acutely hazardous / P-listed / scheduled waste), 'recyclable', or 'general'. When in doubt, use 'hazardous'. For disposal_method use values like 'incineration', 'landfill', 'recycling', 'treatment', 'other'.",
     "Extract all waste streams or disposal records from this document.",
     schema,
     "extract_waste_streams",
@@ -262,7 +287,7 @@ async function processWasteStreams(files: UploadedFile[], tenantId: string, user
       tenant_id: tenantId,
       waste_name: String(row.waste_name ?? "Unknown Waste"),
       waste_code: row.waste_code ? String(row.waste_code) : null,
-      classification: String(row.classification || "hazardous"),
+      classification: normalizeWasteClassification(row.classification),
       quantity: Number(row.quantity) || 0,
       unit: String(row.unit || "kg"),
       disposal_method: String(row.disposal_method || "other"),

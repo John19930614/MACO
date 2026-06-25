@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { TrainingCourse, TrainingRecord, Profile, Chemical } from "@/lib/types";
 import { Pill } from "@/components/ui/primitives";
+import { ScoreGauge, DonutChart, Legend, type Segment } from "@/components/charts/Charts";
 import { AddTrainingButton } from "./AddTrainingButton";
 import { MarkCourseCompleteButton } from "./MarkCourseCompleteButton";
 
@@ -235,6 +236,39 @@ export function TrainingDashboard({
             </div>
           ))}
         </div>
+
+        {/* Visual analytics */}
+        {records.length > 0 && (() => {
+          let current = 0, expSoon = 0, exp = 0, failed = 0;
+          for (const r of records) {
+            if (!r.passed) { failed++; continue; }
+            if (isExpired(r.expiry_date)) { exp++; continue; }
+            if (isExpiringSoon(r.expiry_date)) { expSoon++; continue; }
+            current++;
+          }
+          const statusSegments: Segment[] = [
+            { label: "Current",      value: current, color: "#10b981" },
+            { label: "Expiring ≤30d", value: expSoon, color: "#f59e0b" },
+            { label: "Expired",      value: exp,     color: "#dc2626" },
+            { label: "Failed",       value: failed,  color: "#94a3b8" },
+          ].filter((s) => s.value > 0);
+          const completion = Math.round((passed / records.length) * 100);
+          return (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <div className="flex flex-col items-center rounded-2xl border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm">
+                <div className="mb-2 self-start text-[11px] font-semibold uppercase tracking-wider text-slate-400">Completion Rate</div>
+                <ScoreGauge value={completion} label="Passed" />
+              </div>
+              <div className="rounded-2xl border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-sm lg:col-span-2">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Training Record Status</div>
+                <div className="flex items-center gap-5">
+                  <DonutChart segments={statusSegments} centerValue={records.length} centerLabel="Records" />
+                  <div className="flex-1"><Legend segments={statusSegments} /></div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Alert banners */}
         {expired > 0 && (
