@@ -23,7 +23,7 @@ import { recordAiCall } from "@/lib/ai/telemetry";
 import { CSP_AGENT_VERSION, CSP_POSITIONING } from "./defaults";
 import type {
   CspValidationInput, CspValidationResult, CspRecordRequirement, CspRule,
-  CspFinding, CspRiskLevel, CspValidationStatus, CspSignals,
+  CspFinding, CspRiskLevel, CspValidationStatus, CspSignals, CspAgentContext,
 } from "./types";
 
 /** Below this 0–100 confidence, a record is escalated to human review. */
@@ -78,6 +78,7 @@ function evaluate(
   input: CspValidationInput,
   requirement: CspRecordRequirement | undefined,
   rules: CspRule[],
+  ctx?: CspAgentContext,
 ): CspValidationResult {
   const findings: CspFinding[] = [];
   const severity = typeof input.fields.severity === "string" ? input.fields.severity : undefined;
@@ -160,20 +161,55 @@ function evaluate(
   if (input.signals.medical_treatment_beyond_first_aid === undefined) confidence -= 8; // uncertain treatment level
   confidence = Math.max(35, Math.min(98, confidence));
 
+  // 4b — Governance: apply learned memory (gated by the apply_learned_memory
+  // guardrail). Memory can nudge confidence or escalate, never auto-clear.
+  const appliedLessons: string[] = [];
+  let memoryEscalate = false;
+  const guard = (k: string) => ctx?.guardrails?.[k];
+  if (ctx && guard("apply_learned_memory")?.enabled) {
+    for (const m of ctx.memory) {
+      if (!m.active) continue;
+      if (m.record_type && m.record_type !== input.record_type) continue;
+      if (m.finding_category && !findings.some((f) => f.finding_category === m.finding_category)) continue;
+      const w = Number(m.weight) || 0;
+      if (m.directive === "raise_confidence") { confidence = Math.min(98, confidence + w); appliedLessons.push(m.lesson); }
+      else if (m.directive === "lower_confidence") { confidence = Math.max(20, confidence - w); appliedLessons.push(m.lesson); }
+      else if (m.directive === "escalate") { memoryEscalate = true; appliedLessons.push(m.lesson); }
+      else appliedLessons.push(m.lesson);
+    }
+  }
+
   // 5 — Human-review decision (the model never overrides an escalation).
   const mandatoryHit = mandatory.length > 0;
   const recordableHit = regulatory_triggers.some((t) =>
     ["possible_recordable", "medical_treatment_beyond_first_aid", "days_away", "restricted_work", "loss_of_consciousness"].includes(t));
+  const highRisk = RISK_SCORE[riskLevel] >= 70;
+
+  // Qualification / autonomy guardrails: an otherwise-clean record may only be
+  // auto-accepted if the agent holds a qualification granting autonomy for the
+  // record type and clears the minimum-confidence bar.
+  const requiresQual = guard("autonomy_requires_qualification")?.enabled ?? false;
+  const isQualified = !!ctx && ctx.qualifications.some((q) =>
+    q.status === "active" && q.grants_autonomy &&
+    (q.scope_record_types.length === 0 || q.scope_record_types.includes(input.record_type)));
+  const minConfGuard = guard("min_autonomy_confidence");
+  const minConf = minConfGuard?.enabled ? Number(minConfGuard.threshold) || 0 : 0;
+  const lacksQual = requiresQual && !isQualified;
+  const belowMinConf = minConf > 0 && confidence < minConf;
+
   const human_review_required =
-    mandatoryHit || recordableHit ||
-    confidence < LOW_CONFIDENCE ||
-    RISK_SCORE[riskLevel] >= 70;
+    mandatoryHit || recordableHit || memoryEscalate ||
+    confidence < LOW_CONFIDENCE || highRisk ||
+    lacksQual || belowMinConf;
 
   const reasons: string[] = [];
   if (mandatoryHit) reasons.push(`mandatory condition(s): ${mandatory.join(", ")}`);
   if (recordableHit) reasons.push("possible OSHA recordable/reportable");
+  if (memoryEscalate) reasons.push("a learned lesson flagged this pattern");
   if (confidence < LOW_CONFIDENCE) reasons.push(`confidence ${confidence}% below ${LOW_CONFIDENCE}% threshold`);
-  if (RISK_SCORE[riskLevel] >= 70) reasons.push(`${riskLevel.replace(/_/g, " ")} risk level`);
+  if (highRisk) reasons.push(`${riskLevel.replace(/_/g, " ")} risk level`);
+  if (lacksQual) reasons.push(`no qualification grants autonomy for ${input.record_type.replace(/_/g, " ")}`);
+  if (belowMinConf) reasons.push(`confidence below autonomy minimum ${minConf}%`);
   const human_review_reason = reasons.length ? `Escalated: ${reasons.join("; ")}.` : null;
 
   // 6 — Overall validation status.
@@ -203,7 +239,7 @@ function evaluate(
     inconsistencies_found: [],
     regulatory_triggers: [...new Set(regulatory_triggers)],
     ai_summary: summary,
-    ai_reasoning_summary: `Checked ${rules_checked.length} rule(s) and ${required.length} required field(s). ${missing_fields.length} missing, ${regulatory_triggers.length} regulatory trigger(s).`,
+    ai_reasoning_summary: `Checked ${rules_checked.length} rule(s) and ${required.length} required field(s). ${missing_fields.length} missing, ${regulatory_triggers.length} regulatory trigger(s).${appliedLessons.length ? ` Applied ${appliedLessons.length} learned lesson(s): ${appliedLessons.join("; ")}.` : ""}`,
     ai_recommendation: human_review_required
       ? "Route to a credentialed EHS reviewer (CSP/CIH/CHST) before this record is finalized."
       : "Record passes automated validation. No human review required.",
@@ -252,9 +288,9 @@ export async function validateEhsRecord(
   input: CspValidationInput,
   requirement: CspRecordRequirement | undefined,
   rules: CspRule[],
-  opts: { enrich?: boolean } = {},
+  opts: { enrich?: boolean; ctx?: CspAgentContext } = {},
 ): Promise<CspValidationResult> {
-  const base = evaluate(input, requirement, rules);
+  const base = evaluate(input, requirement, rules, opts.ctx);
 
   // enrich defaults to false so inline save hooks stay instant; the review
   // panel's "re-run with AI" passes enrich:true for the model narrative.

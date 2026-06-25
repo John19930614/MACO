@@ -2,8 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { recordReviewDecision, validateRecordInBackground, backfillValidations } from "@/lib/csp/repo";
-import type { CspRecordType } from "@/lib/csp/types";
+import {
+  recordReviewDecision, validateRecordInBackground, backfillValidations,
+  setGuardrail, addQualification, setQualificationStatus, setMemoryActive, deleteMemory,
+} from "@/lib/csp/repo";
+import type { CspRecordType, CspQualKind } from "@/lib/csp/types";
 
 /**
  * Record a credentialed human review decision (the superadmin sign-off surface).
@@ -76,4 +79,59 @@ export async function backfillCspValidations() {
   const res = await backfillValidations({ enrich: false, limit: 200 });
   revalidatePath("/sa/validation");
   return { ok: true, ...res };
+}
+
+// ── Agent Profile: guardrails / qualifications / memory ───────────────────────
+
+export async function toggleGuardrail(key: string, enabled: boolean) {
+  const res = await setGuardrail(key, { enabled });
+  revalidatePath("/sa/validation");
+  return res;
+}
+
+export async function updateGuardrailThreshold(key: string, threshold: number) {
+  const res = await setGuardrail(key, { threshold });
+  revalidatePath("/sa/validation");
+  return res;
+}
+
+export async function grantQualification(_prev: unknown, formData: FormData) {
+  const title = String(formData.get("title") || "").trim();
+  const kind = String(formData.get("kind") || "certification") as CspQualKind;
+  if (!title) return { ok: false, error: "Title is required." };
+  const scope = formData.getAll("scope").map((s) => String(s) as CspRecordType);
+  const res = await addQualification({
+    kind,
+    title,
+    description: String(formData.get("description") || "").trim() || undefined,
+    scopeRecordTypes: scope,
+    grantsAutonomy: formData.get("grants_autonomy") === "on",
+    grantedBy: String(formData.get("granted_by") || "Reliance Admin").trim() || "Reliance Admin",
+  });
+  revalidatePath("/sa/validation");
+  return res;
+}
+
+export async function revokeQualification(id: string) {
+  const res = await setQualificationStatus(id, "revoked");
+  revalidatePath("/sa/validation");
+  return res;
+}
+
+export async function reinstateQualification(id: string) {
+  const res = await setQualificationStatus(id, "active");
+  revalidatePath("/sa/validation");
+  return res;
+}
+
+export async function toggleMemoryLesson(id: string, active: boolean) {
+  const res = await setMemoryActive(id, active);
+  revalidatePath("/sa/validation");
+  return res;
+}
+
+export async function removeMemoryLesson(id: string) {
+  const res = await deleteMemory(id);
+  revalidatePath("/sa/validation");
+  return res;
 }

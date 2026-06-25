@@ -172,3 +172,55 @@ export interface CspDecisionRow {
   signed_at: string | null;
   created_at: string;
 }
+
+// ── Guardrails / Qualifications / Memory (agent governance + learning) ─────────
+
+export interface CspGuardrail {
+  id: string;
+  key: string;
+  label: string;
+  description: string | null;
+  enabled: boolean;
+  threshold: number | null;
+  locked: boolean;
+}
+
+export type CspQualKind = "certification" | "skill" | "qualification";
+
+export interface CspQualification {
+  id: string;
+  kind: CspQualKind;
+  code: string;
+  title: string;
+  description: string | null;
+  scope_record_types: CspRecordType[];
+  grants_autonomy: boolean;
+  status: "active" | "revoked" | "expired";
+  granted_by: string | null;
+  granted_at: string;
+  expires_at: string | null;
+}
+
+export type CspMemoryDirective = "raise_confidence" | "lower_confidence" | "escalate" | "note";
+
+export interface CspMemoryLesson {
+  id: string;
+  tenant_id: string | null;
+  scope: "global" | "tenant";
+  record_type: CspRecordType | null;
+  finding_category: string | null;
+  directive: CspMemoryDirective;
+  lesson: string;
+  weight: number;
+  source: "human_decision" | "manual";
+  times_applied: number;
+  active: boolean;
+  created_at: string;
+}
+
+/** Everything the validator needs to apply guardrails, qualifications, and memory. */
+export interface CspAgentContext {
+  guardrails: Record<string, CspGuardrail>;
+  qualifications: CspQualification[];
+  memory: CspMemoryLesson[];
+}

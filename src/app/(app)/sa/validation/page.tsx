@@ -1,18 +1,23 @@
 import { ShieldCheck, AlertTriangle, ClipboardCheck, Bot } from "lucide-react";
-import { DarkPageHeader, DarkCard, DarkCardHeader } from "@/components/ui/primitives";
-import { getCspValidationRuns, getCspReviewSummary, getCspAgent } from "@/lib/csp/repo";
+import { DarkPageHeader } from "@/components/ui/primitives";
+import {
+  getCspValidationRuns, getCspReviewSummary, getCspAgent,
+  getGuardrails, getQualifications, getMemory,
+} from "@/lib/csp/repo";
 import { CSP_POSITIONING } from "@/lib/csp/defaults";
-import ValidationReviewClient from "./ValidationReviewClient";
-import BackfillButton from "./BackfillButton";
+import ValidationWorkbench from "./ValidationWorkbench";
 
 // CSP-informed EHS Records Validation Agent — superadmin review panel.
 // The agent validates records in the background and logs every run; high-stakes
 // or low-confidence cases land here for credentialed human sign-off.
 export default async function SAValidationPage() {
-  const [runs, summary, agent] = await Promise.all([
+  const [runs, summary, agent, guardrails, qualifications, memory] = await Promise.all([
     getCspValidationRuns(150).catch(() => []),
     getCspReviewSummary().catch(() => ({ pending: 0, urgent: 0, total: 0, autoAccepted: 0 })),
     getCspAgent().catch(() => null),
+    getGuardrails().catch(() => []),
+    getQualifications().catch(() => []),
+    getMemory().catch(() => []),
   ]);
 
   const cards = [
@@ -53,23 +58,12 @@ export default async function SAValidationPage() {
           ))}
         </div>
 
-        <DarkCard>
-          <DarkCardHeader
-            title="Validation Log & Review Queue"
-            subtitle="Every background validation run, newest first. Sign off on cases that require qualified review."
-            right={<BackfillButton />}
-          />
-          <div className="p-4">
-            {runs.length === 0 ? (
-              <div className="rounded-lg border border-white/8 bg-slate-900/40 px-4 py-8 text-center text-sm text-slate-400">
-                No validation runs yet. The agent records a run automatically whenever an incident or audit finding is
-                created or edited in live mode. Once the database migration is applied, runs appear here.
-              </div>
-            ) : (
-              <ValidationReviewClient runs={runs} />
-            )}
-          </div>
-        </DarkCard>
+        <ValidationWorkbench
+          runs={runs}
+          guardrails={guardrails}
+          qualifications={qualifications}
+          memory={memory}
+        />
       </div>
     </div>
   );

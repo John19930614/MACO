@@ -21,6 +21,8 @@ import { DEFAULT_REQUIREMENTS, DEFAULT_RULES, CSP_AGENT_NAME, CSP_AGENT_VERSION,
 import type {
   CspRecordRequirement, CspRule, CspRecordType, CspValidationInput,
   CspValidationResult, CspValidationRunRow, CspReviewStatus, CspSignals,
+  CspAgentContext, CspGuardrail, CspQualification, CspMemoryLesson,
+  CspQualKind, CspMemoryDirective,
 } from "./types";
 
 type DB = SupabaseClient;
@@ -72,6 +74,64 @@ export async function loadRules(client: DB | null): Promise<CspRule[]> {
     source_url: r.source_url ?? null,
     version_label: r.version_label,
   }));
+}
+
+// ── Agent context: guardrails, qualifications, memory ─────────────────────────
+
+function mapQual(r: Record<string, unknown>): CspQualification {
+  return {
+    id: String(r.id),
+    kind: r.kind as CspQualKind,
+    code: String(r.code),
+    title: String(r.title),
+    description: (r.description as string) ?? null,
+    scope_record_types: (r.scope_record_types as CspRecordType[]) ?? [],
+    grants_autonomy: !!r.grants_autonomy,
+    status: r.status as CspQualification["status"],
+    granted_by: (r.granted_by as string) ?? null,
+    granted_at: String(r.granted_at),
+    expires_at: (r.expires_at as string) ?? null,
+  };
+}
+
+function mapMemory(r: Record<string, unknown>): CspMemoryLesson {
+  return {
+    id: String(r.id),
+    tenant_id: (r.tenant_id as string) ?? null,
+    scope: r.scope as CspMemoryLesson["scope"],
+    record_type: (r.record_type as CspRecordType) ?? null,
+    finding_category: (r.finding_category as string) ?? null,
+    directive: r.directive as CspMemoryDirective,
+    lesson: String(r.lesson),
+    weight: Number(r.weight) || 0,
+    source: r.source as CspMemoryLesson["source"],
+    times_applied: Number(r.times_applied) || 0,
+    active: !!r.active,
+    created_at: String(r.created_at),
+  };
+}
+
+/** Load everything the validator needs to apply governance. Empty = no DB / pre-migration. */
+export async function loadAgentContext(client: DB | null): Promise<CspAgentContext> {
+  const empty: CspAgentContext = { guardrails: {}, qualifications: [], memory: [] };
+  if (!client) return empty;
+  try {
+    const [g, q, m] = await Promise.all([
+      client.from("csp_guardrails").select("*"),
+      client.from("csp_agent_qualifications").select("*").eq("status", "active"),
+      client.from("csp_agent_memory").select("*").eq("active", true),
+    ]);
+    const guardrails: Record<string, CspGuardrail> = {};
+    for (const r of g.data ?? []) {
+      guardrails[r.key] = {
+        id: r.id, key: r.key, label: r.label, description: r.description ?? null,
+        enabled: !!r.enabled, threshold: r.threshold != null ? Number(r.threshold) : null, locked: !!r.locked,
+      };
+    }
+    return { guardrails, qualifications: (q.data ?? []).map(mapQual), memory: (m.data ?? []).map(mapMemory) };
+  } catch {
+    return empty;
+  }
 }
 
 // ── Module → validator input mappers ──────────────────────────────────────────
@@ -233,8 +293,10 @@ export async function validateRecordInBackground(
     if (MOCK_MODE) return null; // no DB to persist to in mock mode
     const input = recordType === "incident" ? incidentToInput(row) : auditFindingToInput(row, siteId);
     if (!input.tenant_id || !input.source_id) return null;
-    const [requirement, rules] = await Promise.all([loadRequirement(client, recordType), loadRules(client)]);
-    const result = await validateEhsRecord(input, requirement, rules, { enrich: opts.enrich });
+    const [requirement, rules, ctx] = await Promise.all([
+      loadRequirement(client, recordType), loadRules(client), loadAgentContext(client),
+    ]);
+    const result = await validateEhsRecord(input, requirement, rules, { enrich: opts.enrich, ctx });
     return await persistRun(client, input, result);
   } catch (err) {
     if (process.env.NODE_ENV !== "production") console.error("[csp] background validation failed", err);
@@ -258,14 +320,16 @@ export async function backfillValidations(opts: { enrich?: boolean; limit?: numb
   const { data: incidents } = await client.from("incidents").select("*").limit(opts.limit ?? 200);
   if (!incidents || incidents.length === 0) return { created: 0, skipped: 0 };
 
-  const [requirement, rules] = await Promise.all([loadRequirement(client, "incident"), loadRules(client)]);
+  const [requirement, rules, ctx] = await Promise.all([
+    loadRequirement(client, "incident"), loadRules(client), loadAgentContext(client),
+  ]);
   let created = 0, skipped = 0;
   for (const row of incidents) {
     if (done.has(row.id)) { skipped++; continue; }
     const input = incidentToInput(row as Record<string, unknown>);
     if (!input.tenant_id || !input.source_id) { skipped++; continue; }
     try {
-      const result = await validateEhsRecord(input, requirement, rules, { enrich: opts.enrich });
+      const result = await validateEhsRecord(input, requirement, rules, { enrich: opts.enrich, ctx });
       const id = await persistRun(client, input, result);
       if (id) created++; else skipped++;
     } catch { skipped++; }
@@ -422,7 +486,7 @@ export async function recordReviewDecision(input: ReviewDecisionInput): Promise<
   if (!client) return { ok: false, error: "Session expired — please reload." };
   const now = new Date().toISOString();
 
-  const { error: decErr } = await client.from("csp_review_decisions").insert({
+  const { data: decision, error: decErr } = await client.from("csp_review_decisions").insert({
     review_queue_id: input.queueId,
     validation_run_id: input.runId,
     tenant_id: input.tenantId,
@@ -434,7 +498,7 @@ export async function recordReviewDecision(input: ReviewDecisionInput): Promise<
     reviewer_notes: input.reviewerNotes || null,
     reviewer_signature_text: input.signatureText,
     signed_at: now,
-  });
+  }).select("id").single();
   if (decErr) return { ok: false, error: decErr.message };
 
   const reviewStatus: CspReviewStatus = input.decision === "escalated" ? "escalated" : "closed";
@@ -444,5 +508,134 @@ export async function recordReviewDecision(input: ReviewDecisionInput): Promise<
       .update({ status: reviewStatus, closed_at: input.decision === "escalated" ? null : now })
       .eq("id", input.queueId);
   }
+
+  // Learn from the decision — gated by the learn_from_* guardrails. Best-effort;
+  // a learning failure must never fail the sign-off.
+  if (decision?.id) await learnFromDecision(client, input, decision.id).catch(() => {});
   return { ok: true };
+}
+
+/**
+ * Turn a human decision into a memory lesson, if the matching guardrail is on.
+ * Approvals teach the agent to trust similar records more; rejections/escalations
+ * teach it to be more cautious. Lessons are scoped to (record_type, finding
+ * category) so they don't broadly erode scrutiny.
+ */
+async function learnFromDecision(client: DB, input: ReviewDecisionInput, decisionId: string): Promise<void> {
+  const isApproval = input.decision === "approved" || input.decision === "approved_with_changes";
+  const isRejection = input.decision === "rejected" || input.decision === "escalated";
+  if (!isApproval && !isRejection) return;
+
+  const { data: guards } = await client.from("csp_guardrails").select("key, enabled")
+    .in("key", ["learn_from_approvals", "learn_from_rejections"]);
+  const enabled = new Map((guards ?? []).map((g) => [g.key, g.enabled]));
+  if (isApproval && !enabled.get("learn_from_approvals")) return;
+  if (isRejection && !enabled.get("learn_from_rejections")) return;
+
+  const { data: run } = await client.from("csp_validation_runs").select("record_type").eq("id", input.runId).maybeSingle();
+  if (!run) return;
+  const { data: finds } = await client.from("csp_validation_findings").select("finding_category").eq("validation_run_id", input.runId).limit(1);
+  const category = (finds?.[0]?.finding_category as string) ?? null;
+
+  const directive: CspMemoryDirective = isApproval
+    ? (category ? "raise_confidence" : "note")
+    : (category ? "lower_confidence" : "escalate");
+  const verb = isApproval ? "approved" : input.decision === "escalated" ? "escalated" : "rejected";
+  const who = `${input.reviewerCredentials ? input.reviewerCredentials + " " : ""}${input.reviewerName}`.trim();
+  const lesson = `Reviewer ${who} ${verb} a ${String(run.record_type).replace(/_/g, " ")}${category ? ` flagged for ${category.replace(/_/g, " ")}` : ""}.`;
+
+  await client.from("csp_agent_memory").insert({
+    tenant_id: null, scope: "global", record_type: run.record_type, finding_category: category,
+    directive, lesson, weight: 3, source: "human_decision",
+    source_run_id: input.runId, source_decision_id: decisionId, created_by: input.reviewerName,
+  });
+}
+
+// ── Agent Profile panel: guardrails / qualifications / memory reads + writes ───
+
+export async function getGuardrails(): Promise<CspGuardrail[]> {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data } = await client.from("csp_guardrails").select("*").order("locked", { ascending: false }).order("label");
+  return (data ?? []).map((r) => ({
+    id: r.id, key: r.key, label: r.label, description: r.description ?? null,
+    enabled: !!r.enabled, threshold: r.threshold != null ? Number(r.threshold) : null, locked: !!r.locked,
+  }));
+}
+
+export async function getQualifications(): Promise<CspQualification[]> {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data } = await client.from("csp_agent_qualifications").select("*").order("kind").order("title");
+  return (data ?? []).map(mapQual);
+}
+
+export async function getMemory(limit = 100): Promise<CspMemoryLesson[]> {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data } = await client.from("csp_agent_memory").select("*").order("created_at", { ascending: false }).limit(limit);
+  return (data ?? []).map(mapMemory);
+}
+
+export async function setGuardrail(key: string, patch: { enabled?: boolean; threshold?: number | null }): Promise<{ ok: boolean; error?: string }> {
+  if (MOCK_MODE) return { ok: false, error: "Unavailable in mock mode." };
+  const client = await sb();
+  if (!client) return { ok: false, error: "Session expired — please reload." };
+  // Locked guardrails are platform-enforced and cannot be toggled off.
+  const { data: g } = await client.from("csp_guardrails").select("locked").eq("key", key).maybeSingle();
+  if (g?.locked) return { ok: false, error: "This guardrail is platform-enforced and cannot be changed." };
+  const update: Record<string, unknown> = {};
+  if (patch.enabled !== undefined) update.enabled = patch.enabled;
+  if (patch.threshold !== undefined) update.threshold = patch.threshold;
+  const { error } = await client.from("csp_guardrails").update(update).eq("key", key);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export interface NewQualificationInput {
+  kind: CspQualKind;
+  title: string;
+  description?: string;
+  scopeRecordTypes: CspRecordType[];
+  grantsAutonomy: boolean;
+  grantedBy: string;
+}
+
+export async function addQualification(input: NewQualificationInput): Promise<{ ok: boolean; error?: string }> {
+  if (MOCK_MODE) return { ok: false, error: "Unavailable in mock mode." };
+  const client = await sb();
+  if (!client) return { ok: false, error: "Session expired — please reload." };
+  const code = `${input.kind.toUpperCase()}-${input.title.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "")}`.slice(0, 60);
+  const { error } = await client.from("csp_agent_qualifications").insert({
+    kind: input.kind, code, title: input.title, description: input.description || null,
+    scope_record_types: input.scopeRecordTypes, grants_autonomy: input.grantsAutonomy,
+    status: "active", granted_by: input.grantedBy,
+  });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function setQualificationStatus(id: string, status: "active" | "revoked"): Promise<{ ok: boolean; error?: string }> {
+  if (MOCK_MODE) return { ok: false, error: "Unavailable in mock mode." };
+  const client = await sb();
+  if (!client) return { ok: false, error: "Session expired — please reload." };
+  const { error } = await client.from("csp_agent_qualifications").update({ status }).eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function setMemoryActive(id: string, active: boolean): Promise<{ ok: boolean; error?: string }> {
+  if (MOCK_MODE) return { ok: false, error: "Unavailable in mock mode." };
+  const client = await sb();
+  if (!client) return { ok: false, error: "Session expired — please reload." };
+  const { error } = await client.from("csp_agent_memory").update({ active }).eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function deleteMemory(id: string): Promise<{ ok: boolean; error?: string }> {
+  if (MOCK_MODE) return { ok: false, error: "Unavailable in mock mode." };
+  const client = await sb();
+  if (!client) return { ok: false, error: "Session expired — please reload." };
+  const { error } = await client.from("csp_agent_memory").delete().eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
 }
