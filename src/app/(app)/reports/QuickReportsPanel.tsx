@@ -1,11 +1,12 @@
 "use client";
 
-import { BarChart3, PieChart, FileText, Presentation, Table } from "lucide-react";
+import { BarChart3, PieChart, FileText, Presentation, Sheet } from "lucide-react";
 import { useTransition } from "react";
 import { useDemoUser } from "@/lib/context/demo-user";
 import { oshaRate } from "@/lib/osha";
 import { saveReport } from "@/lib/actions/ehs";
 import { downloadReportPptx } from "@/lib/reports/pptx";
+import { downloadReportXlsx } from "@/lib/reports/xlsx";
 import type { CapaAction, Incident, OshaCase, TrainingRecord, LegalRequirement, Chemical } from "@/lib/types";
 
 interface ModuleScore {
@@ -43,62 +44,7 @@ function humanize(s: string | null | undefined): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function esc(v: string | number | boolean | null | undefined): string {
-  const s = v == null ? "" : String(v);
-  return `"${s.replace(/"/g, '""')}"`;
-}
-
-// Builds a polished CSV with a document header block, data table, and optional summary section.
-function buildReport(opts: {
-  title: string;
-  description: string;
-  headers: string[];
-  rows: (string | number | boolean | null | undefined)[][];
-  summary?: [string, string | number][];
-  companyName: string;
-}): string {
-  const now = new Date();
-  const generated = now.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-  const year = now.getFullYear();
-
-  const headerBlock = [
-    [esc(opts.companyName), esc("EHS Compliance Documentation")],
-    [esc(opts.title), esc(opts.description)],
-    [esc("SafetyIQ · Reliance Predictive Safety Technologies"), ""],
-    [esc("Generated:"), esc(generated)],
-    [esc("Reporting Period:"), esc(`Calendar Year ${year}`)],
-    [esc("Total Records:"), esc(String(opts.rows.length))],
-    ["", ""],
-  ].map((r) => r.join(","));
-
-  const dataRows = [
-    opts.headers.map(esc).join(","),
-    ...opts.rows.map((r) => r.map(esc).join(",")),
-  ];
-
-  const summaryRows: string[] = [];
-  if (opts.summary?.length) {
-    summaryRows.push("", [esc("── SUMMARY ──"), ""].join(","));
-    for (const [label, val] of opts.summary) {
-      summaryRows.push([esc(label), esc(String(val))].join(","));
-    }
-  }
-
-  // ﻿ BOM ensures Excel opens UTF-8 CSV correctly
-  return "﻿" + [...headerBlock, ...dataRows, ...summaryRows].join("\n");
-}
-
-function downloadCSV(filename: string, csv: string) {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// ── Report data specs (one per report; rendered to PowerPoint or CSV) ─────────
+// ── Report data specs (one per report; rendered to PowerPoint or Excel) ───────
 
 interface ReportData {
   title: string;
@@ -293,9 +239,11 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
     persist(type, label, d.rows.length);
   }
 
-  function exportCsv(d: ReportData, type: string, label: string) {
-    const csv = buildReport({ title: d.title, description: d.description, headers: d.headers, rows: d.rows, summary: d.summary, companyName: co });
-    downloadCSV(`${firstWord}-${d.fileBase}.csv`, csv);
+  function exportExcel(d: ReportData, type: string, label: string) {
+    downloadReportXlsx({
+      title: d.title, description: d.description, headers: d.headers, rows: d.rows,
+      summary: d.summary, companyName: co, fileName: `${firstWord}-${d.fileBase}.xlsx`,
+    });
     persist(type, label, d.rows.length);
   }
 
@@ -310,7 +258,7 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
   return (
     <div className="p-3 space-y-1.5">
       <div className="mb-1 px-1 text-[10.5px] text-slate-400">
-        Download a branded <span className="font-semibold text-slate-500">PowerPoint</span> deck, or the raw data as CSV.
+        Download a branded <span className="font-semibold text-slate-500">PowerPoint</span> deck for presenting, or a formatted <span className="font-semibold text-slate-500">Excel</span> workbook for sortable list/register data.
       </div>
       {REPORTS.map((r) => {
         const Icon = r.icon;
@@ -330,11 +278,11 @@ export function QuickReportsPanel({ capas, incidents, oshaCases, trainingRecs, c
             </button>
             <button
               type="button"
-              onClick={() => exportCsv(r.data(), r.type, r.label)}
-              title="Download the raw data as CSV"
-              className="flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-500 transition hover:bg-slate-50"
+              onClick={() => exportExcel(r.data(), r.type, r.label)}
+              title="Download a formatted Excel workbook (sortable list data)"
+              className="flex shrink-0 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700 transition hover:bg-emerald-100"
             >
-              <Table className="h-3 w-3" /> CSV
+              <Sheet className="h-3 w-3" /> Excel
             </button>
           </div>
         );

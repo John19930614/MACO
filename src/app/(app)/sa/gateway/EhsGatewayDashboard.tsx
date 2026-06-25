@@ -13,6 +13,7 @@ import type {
   Incident, CapaAction, Chemical, Audit, AuditFinding,
   WasteStream, Equipment, RiskAssessment,
 } from "@/lib/types";
+import { riskLevelFromScore } from "@/lib/constants";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -69,13 +70,6 @@ function check(
   const passed = total - failed;
   const status: GatewayStatus = failed === 0 ? "pass" : severity;
   return { id, label, status, passed, total, detail, items };
-}
-
-function riskLevelForScore(score: number): string {
-  if (score >= 20) return "critical";
-  if (score >= 15) return "high";
-  if (score >= 8)  return "medium";
-  return "low";
 }
 
 // ── Validation engine ─────────────────────────────────────────────────────────
@@ -168,9 +162,9 @@ function runValidation(
     ),
     check(
       "g2-risk-level", "Risk Assessments — risk level inconsistent with score",
-      riskAssessments.filter(r => r.risk_level !== riskLevelForScore(r.risk_score)).map(r => `${r.title} (score ${r.risk_score} → should be ${riskLevelForScore(r.risk_score)}, stored as ${r.risk_level})`),
+      riskAssessments.filter(r => r.risk_level !== riskLevelFromScore(r.risk_score)).map(r => `${r.title} (score ${r.risk_score} → should be ${riskLevelFromScore(r.risk_score)}, stored as ${r.risk_level})`),
       riskAssessments.length,
-      "Risk level label must match the computed score bracket: low 1–7, medium 8–14, high 15–19, critical 20+.",
+      "Risk level label must match the computed score bracket: negligible 0–2, low 3–6, medium 7–12, high 13–20, extreme 21+.",
       "warn",
     ),
     check(

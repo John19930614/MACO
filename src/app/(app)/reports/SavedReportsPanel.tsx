@@ -1,12 +1,13 @@
 "use client";
 
-import { FileText, Presentation, Trash2 } from "lucide-react";
+import { FileText, Presentation, Sheet, Trash2 } from "lucide-react";
 import { useTransition } from "react";
 import { useDemoUser } from "@/lib/context/demo-user";
 import { Pill } from "@/components/ui/primitives";
 import { oshaRate } from "@/lib/osha";
 import { deleteReport } from "@/lib/actions/ehs";
 import { downloadReportPptx } from "@/lib/reports/pptx";
+import { downloadReportXlsx } from "@/lib/reports/xlsx";
 import type { SavedReport, CapaAction, Incident, OshaCase, TrainingRecord, Chemical, LegalRequirement } from "@/lib/types";
 
 interface ModuleScore {
@@ -49,14 +50,24 @@ function firstWord(company: string): string {
   return company.split(" ")[0] || "SafetyIQ";
 }
 
-// ── Export functions (re-generate a saved report as a PowerPoint deck) ────────
+interface ReportSpec {
+  title: string;
+  description: string;
+  headers: string[];
+  rows: (string | number | null | undefined)[][];
+  summary: [string, string | number][];
+  accent: string;
+  fileBase: string;
+}
 
-async function exportComplianceSummary(moduleScores: ModuleScore[], companyName: string) {
+// ── Report spec builders (rendered to PowerPoint or Excel) ────────────────────
+
+function complianceSpec(moduleScores: ModuleScore[]): ReportSpec {
   const sorted  = [...moduleScores].sort((a, b) => b.score - a.score);
   const overall = sorted.length ? Math.round(sorted.reduce((s, m) => s + m.score, 0) / sorted.length) : 0;
   const atRisk  = sorted.filter((m) => m.score < 70).length;
   const passing = sorted.filter((m) => m.score >= 85).length;
-  await downloadReportPptx({
+  return {
     title: "EHS Compliance Scorecard",
     description: "Module-by-module compliance assessment with open issue counts",
     headers: ["EHS Module", "Compliance Score", "Trend", "Change (MoM)", "Open Issues", "Issue Category", "Priority"],
@@ -70,17 +81,16 @@ async function exportComplianceSummary(moduleScores: ModuleScore[], companyName:
       ["Modules At Risk (<70%)", atRisk],
       ["Total Open Issues", moduleScores.reduce((s, m) => s + m.openIssues, 0)],
     ],
-    companyName,
     accent: "2563EB",
-    fileName: `${firstWord(companyName)}-Compliance-Scorecard.pptx`,
-  });
+    fileBase: "Compliance-Scorecard",
+  };
 }
 
-async function exportChemicalInventory(chemicals: Chemical[], companyName: string) {
+function chemicalSpec(chemicals: Chemical[]): ReportSpec {
   const active     = chemicals.filter((c) => c.status === "active").length;
   const scheduled  = chemicals.filter((c) => c.is_scheduled).length;
   const missingSds = chemicals.filter((c) => c.status === "active" && !c.sds_url).length;
-  await downloadReportPptx({
+  return {
     title: "Chemical Inventory Audit Report",
     description: "Full chemical inventory with GHS classifications and SDS compliance status",
     headers: [
@@ -101,18 +111,17 @@ async function exportChemicalInventory(chemicals: Chemical[], companyName: strin
       ["OSHA Scheduled", scheduled],
       ["Missing SDS", missingSds],
     ],
-    companyName,
     accent: "D97706",
-    fileName: `${firstWord(companyName)}-Chemical-Inventory.pptx`,
-  });
+    fileBase: "Chemical-Inventory",
+  };
 }
 
-async function exportCapaStatus(capas: CapaAction[], companyName: string) {
+function capaSpec(capas: CapaAction[]): ReportSpec {
   const now     = new Date();
   const open    = capas.filter((c) => !["closed", "pending_verification"].includes(c.status));
   const overdue = capas.filter((c) => c.due_date && new Date(c.due_date) < now && !["closed", "pending_verification"].includes(c.status));
   const closed  = capas.filter((c) => c.status === "closed" || c.status === "pending_verification");
-  await downloadReportPptx({
+  return {
     title: "CAPA Status Report",
     description: "Corrective and Preventive Actions — current status and aging",
     headers: ["Title", "Status", "Type", "Severity", "Source Module", "Assigned To", "Due Date", "Days Open", "Created Date"],
@@ -134,18 +143,16 @@ async function exportCapaStatus(capas: CapaAction[], companyName: string) {
       ["Corrective", capas.filter((c) => c.kind === "corrective").length],
       ["Critical / High", capas.filter((c) => c.severity === "critical" || c.severity === "high").length],
     ],
-    companyName,
     accent: "EA580C",
-    fileName: `${firstWord(companyName)}-CAPA-Status-Report.pptx`,
-  });
+    fileBase: "CAPA-Status-Report",
+  };
 }
 
-async function exportTrainingReport(
+function trainingSpec(
   trainingRecs: TrainingRecord[],
   courseMap: Record<string, string>,
   profileMap: Record<string, string>,
-  companyName: string,
-) {
+): ReportSpec {
   const now     = new Date();
   const passed  = trainingRecs.filter((r) => r.passed).length;
   const failed  = trainingRecs.filter((r) => !r.passed).length;
@@ -155,7 +162,7 @@ async function exportTrainingReport(
     return days >= 0 && days <= 30;
   });
   const expired = trainingRecs.filter((r) => r.expiry_date && new Date(r.expiry_date) < now);
-  await downloadReportPptx({
+  return {
     title: "Training Completion & Competency Report",
     description: "Employee training records, certifications, and expiry status",
     headers: ["Employee Name", "Training Course", "Completed Date", "Expiry Date", "Certification Status", "Score (%)", "Delivery Method", "Result"],
@@ -183,19 +190,18 @@ async function exportTrainingReport(
       ["Expiring ≤ 30 Days", expiringSoon.length],
       ["Expired — Action Req.", expired.length],
     ],
-    companyName,
     accent: "10B981",
-    fileName: `${firstWord(companyName)}-Training-Report.pptx`,
-  });
+    fileBase: "Training-Report",
+  };
 }
 
-async function exportIncidentAnalysis(incidents: Incident[], oshaCases: OshaCase[], companyName: string) {
+function incidentSpec(incidents: Incident[], oshaCases: OshaCase[]): ReportSpec {
   const now     = new Date();
   const ytd         = incidents.filter((i) => new Date(i.occurred_at).getFullYear() === now.getFullYear());
   const regulatory  = incidents.filter((i) => i.regulatory_reportable);
   const lostTime    = incidents.filter((i) => (i.lost_time_days ?? 0) > 0);
   const totalLostDays = incidents.reduce((s, i) => s + (i.lost_time_days ?? 0), 0);
-  await downloadReportPptx({
+  return {
     title: "Incident Analysis Report",
     description: "Work-related incidents, near-misses, and regulatory events",
     headers: [
@@ -217,20 +223,19 @@ async function exportIncidentAnalysis(incidents: Incident[], oshaCases: OshaCase
       ["Total Lost Days", totalLostDays],
       ["TRIR (per 100 FTE)", oshaRate(oshaCases.length)],
     ],
-    companyName,
     accent: "DC2626",
-    fileName: `${firstWord(companyName)}-Incident-Analysis.pptx`,
-  });
+    fileBase: "Incident-Analysis",
+  };
 }
 
-async function exportRegulatoryGap(legal: LegalRequirement[], companyName: string) {
+function regulatorySpec(legal: LegalRequirement[]): ReportSpec {
   const gaps = legal.filter((l) => l.status !== "compliant" && l.status !== "not_applicable");
   const majorGaps = gaps.filter((l) => l.status === "major_gap" || l.status === "non_compliant");
   const upcoming = legal.filter((l) => {
     const days = (new Date(l.next_review_date).getTime() - new Date().getTime()) / 86400000;
     return days >= 0 && days <= 90;
   });
-  await downloadReportPptx({
+  return {
     title: "Regulatory Gap Analysis",
     description: "Legal and regulatory compliance obligations — gap status and review schedule",
     headers: ["Regulation Reference", "Title", "Category", "Jurisdiction", "Compliance Status", "Owner", "Next Review Date", "Gap Severity"],
@@ -247,10 +252,9 @@ async function exportRegulatoryGap(legal: LegalRequirement[], companyName: strin
       ["Major / Non-Compliant", majorGaps.length],
       ["Reviews Due ≤ 90 Days", upcoming.length],
     ],
-    companyName,
     accent: "7C3AED",
-    fileName: `${firstWord(companyName)}-Regulatory-Gap.pptx`,
-  });
+    fileBase: "Regulatory-Gap",
+  };
 }
 
 // ── Badge colors ──────────────────────────────────────────────────────────────
@@ -264,7 +268,7 @@ const TYPE_COLOR: Record<string, string> = {
   Regulatory: "bg-purple-100 text-purple-700",
 };
 
-// ── Single row with delete ────────────────────────────────────────────────────
+// ── Single row: re-download (PowerPoint / Excel) + delete ─────────────────────
 
 function ReportRow({
   report, capas, incidents, oshaCases, trainingRecs, chemicals, legal, moduleScores, courseMap, profileMap, companyName,
@@ -277,14 +281,32 @@ function ReportRow({
 }) {
   const [isPending, startTransition] = useTransition();
 
-  function handleDownload() {
+  function specFor(): ReportSpec | null {
     switch (report.report_type) {
-      case "Compliance":  void exportComplianceSummary(moduleScores, companyName); break;
-      case "Chemical":    void exportChemicalInventory(chemicals, companyName); break;
-      case "CAPA":        void exportCapaStatus(capas, companyName); break;
-      case "Training":    void exportTrainingReport(trainingRecs, courseMap, profileMap, companyName); break;
-      case "Incidents":   void exportIncidentAnalysis(incidents, oshaCases, companyName); break;
-      case "Regulatory":  void exportRegulatoryGap(legal, companyName); break;
+      case "Compliance": return complianceSpec(moduleScores);
+      case "Chemical":   return chemicalSpec(chemicals);
+      case "CAPA":       return capaSpec(capas);
+      case "Training":   return trainingSpec(trainingRecs, courseMap, profileMap);
+      case "Incidents":  return incidentSpec(incidents, oshaCases);
+      case "Regulatory": return regulatorySpec(legal);
+      default:           return null;
+    }
+  }
+
+  function download(fmt: "pptx" | "xlsx") {
+    const s = specFor();
+    if (!s) return;
+    const fileName = `${firstWord(companyName)}-${s.fileBase}.${fmt}`;
+    if (fmt === "pptx") {
+      void downloadReportPptx({
+        title: s.title, description: s.description, headers: s.headers, rows: s.rows,
+        summary: s.summary, companyName, accent: s.accent, fileName,
+      });
+    } else {
+      downloadReportXlsx({
+        title: s.title, description: s.description, headers: s.headers, rows: s.rows,
+        summary: s.summary, companyName, fileName,
+      });
     }
   }
 
@@ -312,11 +334,18 @@ function ReportRow({
       </div>
       <div className="flex items-center gap-1">
         <button
-          onClick={handleDownload}
+          onClick={() => download("pptx")}
           title="Re-download as PowerPoint"
           className="shrink-0 text-slate-300 transition-colors hover:text-blue-500"
         >
           <Presentation className="h-3.5 w-3.5" />
+        </button>
+        <button
+          onClick={() => download("xlsx")}
+          title="Re-download as Excel"
+          className="shrink-0 text-slate-300 transition-colors hover:text-emerald-500"
+        >
+          <Sheet className="h-3.5 w-3.5" />
         </button>
         <button
           onClick={handleDelete}
