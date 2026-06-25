@@ -28,6 +28,55 @@ function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// Returns header color, text color, and label text based on hazard classification + waste code.
+function getHazardTheme(stream: WasteStream) {
+  const cls  = stream.classification;
+  const code = (stream.waste_code ?? "").toUpperCase().trim();
+
+  if (cls === "non_hazardous") {
+    return { bg: "#16a34a", text: "#fff", headerText: "NON-HAZARDOUS WASTE",
+             twBorder: "border-green-500", twHdr: "bg-green-600 text-white" };
+  }
+  if (cls === "universal_waste") {
+    return { bg: "#2563eb", text: "#fff", headerText: "UNIVERSAL WASTE",
+             twBorder: "border-blue-500", twHdr: "bg-blue-600 text-white" };
+  }
+  if (cls === "scheduled") {
+    return { bg: "#7f1d1d", text: "#fff", headerText: "SCHEDULED / ACUTELY HAZARDOUS WASTE",
+             twBorder: "border-red-900", twHdr: "bg-red-900 text-white" };
+  }
+  // Hazardous — differentiate by EPA waste code
+  if (code.startsWith("D003")) {
+    return { bg: "#dc2626", text: "#fff", headerText: "HAZARDOUS WASTE — REACTIVE",
+             twBorder: "border-red-600", twHdr: "bg-red-600 text-white" };
+  }
+  if (code.startsWith("D002")) {
+    return { bg: "#ea580c", text: "#fff", headerText: "HAZARDOUS WASTE — CORROSIVE",
+             twBorder: "border-orange-600", twHdr: "bg-orange-600 text-white" };
+  }
+  if (code.startsWith("D001")) {
+    return { bg: "#f59e0b", text: "#000", headerText: "HAZARDOUS WASTE — IGNITABLE",
+             twBorder: "border-amber-400", twHdr: "bg-amber-400 text-black" };
+  }
+  if (code.startsWith("P") || code.startsWith("U")) {
+    return { bg: "#dc2626", text: "#fff", headerText: "HAZARDOUS WASTE — ACUTELY LISTED",
+             twBorder: "border-red-600", twHdr: "bg-red-600 text-white" };
+  }
+  if (code.startsWith("F") || code.startsWith("K")) {
+    return { bg: "#b91c1c", text: "#fff", headerText: "HAZARDOUS WASTE — LISTED",
+             twBorder: "border-red-700", twHdr: "bg-red-700 text-white" };
+  }
+  // D004–D043 characteristic toxic
+  const dNum = code.startsWith("D") ? parseInt(code.slice(1), 10) : 0;
+  if (dNum >= 4 && dNum <= 43) {
+    return { bg: "#c2410c", text: "#fff", headerText: "HAZARDOUS WASTE — TOXIC CHARACTERISTIC",
+             twBorder: "border-orange-700", twHdr: "bg-orange-700 text-white" };
+  }
+  // Generic hazardous fallback
+  return { bg: "#f59e0b", text: "#000", headerText: "HAZARDOUS WASTE",
+           twBorder: "border-amber-400", twHdr: "bg-amber-400 text-black" };
+}
+
 export function WasteLabelButton({ stream, className, label = "Label / QR" }: Props) {
   const [open, setOpen] = useState(false);
   const [qrSvg, setQrSvg] = useState<string>("");
@@ -36,6 +85,7 @@ export function WasteLabelButton({ stream, className, label = "Label / QR" }: Pr
   const generator = user.company || "Generator";
   const accumulationStart = fmtDate(stream.created_at);
   const isHazardous = stream.classification === "hazardous" || stream.classification === "scheduled";
+  const theme = getHazardTheme(stream);
 
   const qrPayload =
     `SafetyIQ Waste\n` +
@@ -56,9 +106,9 @@ export function WasteLabelButton({ stream, className, label = "Label / QR" }: Pr
   }, [open, qrPayload]);
 
   function buildLabelHtml(): string {
-    const accentBg = isHazardous ? "#facc15" : "#e2e8f0";
-    const accentText = isHazardous ? "#000" : "#334155";
-    const headerText = isHazardous ? "HAZARDOUS WASTE" : "WASTE — NON-HAZARDOUS";
+    const accentBg   = theme.bg;
+    const accentText = theme.text;
+    const headerText = theme.headerText;
     return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Waste Label — ${esc(stream.waste_name)}</title>
 <style>
@@ -129,9 +179,9 @@ export function WasteLabelButton({ stream, className, label = "Label / QR" }: Pr
           <div className="flex gap-5">
             <div className="flex-1 space-y-1.5 text-xs">
               <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Label Preview</div>
-              <div className={`rounded-lg border-2 ${isHazardous ? "border-yellow-400" : "border-slate-300"} overflow-hidden`}>
-                <div className={`px-3 py-1.5 text-center text-sm font-extrabold tracking-wide ${isHazardous ? "bg-yellow-400 text-black" : "bg-slate-200 text-slate-700"}`}>
-                  {isHazardous ? "HAZARDOUS WASTE" : "WASTE — NON-HAZARDOUS"}
+              <div className={`rounded-lg border-2 ${theme.twBorder} overflow-hidden`}>
+                <div className={`px-3 py-1.5 text-center text-sm font-extrabold tracking-wide ${theme.twHdr}`}>
+                  {theme.headerText}
                 </div>
                 <div className="space-y-1 px-3 py-2">
                   <Row k="Generator" v={generator} />
