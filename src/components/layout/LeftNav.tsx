@@ -115,6 +115,7 @@ const SA_NAV: NavSection[] = [
       { href: "/sa/templates",   label: "Template Library",        description: "Shared content templates",      icon: "📋" },
       { href: "/sa/ai",          label: "AI Model Configuration",  description: "Prompt & model tuning",         icon: "🧠" },
       { href: "/sa/gateway",     label: "AI Gateway — EHS Validation", description: "3-gate EHS data validation + Nothing Missed", icon: "🔎" },
+      { href: "/sa/validation",  label: "Records Validation Agent", description: "CSP-informed validation + human review", icon: "✅" },
       { href: "/sa/guardrails",  label: "Guardrails",              description: "AI autonomy & risk rules",      icon: "🛡" },
       { href: "/sa/predictive",  label: "Predictive Model",        description: "Predictive engine settings",    icon: "📈" },
       { href: "/sa/imports",     label: "Data Imports",            description: "Bulk data ingestion",           icon: "📥" },

@@ -14,6 +14,7 @@ import type { Severity, IncidentType, CapaStatus, AuditStatus, DocumentStatus } 
 import { COMPLIANCE_STATUS_META, type ComplianceStatus, WASTE_CLASSIFICATIONS } from "@/lib/constants";
 import type { CapaSourceType, AuditType, Incident, RiskAssessment, WasteStream, Equipment, LegalRequirement, TrainingRecord, OshaCase, AiFinding, Chemical, AiAnalysisOutput, BiosafetyLab, BiohazardAgent, ErgonomicsWorkstation, ErgonomicsJobTask } from "@/lib/types";
 import { analyzeChemical, analyzeComplianceGap, analyzeTraining, buildPredictabilityForecast } from "@/lib/ai/engine";
+import { validateRecordInBackground } from "@/lib/csp/repo";
 import {
   getChemicals, getLegalRequirements, getTrainingRecords, getTrainingCourses, getCapaActions,
   getIncidents, getAudits, getRiskAssessments, getEquipment, getWasteStreams,
@@ -156,7 +157,7 @@ export async function addIncident(_prev: unknown, formData: FormData) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      const { error } = await ctx.client.from("incidents").insert({
+      const { data: created, error } = await ctx.client.from("incidents").insert({
         tenant_id: ctx.tenantId,
         site_id: ctx.siteId,
         title: (formData.get("title") as string) || "Untitled Incident",
@@ -167,8 +168,10 @@ export async function addIncident(_prev: unknown, formData: FormData) {
         occurred_at: new Date(occurredAt).toISOString(),
         location: (formData.get("location") as string) || "Main Site",
         reported_by: ctx.profileId,
-      });
+      }).select("*").single();
       if (error) return { ok: false, error: error.message };
+      // CSP validation agent — validate & log in the background; never blocks the save.
+      if (created) await validateRecordInBackground(ctx.client, "incident", created, ctx.siteId);
     }
   } else {
     const store = getStore();
@@ -208,7 +211,7 @@ export async function updateIncident(id: string, formData: FormData) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
-      const { error } = await ctx.client.from("incidents").update({
+      const { data: updated, error } = await ctx.client.from("incidents").update({
         title:       (formData.get("title") as string) || "Untitled Incident",
         description: (formData.get("description") as string) || "",
         incident_type: (formData.get("incident_type") as string) || "near_miss",
@@ -218,8 +221,10 @@ export async function updateIncident(id: string, formData: FormData) {
         immediate_actions: (formData.get("immediate_actions") as string) || null,
         root_cause:  (formData.get("root_cause") as string) || null,
         updated_at:  now,
-      }).eq("id", id).eq("tenant_id", ctx.tenantId);
+      }).eq("id", id).eq("tenant_id", ctx.tenantId).select("*").single();
       if (error) return { ok: false, error: error.message };
+      // Re-validate on edit so the audit log reflects the corrected record.
+      if (updated) await validateRecordInBackground(ctx.client, "incident", updated, ctx.siteId);
     }
   } else {
     const store = getStore();
