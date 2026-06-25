@@ -1,7 +1,7 @@
 import { Users } from "lucide-react";
 import { DarkPageHeader } from "@/components/ui/primitives";
 import { getMeetings } from "@/lib/csp/standup";
-import StandupClient from "./StandupClient";
+import CouncilRoom from "./CouncilRoom";
 
 // Superadmin panel: the daily meeting between GUS (platform intelligence) and
 // the EHS Records Validation Agent — convene on demand, review past standups,
@@ -24,7 +24,7 @@ export default async function SAStandupPage() {
             actions. It runs automatically each morning, or convene it now.
           </p>
         </div>
-        <StandupClient meetings={meetings} />
+        <CouncilRoom meetings={meetings} />
       </div>
     </div>
   );
