@@ -786,6 +786,22 @@ export interface CausalityOutput {
 }
 
 /** Structured output contract for the SafetyIQ EHS AI Engine (chemical / compliance analyses). */
+/**
+ * Output of the AI-output grounding gateway — a server-side validation pass over
+ * what the model (or heuristic) produced, BEFORE it is trusted. Stored on the
+ * finding's `output` jsonb so reviewers see why something was flagged.
+ */
+export interface GroundingIssue {
+  check: string;                    // e.g. "cas_hallucination", "reg_ref_unrecognized"
+  status: "warn" | "fail";
+  message: string;
+}
+
+export interface AiGatewayReview {
+  status: "pass" | "warn" | "fail"; // worst of the issues; pass when none
+  issues: GroundingIssue[];
+}
+
 export interface AiAnalysisOutput {
   risk_level: RiskLevel;
   risk_score: number;               // 0-100 normalised
@@ -804,6 +820,7 @@ export interface AiAnalysisOutput {
   }[];
   plain_language_summary: string;
   human_review_required: boolean;
+  gateway?: AiGatewayReview;        // grounding-gateway review, attached server-side
 }
 
 // ── Predictability Engine (MACO P-Engine) ────────────────────────────────────

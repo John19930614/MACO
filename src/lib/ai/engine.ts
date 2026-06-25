@@ -20,6 +20,7 @@ import { generateStructuredJson } from "./provider";
 import { recordAiCall } from "./telemetry";
 import { SYSTEM_PROMPT, buildUserPrompt, ANALYSIS_JSON_SCHEMA as ARC_CAUSALITY_SCHEMA } from "./prompt";
 import { aiAnalysisOutputSchema, aiCellAnalysisOutputSchema } from "@/lib/schemas";
+import { reviewAnalysisOutput, type GroundingContext } from "./grounding";
 import { nextId } from "@/lib/data/store";
 import type { Chemical, LegalRequirement, AiFinding, AiAnalysisOutput, CausalityOutput, PredictabilityForecast, SafetyCell } from "@/lib/types";
 import { riskLevelFromScore100, COMPLIANCE_STATUS_META } from "@/lib/constants";
@@ -254,6 +255,7 @@ Supplier: ${chem.supplier ?? "not recorded"}`;
     userPrompt,
     heuristic: () => chemicalHeuristicAnalysis(chem),
     forceReview: chem.is_scheduled || chem.ghs_classes.some((c) => ["H340", "H350", "H360"].includes(c)),
+    groundingContext: { knownCas: chem.cas_number },
   });
 }
 
@@ -282,6 +284,7 @@ Evidence on file: ${req.evidence_url ? "Yes" : "No"}`;
     userPrompt,
     heuristic: () => complianceGapHeuristicAnalysis(req),
     forceReview: req.status === "non_compliant",
+    groundingContext: { knownRegRef: req.regulation_ref },
   });
 }
 
@@ -339,6 +342,7 @@ interface RunParams {
   userPrompt: string;
   heuristic: () => AiAnalysisOutput;
   forceReview: boolean;
+  groundingContext?: GroundingContext;
 }
 
 async function runAnalysis(p: RunParams): Promise<AiFinding> {
@@ -364,6 +368,13 @@ async function runAnalysis(p: RunParams): Promise<AiFinding> {
     model  = "safetyiq-heuristic-mock";
     confidence = Math.min(0.8, deriveConfidence(output));
   }
+
+  // AI-output grounding gateway — validate what the model/heuristic produced
+  // before it is trusted. A hard "fail" (e.g. a hallucinated CAS) forces human
+  // review; the full review is attached to the output for the reviewer.
+  const review = reviewAnalysisOutput(output, p.groundingContext ?? {});
+  output.gateway = review;
+  if (review.status === "fail") output.human_review_required = true;
 
   if (p.forceReview) output.human_review_required = true;
 

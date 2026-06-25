@@ -68,26 +68,26 @@ function getHazardTheme(stream: WasteStream) {
              twBorder: "border-orange-600", twHdr: "bg-orange-600 text-white" };
   }
   if (code.startsWith("D001")) {
-    return { bg: "#f59e0b", text: "#000", headerText: "HAZARDOUS WASTE — IGNITABLE",
-             twBorder: "border-amber-400", twHdr: "bg-amber-400 text-black" };
+    return { bg: "#eab308", text: "#000", headerText: "HAZARDOUS WASTE — IGNITABLE",
+             twBorder: "border-yellow-400", twHdr: "bg-yellow-400 text-black" };
   }
   if (code.startsWith("P") || code.startsWith("U")) {
     return { bg: "#dc2626", text: "#fff", headerText: "HAZARDOUS WASTE — ACUTELY LISTED",
              twBorder: "border-red-600", twHdr: "bg-red-600 text-white" };
   }
   if (code.startsWith("F") || code.startsWith("K")) {
-    return { bg: "#b91c1c", text: "#fff", headerText: "HAZARDOUS WASTE — LISTED",
-             twBorder: "border-red-700", twHdr: "bg-red-700 text-white" };
+    return { bg: "#dc2626", text: "#fff", headerText: "HAZARDOUS WASTE — LISTED",
+             twBorder: "border-red-600", twHdr: "bg-red-600 text-white" };
   }
   // D004–D043 characteristic toxic
   const dNum = code.startsWith("D") ? parseInt(code.slice(1), 10) : 0;
   if (dNum >= 4 && dNum <= 43) {
-    return { bg: "#c2410c", text: "#fff", headerText: "HAZARDOUS WASTE — TOXIC CHARACTERISTIC",
-             twBorder: "border-orange-700", twHdr: "bg-orange-700 text-white" };
+    return { bg: "#dc2626", text: "#fff", headerText: "HAZARDOUS WASTE — TOXIC CHARACTERISTIC",
+             twBorder: "border-red-600", twHdr: "bg-red-600 text-white" };
   }
-  // Generic hazardous fallback — amber/yellow
-  return { bg: "#f59e0b", text: "#000", headerText: "HAZARDOUS WASTE",
-           twBorder: "border-amber-400", twHdr: "bg-amber-400 text-black" };
+  // Generic hazardous fallback — red
+  return { bg: "#dc2626", text: "#fff", headerText: "HAZARDOUS WASTE",
+           twBorder: "border-red-600", twHdr: "bg-red-600 text-white" };
 }
 
 export function WasteLabelButton({ stream, className, label = "Label / QR" }: Props) {
