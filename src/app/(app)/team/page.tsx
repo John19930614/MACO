@@ -1,3 +1,5 @@
+export const maxDuration = 30;
+
 import { getProfiles } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
 import { MOCK_MODE } from "@/lib/env";
