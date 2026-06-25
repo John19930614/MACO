@@ -33,16 +33,29 @@ function getHazardTheme(stream: WasteStream) {
   const cls  = stream.classification;
   const code = (stream.waste_code ?? "").toUpperCase().trim();
 
-  if (cls === "non_hazardous") {
+  // Green — non-hazardous general waste
+  if (cls === "general") {
     return { bg: "#16a34a", text: "#fff", headerText: "NON-HAZARDOUS WASTE",
-             twBorder: "border-green-500", twHdr: "bg-green-600 text-white" };
+             twBorder: "border-green-600", twHdr: "bg-green-600 text-white" };
   }
-  if (cls === "universal_waste") {
-    return { bg: "#2563eb", text: "#fff", headerText: "UNIVERSAL WASTE",
-             twBorder: "border-blue-500", twHdr: "bg-blue-600 text-white" };
+  // Teal — recyclable
+  if (cls === "recyclable") {
+    return { bg: "#0d9488", text: "#fff", headerText: "RECYCLABLE WASTE",
+             twBorder: "border-teal-600", twHdr: "bg-teal-600 text-white" };
   }
+  // Purple — radioactive
+  if (cls === "radioactive") {
+    return { bg: "#7c3aed", text: "#fff", headerText: "RADIOACTIVE WASTE",
+             twBorder: "border-violet-700", twHdr: "bg-violet-700 text-white" };
+  }
+  // Biohazard orange — clinical/medical
+  if (cls === "clinical") {
+    return { bg: "#ea580c", text: "#fff", headerText: "CLINICAL / BIOHAZARDOUS WASTE",
+             twBorder: "border-orange-600", twHdr: "bg-orange-600 text-white" };
+  }
+  // Dark red — acutely / scheduled hazardous
   if (cls === "scheduled") {
-    return { bg: "#7f1d1d", text: "#fff", headerText: "SCHEDULED / ACUTELY HAZARDOUS WASTE",
+    return { bg: "#7f1d1d", text: "#fff", headerText: "ACUTELY HAZARDOUS WASTE — SCHEDULED",
              twBorder: "border-red-900", twHdr: "bg-red-900 text-white" };
   }
   // Hazardous — differentiate by EPA waste code
@@ -72,7 +85,7 @@ function getHazardTheme(stream: WasteStream) {
     return { bg: "#c2410c", text: "#fff", headerText: "HAZARDOUS WASTE — TOXIC CHARACTERISTIC",
              twBorder: "border-orange-700", twHdr: "bg-orange-700 text-white" };
   }
-  // Generic hazardous fallback
+  // Generic hazardous fallback — amber/yellow
   return { bg: "#f59e0b", text: "#000", headerText: "HAZARDOUS WASTE",
            twBorder: "border-amber-400", twHdr: "bg-amber-400 text-black" };
 }
