@@ -5,10 +5,10 @@ import { ClipboardList, BadgeCheck } from "lucide-react";
 import ValidationReviewClient from "./ValidationReviewClient";
 import AgentProfileClient from "./AgentProfileClient";
 import BackfillButton from "./BackfillButton";
-import type { CspValidationRunRow, CspGuardrail, CspQualification, CspMemoryLesson, CspAutonomyBlocker, CspEvidenceRule } from "@/lib/csp/types";
+import type { CspValidationRunRow, CspGuardrail, CspQualification, CspMemoryLesson, CspAutonomyBlocker, CspEvidenceRule, CspEscalationRule, CspModelVersion, CspOverrideLogRow } from "@/lib/csp/types";
 
 export default function ValidationWorkbench({
-  runs, guardrails, qualifications, memory, blockers, evidenceRules,
+  runs, guardrails, qualifications, memory, blockers, evidenceRules, escalation, versions, overrides,
 }: {
   runs: CspValidationRunRow[];
   guardrails: CspGuardrail[];
@@ -16,6 +16,9 @@ export default function ValidationWorkbench({
   memory: CspMemoryLesson[];
   blockers: CspAutonomyBlocker[];
   evidenceRules: CspEvidenceRule[];
+  escalation: CspEscalationRule[];
+  versions: CspModelVersion[];
+  overrides: CspOverrideLogRow[];
 }) {
   const [tab, setTab] = useState<"queue" | "profile">("queue");
   const pending = runs.filter((r) => r.human_review_required && !r.decision).length;
@@ -61,7 +64,7 @@ export default function ValidationWorkbench({
           </div>
         </div>
       ) : (
-        <AgentProfileClient guardrails={guardrails} qualifications={qualifications} memory={memory} blockers={blockers} evidenceRules={evidenceRules} />
+        <AgentProfileClient guardrails={guardrails} qualifications={qualifications} memory={memory} blockers={blockers} evidenceRules={evidenceRules} escalation={escalation} versions={versions} overrides={overrides} />
       )}
     </div>
   );

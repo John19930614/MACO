@@ -142,6 +142,7 @@ export interface CspValidationRunRow {
   human_review_required: boolean;
   human_review_status: CspReviewStatus;
   human_review_reason: string | null;
+  autonomy_blockers_triggered: CspTriggeredBlocker[];
   input_hash: string | null;
   final_output_hash: string | null;
   created_at: string;
@@ -243,6 +244,39 @@ export interface CspTriggeredBlocker {
   key: string;
   label: string;
   action: "human_review_required" | "immediate_escalation";
+}
+
+export interface CspEscalationRule {
+  id: string;
+  condition_key: string;
+  label: string;
+  escalate_to: string[];
+  urgency: "immediate" | "same_day" | "normal";
+  active: boolean;
+}
+
+export interface CspModelVersion {
+  id: string;
+  agent_name: string;
+  agent_version: string;
+  ai_model_name: string | null;
+  ai_model_version: string | null;
+  rule_version: string;
+  change_summary: string | null;
+  changed_by_name: string | null;
+  active: boolean;
+  created_at: string;
+}
+
+export interface CspOverrideLogRow {
+  id: string;
+  record_type: string;
+  ai_recommendation: string | null;
+  ai_status: string | null;
+  human_decision: string;
+  override_reason: string;
+  reviewer_name: string | null;
+  created_at: string;
 }
 
 /** Everything the validator needs to apply guardrails, qualifications, and memory. */

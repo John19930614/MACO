@@ -23,6 +23,7 @@ import type {
   CspValidationResult, CspValidationRunRow, CspReviewStatus, CspSignals,
   CspAgentContext, CspGuardrail, CspQualification, CspMemoryLesson,
   CspQualKind, CspMemoryDirective, CspAutonomyBlocker, CspEvidenceRule,
+  CspTriggeredBlocker, CspEscalationRule, CspModelVersion, CspOverrideLogRow,
 } from "./types";
 
 type DB = SupabaseClient;
@@ -178,6 +179,45 @@ export async function setBlockerActive(id: string, active: boolean): Promise<{ o
   if (!client) return { ok: false, error: "Session expired — please reload." };
   const { error } = await client.from("ehs_autonomy_blockers").update({ active }).eq("id", id);
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+export async function getEscalationMatrix(): Promise<CspEscalationRule[]> {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data } = await client.from("ehs_escalation_matrix").select("*").eq("active", true);
+  const order: Record<string, number> = { immediate: 0, same_day: 1, normal: 2 };
+  return (data ?? [])
+    .map((r) => ({
+      id: r.id, condition_key: r.condition_key, label: r.label,
+      escalate_to: (r.escalate_to as string[]) ?? [], urgency: r.urgency, active: !!r.active,
+    }))
+    .sort((a, b) => (order[a.urgency] ?? 9) - (order[b.urgency] ?? 9));
+}
+
+export async function getModelRuleVersions(): Promise<CspModelVersion[]> {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data } = await client.from("ehs_model_rule_versions").select("*").order("created_at", { ascending: false });
+  return (data ?? []).map((r) => ({
+    id: r.id, agent_name: r.agent_name, agent_version: r.agent_version,
+    ai_model_name: r.ai_model_name ?? null, ai_model_version: r.ai_model_version ?? null,
+    rule_version: r.rule_version, change_summary: r.change_summary ?? null,
+    changed_by_name: r.changed_by_name ?? null, active: !!r.active, created_at: r.created_at,
+  }));
+}
+
+export async function getReviewerOverrides(limit = 50): Promise<CspOverrideLogRow[]> {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data } = await client.from("ehs_reviewer_override_log").select("*").order("created_at", { ascending: false }).limit(limit);
+  return (data ?? []).map((r) => ({
+    id: r.id, record_type: r.record_type, ai_recommendation: r.ai_recommendation ?? null,
+    ai_status: r.ai_status ?? null, human_decision: r.human_decision, override_reason: r.override_reason,
+    reviewer_name: r.reviewer_name ?? null, created_at: r.created_at,
+  }));
 }
 
 // ── Module → validator input mappers ──────────────────────────────────────────
@@ -440,6 +480,7 @@ export async function getCspValidationRuns(limit = 100): Promise<CspValidationRu
       human_review_required: r.human_review_required,
       human_review_status: r.human_review_status,
       human_review_reason: r.human_review_reason,
+      autonomy_blockers_triggered: (r.autonomy_blockers_triggered as CspTriggeredBlocker[]) ?? [],
       input_hash: r.input_hash,
       final_output_hash: r.final_output_hash,
       created_at: r.created_at,
@@ -555,6 +596,26 @@ export async function recordReviewDecision(input: ReviewDecisionInput): Promise<
       .update({ status: reviewStatus, closed_at: input.decision === "escalated" ? null : now })
       .eq("id", input.queueId);
   }
+
+  // Reviewer override log — record when the human's decision diverges from the
+  // AI's stance (human cleared a flagged record, or rejected an accepted one).
+  try {
+    const { data: run } = await client.from("csp_validation_runs")
+      .select("validation_status, ai_recommendation, record_type, source_id").eq("id", input.runId).maybeSingle();
+    if (run) {
+      const aiFlagged = !["accepted", "accepted_with_minor_corrections"].includes(run.validation_status);
+      const humanCleared = input.decision === "approved" || input.decision === "approved_with_changes";
+      const isOverride = (aiFlagged && humanCleared) || (!aiFlagged && input.decision === "rejected");
+      if (isOverride) {
+        await client.from("ehs_reviewer_override_log").insert({
+          tenant_id: input.tenantId, record_id: run.source_id ?? null, record_type: run.record_type,
+          validation_run_id: input.runId, ai_recommendation: run.ai_recommendation,
+          ai_status: run.validation_status, human_decision: input.decision,
+          override_reason: input.decisionSummary, reviewer_name: input.reviewerName,
+        });
+      }
+    }
+  } catch { /* override logging is best-effort */ }
 
   // Learn from the decision — gated by the learn_from_* guardrails. Best-effort;
   // a learning failure must never fail the sign-off.

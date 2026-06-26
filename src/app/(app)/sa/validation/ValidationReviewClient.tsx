@@ -100,6 +100,20 @@ function RunDetail({ run }: { run: CspValidationRunRow }) {
         {run.human_review_reason && <p className="mt-1.5 text-xs text-amber-300/90">{run.human_review_reason}</p>}
       </div>
 
+      {/* Autonomy blockers that forced human review */}
+      {run.autonomy_blockers_triggered.length > 0 && (
+        <div className="mb-3 rounded-md border border-red-800/40 bg-red-950/15 p-3">
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-red-300">Autonomy blockers triggered</div>
+          <div className="flex flex-wrap gap-1.5">
+            {run.autonomy_blockers_triggered.map((b) => (
+              <span key={b.key} className={`rounded px-2 py-0.5 text-[11px] font-semibold ${b.action === "immediate_escalation" ? "bg-red-900/60 text-red-200" : "bg-amber-900/50 text-amber-300"}`}>
+                {b.label}{b.action === "immediate_escalation" ? " ⚠" : ""}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Findings */}
       {run.findings.length > 0 && (
         <div className="mb-3 space-y-1.5">

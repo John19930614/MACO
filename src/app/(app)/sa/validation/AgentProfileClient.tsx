@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import {
   Lock, ShieldCheck, Award, Wrench, GraduationCap, Brain, Plus, Trash2,
   CheckCircle2, XCircle, Power, RotateCcw, Ban, FileCheck2, AlertOctagon,
+  ArrowUpRight, GitBranch, Repeat,
 } from "lucide-react";
 import {
   toggleGuardrail, updateGuardrailThreshold, grantQualification,
   revokeQualification, reinstateQualification, toggleMemoryLesson, removeMemoryLesson,
   toggleAutonomyBlocker,
 } from "@/lib/actions/csp";
-import type { CspGuardrail, CspQualification, CspMemoryLesson, CspQualKind, CspAutonomyBlocker, CspEvidenceRule } from "@/lib/csp/types";
+import type { CspGuardrail, CspQualification, CspMemoryLesson, CspQualKind, CspAutonomyBlocker, CspEvidenceRule, CspEscalationRule, CspModelVersion, CspOverrideLogRow } from "@/lib/csp/types";
 
 const RECORD_TYPE_OPTIONS = [
   "incident", "audit_finding", "near_miss", "chemical_sds", "chemical_inventory",
@@ -44,13 +45,16 @@ function Section({ icon, title, subtitle, children }: { icon: React.ReactNode; t
 }
 
 export default function AgentProfileClient({
-  guardrails, qualifications, memory, blockers, evidenceRules,
+  guardrails, qualifications, memory, blockers, evidenceRules, escalation, versions, overrides,
 }: {
   guardrails: CspGuardrail[];
   qualifications: CspQualification[];
   memory: CspMemoryLesson[];
   blockers: CspAutonomyBlocker[];
   evidenceRules: CspEvidenceRule[];
+  escalation: CspEscalationRule[];
+  versions: CspModelVersion[];
+  overrides: CspOverrideLogRow[];
 }) {
   const router = useRouter();
   const [, start] = useTransition();
@@ -171,6 +175,80 @@ export default function AgentProfileClient({
           {memory.length === 0 && (
             <Empty text="No lessons yet. As reviewers approve or reject records, the agent records what it learns here." />
           )}
+        </div>
+      </Section>
+
+      {/* ── Escalation matrix ── */}
+      <Section
+        icon={<ArrowUpRight className="h-4 w-4 text-orange-300" />}
+        title="Escalation Matrix"
+        subtitle="Who gets notified, and how fast, when a condition is detected."
+      >
+        <div className="space-y-2">
+          {escalation.map((e) => (
+            <div key={e.id} className="flex items-start justify-between gap-3 rounded-lg border border-white/8 bg-slate-900/40 px-3 py-2.5">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-slate-100">{e.label}</div>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {e.escalate_to.map((who) => (
+                    <span key={who} className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-300">{who}</span>
+                  ))}
+                </div>
+              </div>
+              <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${e.urgency === "immediate" ? "bg-red-900/50 text-red-300" : e.urgency === "same_day" ? "bg-amber-900/50 text-amber-300" : "bg-slate-700 text-slate-300"}`}>
+                {e.urgency.replace(/_/g, " ")}
+              </span>
+            </div>
+          ))}
+          {escalation.length === 0 && <Empty text="No escalation rules configured." />}
+        </div>
+      </Section>
+
+      {/* ── Reviewer override log ── */}
+      <Section
+        icon={<Repeat className="h-4 w-4 text-fuchsia-300" />}
+        title="Reviewer Override Log"
+        subtitle="When a human's decision diverged from the AI's recommendation — what the AI said, what the human decided, and why."
+      >
+        <div className="space-y-2">
+          {overrides.map((o) => (
+            <div key={o.id} className="rounded-lg border border-white/8 bg-slate-900/40 px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="rounded bg-slate-800 px-1.5 py-0.5 text-slate-300">{o.record_type.replace(/_/g, " ")}</span>
+                <span className="text-slate-400">AI: <b className="text-slate-200">{(o.ai_status ?? "—").replace(/_/g, " ")}</b></span>
+                <ArrowUpRight className="h-3 w-3 text-slate-500" />
+                <span className="text-slate-400">Human: <b className="text-fuchsia-300">{o.human_decision.replace(/_/g, " ")}</b></span>
+                <span className="ml-auto text-slate-500">{new Date(o.created_at).toLocaleString()}</span>
+              </div>
+              <p className="mt-1 text-xs text-slate-300">{o.override_reason}</p>
+              {o.reviewer_name && <p className="mt-0.5 text-[11px] text-slate-500">— {o.reviewer_name}</p>}
+            </div>
+          ))}
+          {overrides.length === 0 && <Empty text="No overrides yet. This fills as reviewers clear flagged records or reject accepted ones." />}
+        </div>
+      </Section>
+
+      {/* ── Model / rule version history ── */}
+      <Section
+        icon={<GitBranch className="h-4 w-4 text-blue-300" />}
+        title="Model / Rule Version History"
+        subtitle="The agent, model, and rule versions behind every validation — for audit traceability."
+      >
+        <div className="space-y-2">
+          {versions.map((v) => (
+            <div key={v.id} className="rounded-lg border border-white/8 bg-slate-900/40 px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-slate-100">{v.agent_name}</span>
+                <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-300">{v.agent_version}</span>
+                <span className="rounded bg-blue-900/40 px-1.5 py-0.5 font-mono text-[10px] text-blue-300">{v.rule_version}</span>
+                {v.ai_model_name && <span className="rounded bg-violet-900/40 px-1.5 py-0.5 font-mono text-[10px] text-violet-300">{v.ai_model_name}</span>}
+                {v.active && <span className="rounded bg-emerald-900/50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">active</span>}
+              </div>
+              {v.change_summary && <p className="mt-1 text-xs text-slate-400">{v.change_summary}</p>}
+              <p className="mt-0.5 text-[11px] text-slate-500">{v.changed_by_name ?? "—"} · {new Date(v.created_at).toLocaleDateString()}</p>
+            </div>
+          ))}
+          {versions.length === 0 && <Empty text="No version history recorded." />}
         </div>
       </Section>
     </div>
