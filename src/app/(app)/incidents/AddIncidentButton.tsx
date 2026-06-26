@@ -75,6 +75,33 @@ export function AddIncidentButton() {
             <Field label="Immediate Actions Taken">
               <Textarea name="immediate_actions" placeholder="Evacuation, first aid administered, spill contained…" />
             </Field>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Affected Person">
+                <Input name="injured_party" placeholder="Name or role" />
+              </Field>
+              <Field label="Contractor / Company">
+                <Input name="contractor_or_company" placeholder="Employer or contractor" />
+              </Field>
+            </div>
+
+            <Field label="Injury / Illness Description">
+              <Textarea name="injuries_description" placeholder="Nature of injury or illness, if any" />
+            </Field>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Medical Treatment">
+                <Select name="medical_treatment">
+                  <option value="">Not determined</option>
+                  <option value="none">None</option>
+                  <option value="first_aid">First aid only</option>
+                  <option value="medical">Medical treatment beyond first aid</option>
+                </Select>
+              </Field>
+              <Field label="Witnesses">
+                <Input name="witnesses" placeholder="Names, or 'none'" />
+              </Field>
+            </div>
           </div>
           <SubmitRow onClose={() => setOpen(false)} submitting={pending} />
         </form>

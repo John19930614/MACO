@@ -90,6 +90,61 @@ export function EditIncidentForm({ incident }: { incident: Incident }) {
         <Textarea name="root_cause" defaultValue={incident.root_cause ?? ""} />
       </Field>
 
+      {/* CSP validation evidence — completing these clears the agent's flags. */}
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Validation Evidence</p>
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Affected Person">
+              <Input name="injured_party" defaultValue={incident.injured_party ?? ""} />
+            </Field>
+            <Field label="Contractor / Company">
+              <Input name="contractor_or_company" defaultValue={incident.contractor_or_company ?? ""} />
+            </Field>
+          </div>
+
+          <Field label="Injury / Illness Description">
+            <Textarea name="injuries_description" defaultValue={incident.injuries_description ?? ""} />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Medical Treatment">
+              <Select name="medical_treatment" defaultValue={incident.medical_treatment_required ? "medical" : ""}>
+                <option value="">Not determined</option>
+                <option value="none">None</option>
+                <option value="first_aid">First aid only</option>
+                <option value="medical">Medical treatment beyond first aid</option>
+              </Select>
+            </Field>
+            <Field label="Witnesses">
+              <Input name="witnesses" defaultValue={incident.witnesses ?? ""} />
+            </Field>
+          </div>
+
+          <Field label="Final Corrective Action">
+            <Textarea name="final_corrective_action" defaultValue={incident.final_corrective_action ?? ""} />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Supervisor Review">
+              <Input name="supervisor_review" defaultValue={incident.supervisor_review ?? ""} placeholder="Reviewer name / sign-off" />
+            </Field>
+            <Field label="Safety Review">
+              <Input name="safety_review" defaultValue={incident.safety_review ?? ""} placeholder="Reviewer name / sign-off" />
+            </Field>
+          </div>
+
+          <Field label="Recordability Decision (human)">
+            <Select name="recordability_decision" defaultValue={incident.recordability_decision ?? ""}>
+              <option value="">Not yet determined</option>
+              <option value="not_recordable">Not recordable</option>
+              <option value="recordable">OSHA recordable</option>
+              <option value="first_aid_only">First aid only — not recordable</option>
+            </Select>
+          </Field>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between border-t border-slate-100 pt-4">
         <p className="text-xs text-slate-400">
           ID: {incident.id.slice(0, 8)}… · Created {new Date(incident.created_at).toLocaleDateString()}

@@ -158,6 +158,7 @@ export async function addIncident(_prev: unknown, formData: FormData) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
+      const med = formData.get("medical_treatment") as string;
       const { data: created, error } = await ctx.client.from("incidents").insert({
         tenant_id: ctx.tenantId,
         site_id: ctx.siteId,
@@ -169,6 +170,11 @@ export async function addIncident(_prev: unknown, formData: FormData) {
         occurred_at: new Date(occurredAt).toISOString(),
         location: (formData.get("location") as string) || "Main Site",
         reported_by: ctx.profileId,
+        injured_party: (formData.get("injured_party") as string) || null,
+        injuries_description: (formData.get("injuries_description") as string) || null,
+        contractor_or_company: (formData.get("contractor_or_company") as string) || null,
+        witnesses: (formData.get("witnesses") as string) || null,
+        ...(med ? { medical_treatment_required: med === "medical" } : {}),
       }).select("*").single();
       if (error) return { ok: false, error: error.message };
       // CSP validation agent — validate & log in the background; never blocks the save.
@@ -212,6 +218,7 @@ export async function updateIncident(id: string, formData: FormData) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
+      const med = formData.get("medical_treatment") as string;
       const { data: updated, error } = await ctx.client.from("incidents").update({
         title:       (formData.get("title") as string) || "Untitled Incident",
         description: (formData.get("description") as string) || "",
@@ -221,6 +228,15 @@ export async function updateIncident(id: string, formData: FormData) {
         location:    (formData.get("location") as string) || "",
         immediate_actions: (formData.get("immediate_actions") as string) || null,
         root_cause:  (formData.get("root_cause") as string) || null,
+        injured_party: (formData.get("injured_party") as string) || null,
+        injuries_description: (formData.get("injuries_description") as string) || null,
+        contractor_or_company: (formData.get("contractor_or_company") as string) || null,
+        witnesses: (formData.get("witnesses") as string) || null,
+        final_corrective_action: (formData.get("final_corrective_action") as string) || null,
+        supervisor_review: (formData.get("supervisor_review") as string) || null,
+        safety_review: (formData.get("safety_review") as string) || null,
+        recordability_decision: (formData.get("recordability_decision") as string) || null,
+        ...(med ? { medical_treatment_required: med === "medical" } : {}),
         updated_at:  now,
       }).eq("id", id).eq("tenant_id", ctx.tenantId).select("*").single();
       if (error) return { ok: false, error: error.message };

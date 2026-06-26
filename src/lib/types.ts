@@ -695,6 +695,13 @@ export interface Incident {
   medical_treatment_required: boolean;
   regulatory_reportable: boolean;
   regulatory_report_date: string | null;
+  // CSP validator evidence fields (so incident records arrive complete).
+  contractor_or_company?: string | null;
+  witnesses?: string | null;
+  final_corrective_action?: string | null;
+  supervisor_review?: string | null;
+  safety_review?: string | null;
+  recordability_decision?: string | null;
   created_at: string;
   updated_at: string;
 }
