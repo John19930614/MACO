@@ -47,6 +47,7 @@ export interface EhsGatewayDashboardProps {
   wasteStreams:    WasteStream[];
   equipment:       Equipment[];
   riskAssessments: RiskAssessment[];
+  topSlot?:        React.ReactNode;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -480,6 +481,7 @@ export function EhsGatewayDashboard(props: EhsGatewayDashboardProps) {
 
       {/* Gateway sections */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+        {props.topSlot}
         {sections.map(section => {
           const isOpen = expanded.has(section.id);
           const GateIcon = GATE_ICONS[section.id] ?? ShieldCheck;

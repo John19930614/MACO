@@ -9,7 +9,9 @@ import {
   getRiskAssessments,
 } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
+import { runGatewayHealthCheck, getGatewayHealthSnapshots } from "@/lib/gateway/agent";
 import { EhsGatewayDashboard } from "./EhsGatewayDashboard";
+import GatewayAgentPanel from "./GatewayAgentPanel";
 
 export default async function EhsGatewayPage() {
   // Canonical tenant resolution — real tenant in live, NIL_UUID (safe empty) when
@@ -18,7 +20,7 @@ export default async function EhsGatewayPage() {
 
   const [
     incidents, capas, chemicals, audits, findings,
-    wasteStreams, equipment, riskAssessments,
+    wasteStreams, equipment, riskAssessments, health, history,
   ] = await Promise.all([
     getIncidents(tenantId),
     getCapaActions(tenantId),
@@ -28,6 +30,8 @@ export default async function EhsGatewayPage() {
     getWasteStreams(tenantId),
     getEquipment(tenantId),
     getRiskAssessments(tenantId),
+    runGatewayHealthCheck({ persist: false }).catch(() => null),
+    getGatewayHealthSnapshots(12).catch(() => []),
   ]);
 
   return (
@@ -40,6 +44,7 @@ export default async function EhsGatewayPage() {
       wasteStreams={wasteStreams}
       equipment={equipment}
       riskAssessments={riskAssessments}
+      topSlot={<GatewayAgentPanel live={health} history={history} />}
     />
   );
 }
