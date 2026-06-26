@@ -13,7 +13,32 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { MOCK_MODE } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { runGatewayPipeline, loadGatewayDataset, evaluateGateways } from "./pipeline";
+import { runGatewayPipeline, loadGatewayDataset, evaluateGateways, type EhsDataset } from "./pipeline";
+import type { Incident, CapaAction, RiskAssessment, Audit, Chemical, WasteStream, Equipment, AiFinding } from "@/lib/types";
+
+/**
+ * Load a tenant's gateway dataset via an explicit (service-role) client — used by
+ * the cron, which has no session, so the RLS-bound ehsRepo getters return nothing.
+ * Cells are Arc-specific and omitted here; ai findings drive the review-queue count.
+ */
+async function loadGatewayDatasetViaClient(client: SupabaseClient, tenantId: string): Promise<EhsDataset> {
+  const t = (table: string) => client.from(table).select("*").eq("tenant_id", tenantId);
+  const [inc, capa, risk, aud, chem, waste, equip, findings] = await Promise.all([
+    t("incidents"), t("capa_records"), t("risk_assessments"), t("audits"),
+    t("chemical_inventory"), t("waste_streams"), t("equipment"), t("ehs_ai_findings"),
+  ]);
+  return {
+    incidents: (inc.data ?? []) as Incident[],
+    capas: (capa.data ?? []) as CapaAction[],
+    risks: (risk.data ?? []) as RiskAssessment[],
+    audits: (aud.data ?? []) as Audit[],
+    chemicals: (chem.data ?? []) as Chemical[],
+    wasteStreams: (waste.data ?? []) as WasteStream[],
+    equipment: (equip.data ?? []) as Equipment[],
+    cells: [],
+    aiFindings: (findings.data ?? []) as AiFinding[],
+  };
+}
 import { getPersistedTelemetry } from "@/lib/ai/telemetry";
 import { summarizeTelemetry } from "@/lib/analytics/ai";
 import { detectAiAnomalies } from "@/lib/analytics/alerts";
@@ -57,11 +82,16 @@ export async function runGatewayHealthCheck(
   opts: { persist?: boolean; generatedBy?: string; client?: SupabaseClient; tenantId?: string } = {},
 ): Promise<GatewayHealthSnapshot> {
   const nowIso = new Date().toISOString();
+  const dbClient = opts.client ?? (await createSupabaseServerClient());
+  const settings = await loadGatewaySettings(dbClient);
   // Session path (page/action) uses runGatewayPipeline; the cron passes a service
   // client + tenantId and we evaluate that tenant's dataset explicitly.
-  const report = await (opts.tenantId
-    ? loadGatewayDataset(opts.tenantId).then((d) => evaluateGateways(d, Date.now()))
-    : runGatewayPipeline()
+  const report = await (
+    opts.client && opts.tenantId
+      ? loadGatewayDatasetViaClient(opts.client, opts.tenantId).then((d) => evaluateGateways(d, Date.now()))
+      : opts.tenantId
+        ? loadGatewayDataset(opts.tenantId).then((d) => evaluateGateways(d, Date.now()))
+        : runGatewayPipeline()
   ).catch(() => null);
   const telemetry = await getPersistedTelemetry(200).catch(() => []);
   const tsum = summarizeTelemetry(telemetry);
@@ -116,7 +146,7 @@ export async function runGatewayHealthCheck(
   if (rejectCount > 0 && report?.overall !== "fail") {
     findings.push({
       title: `${rejectCount} record(s) in the reject queue`,
-      severity: rejectCount >= 10 ? "warning" : "info",
+      severity: rejectCount >= settings.reject_queue_warn ? "warning" : "info",
       detail: `${resolvable} of ${rejectCount} are auto-resolvable (overdue/calibration items).`,
       recommendation: "Work the reject queue so blocked records can enter the EHS database.",
     });
@@ -124,20 +154,20 @@ export async function runGatewayHealthCheck(
 
   // Human-review backlog (gateway + CSP validation agent).
   const totalReview = humanReview + cspPending;
-  if (totalReview >= 5) {
+  if (totalReview >= settings.review_backlog_warn) {
     findings.push({
       title: "Human review backlog building",
-      severity: totalReview >= 15 ? "warning" : "info",
+      severity: totalReview >= settings.review_backlog_critical ? "warning" : "info",
       detail: `${humanReview} AI finding(s) + ${cspPending} validation(s) awaiting a human reviewer.`,
       recommendation: "Triage the review queues; sign-offs also feed the validation agent's memory.",
     });
   }
 
   // AI engine health from telemetry.
-  if (tsum.calls > 0 && tsum.fallbackRate >= 0.25) {
+  if (tsum.calls > 0 && tsum.fallbackRate >= settings.fallback_warn_pct / 100) {
     findings.push({
       title: "AI fallback rate elevated",
-      severity: tsum.fallbackRate >= 0.5 ? "critical" : "warning",
+      severity: tsum.fallbackRate >= settings.fallback_critical_pct / 100 ? "critical" : "warning",
       detail: `${Math.round(tsum.fallbackRate * 100)}% of recent AI calls fell back to the heuristic — the model provider may be degraded.`,
       recommendation: "Check the AI provider key/quota and the circuit-breaker; the gateway is running on heuristics meanwhile.",
     });
@@ -177,9 +207,9 @@ export async function runGatewayHealthCheck(
     generated_by: opts.generatedBy ?? null,
   };
 
-  if (opts.persist && !MOCK_MODE) {
-    const client = opts.client ?? await createSupabaseServerClient();
-    if (client) {
+  if (opts.persist && !MOCK_MODE && dbClient) {
+    const client = dbClient;
+    {
       const { data } = await client.from("gateway_agent_health_log").insert({
         tenant_id: opts.tenantId ?? null,
         overall_status: snapshot.overall_status,
@@ -218,4 +248,74 @@ export async function getGatewayHealthSnapshots(limit = 12): Promise<GatewayHeal
     findings: (r.findings as GatewayHealthFinding[]) ?? [],
     generated_by: (r.generated_by as string) ?? null,
   }));
+}
+
+// ── Settings (configurable thresholds) ────────────────────────────────────────
+
+export interface GatewaySettings {
+  id: string;
+  enabled: boolean;
+  fallback_warn_pct: number;
+  fallback_critical_pct: number;
+  reject_queue_warn: number;
+  review_backlog_warn: number;
+  review_backlog_critical: number;
+}
+
+const DEFAULT_SETTINGS: GatewaySettings = {
+  id: "", enabled: true, fallback_warn_pct: 25, fallback_critical_pct: 50,
+  reject_queue_warn: 10, review_backlog_warn: 5, review_backlog_critical: 15,
+};
+
+export async function loadGatewaySettings(client: SupabaseClient | null): Promise<GatewaySettings> {
+  if (!client) return DEFAULT_SETTINGS;
+  try {
+    const { data } = await client.from("gateway_agent_settings").select("*").order("created_at").limit(1).maybeSingle();
+    if (!data) return DEFAULT_SETTINGS;
+    return {
+      id: data.id, enabled: !!data.enabled,
+      fallback_warn_pct: num(data.fallback_warn_pct) || 25,
+      fallback_critical_pct: num(data.fallback_critical_pct) || 50,
+      reject_queue_warn: num(data.reject_queue_warn) || 10,
+      review_backlog_warn: num(data.review_backlog_warn) || 5,
+      review_backlog_critical: num(data.review_backlog_critical) || 15,
+    };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+export async function getGatewaySettings(): Promise<GatewaySettings> {
+  if (MOCK_MODE) return DEFAULT_SETTINGS;
+  return loadGatewaySettings(await createSupabaseServerClient());
+}
+
+// ── Version history + maintenance notes ───────────────────────────────────────
+
+export interface GatewayVersion {
+  id: string; agent_name: string; gateway_version: string; rule_version: string;
+  change_summary: string | null; changed_by_name: string | null; active: boolean; created_at: string;
+}
+
+export interface GatewayNote {
+  id: string; note: string; author: string | null; created_at: string;
+}
+
+export async function getGatewayVersions(): Promise<GatewayVersion[]> {
+  if (MOCK_MODE) return [];
+  const client = await createSupabaseServerClient();
+  if (!client) return [];
+  const { data } = await client.from("gateway_agent_versions").select("*").order("created_at", { ascending: false });
+  return (data ?? []).map((r) => ({
+    id: r.id, agent_name: r.agent_name, gateway_version: r.gateway_version, rule_version: r.rule_version,
+    change_summary: r.change_summary ?? null, changed_by_name: r.changed_by_name ?? null, active: !!r.active, created_at: r.created_at,
+  }));
+}
+
+export async function getGatewayNotes(limit = 20): Promise<GatewayNote[]> {
+  if (MOCK_MODE) return [];
+  const client = await createSupabaseServerClient();
+  if (!client) return [];
+  const { data } = await client.from("gateway_agent_notes").select("*").order("created_at", { ascending: false }).limit(limit);
+  return (data ?? []).map((r) => ({ id: r.id, note: r.note, author: r.author ?? null, created_at: r.created_at }));
 }

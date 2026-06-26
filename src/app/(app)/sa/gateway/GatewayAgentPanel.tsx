@@ -1,13 +1,27 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bot, ShieldCheck, ShieldAlert, ShieldX, RefreshCw, ChevronDown, ChevronRight,
-  AlertTriangle, AlertOctagon, Info, Wrench,
+  AlertTriangle, AlertOctagon, Info, Wrench, Settings, GitBranch, StickyNote, Download, Plus,
 } from "lucide-react";
-import { runGatewayAgentCheck } from "@/lib/actions/gatewayAgent";
-import type { GatewayHealthSnapshot, FindingSeverity } from "@/lib/gateway/agent";
+import { runGatewayAgentCheck, updateGatewaySettings, addGatewayNote } from "@/lib/actions/gatewayAgent";
+import type { GatewayHealthSnapshot, FindingSeverity, GatewaySettings, GatewayVersion, GatewayNote } from "@/lib/gateway/agent";
+
+function exportSnapshotsCsv(rows: GatewayHealthSnapshot[]) {
+  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const header = ["checked_at", "overall_status", "gateway_overall", "pass", "warn", "fail", "reject_queue", "review_backlog", "ai_fallback_rate", "anomalies", "findings"];
+  const body = rows.map((r) => [
+    r.checked_at, r.overall_status, r.gateway_overall ?? "", r.pass_count, r.warn_count, r.fail_count,
+    r.reject_queue_count, r.human_review_queue + r.csp_pending_reviews, r.ai_fallback_rate, r.anomaly_count, r.findings.length,
+  ].map(esc).join(","));
+  const blob = new Blob([[header.join(","), ...body].join("\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "gateway-health-log.csv"; a.click();
+  URL.revokeObjectURL(url);
+}
 
 const STATUS_META = {
   healthy:  { label: "Healthy",  cls: "border-emerald-200 bg-emerald-50 text-emerald-700", icon: <ShieldCheck className="h-4 w-4" /> },
@@ -21,11 +35,20 @@ const SEV_META: Record<FindingSeverity, { cls: string; icon: React.ReactNode }> 
   info:     { cls: "border-slate-200 bg-slate-50", icon: <Info className="h-4 w-4 text-slate-400" /> },
 };
 
-export default function GatewayAgentPanel({ live, history }: { live: GatewayHealthSnapshot | null; history: GatewayHealthSnapshot[] }) {
+export default function GatewayAgentPanel({
+  live, history, settings, versions, notes,
+}: {
+  live: GatewayHealthSnapshot | null;
+  history: GatewayHealthSnapshot[];
+  settings: GatewaySettings | null;
+  versions: GatewayVersion[];
+  notes: GatewayNote[];
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
 
   if (!live) return null;
   const meta = STATUS_META[live.overall_status];
@@ -123,6 +146,108 @@ export default function GatewayAgentPanel({ live, history }: { live: GatewayHeal
             )}
           </div>
         )}
+
+        {/* Maintenance & configuration */}
+        <div className="mt-3 border-t border-slate-100 pt-3">
+          <div className="flex items-center justify-between">
+            <button onClick={() => setShowConfig((v) => !v)} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700">
+              {showConfig ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />} <Settings className="h-3.5 w-3.5" /> Maintenance &amp; configuration
+            </button>
+            <button
+              onClick={() => exportSnapshotsCsv([live, ...history].filter(Boolean) as GatewayHealthSnapshot[])}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              <Download className="h-3.5 w-3.5" /> Export CSV
+            </button>
+          </div>
+          {showConfig && (
+            <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <SettingsCard settings={settings} />
+              <NotesCard notes={notes} />
+              <div className="lg:col-span-2"><VersionsCard versions={versions} /></div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsCard({ settings }: { settings: GatewaySettings | null }) {
+  const router = useRouter();
+  const [state, action, pending] = useActionState(updateGatewaySettings, null as null | { ok: boolean; error?: string });
+  useEffect(() => { if (state?.ok) router.refresh(); }, [state, router]);
+  const s = settings;
+  const fields: { name: string; label: string; def: number }[] = [
+    { name: "fallback_warn_pct", label: "AI fallback warn %", def: 25 },
+    { name: "fallback_critical_pct", label: "AI fallback critical %", def: 50 },
+    { name: "reject_queue_warn", label: "Reject queue warn", def: 10 },
+    { name: "review_backlog_warn", label: "Review backlog warn", def: 5 },
+    { name: "review_backlog_critical", label: "Review backlog critical", def: 15 },
+  ];
+  return (
+    <form action={action} className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500"><Settings className="h-3.5 w-3.5" /> Thresholds</div>
+      <label className="mb-2 flex items-center gap-2 text-xs text-slate-600">
+        <input type="checkbox" name="enabled" defaultChecked={s?.enabled ?? true} className="accent-indigo-600" /> Automated daily check enabled
+      </label>
+      <div className="grid grid-cols-2 gap-2">
+        {fields.map((f) => (
+          <label key={f.name} className="text-[11px] text-slate-500">
+            {f.label}
+            <input type="number" name={f.name} defaultValue={(s as unknown as Record<string, number>)?.[f.name] ?? f.def}
+              className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1 text-sm text-slate-800" />
+          </label>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <button type="submit" disabled={pending} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">{pending ? "Saving…" : "Save thresholds"}</button>
+        {state?.error && <span className="text-xs text-red-500">{state.error}</span>}
+      </div>
+    </form>
+  );
+}
+
+function NotesCard({ notes }: { notes: GatewayNote[] }) {
+  const router = useRouter();
+  const [state, action, pending] = useActionState(addGatewayNote, null as null | { ok: boolean; error?: string });
+  useEffect(() => { if (state?.ok) router.refresh(); }, [state, router]);
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500"><StickyNote className="h-3.5 w-3.5" /> Maintenance notes</div>
+      <form action={action} className="flex gap-2">
+        <input name="note" placeholder="How a finding was resolved…" className="flex-1 rounded border border-slate-200 px-2 py-1 text-sm text-slate-800" />
+        <button type="submit" disabled={pending} className="inline-flex items-center gap-1 rounded-lg bg-slate-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"><Plus className="h-3.5 w-3.5" /> Add</button>
+      </form>
+      {state?.error && <span className="text-xs text-red-500">{state.error}</span>}
+      <div className="mt-2 max-h-40 space-y-1.5 overflow-auto">
+        {notes.map((n) => (
+          <div key={n.id} className="rounded border border-slate-100 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700">
+            {n.note}
+            <span className="ml-1 text-slate-400">— {n.author ?? "—"}, {new Date(n.created_at).toLocaleDateString()}</span>
+          </div>
+        ))}
+        {notes.length === 0 && <div className="text-xs text-slate-400">No notes yet.</div>}
+      </div>
+    </div>
+  );
+}
+
+function VersionsCard({ versions }: { versions: GatewayVersion[] }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500"><GitBranch className="h-3.5 w-3.5" /> Version history</div>
+      <div className="space-y-1.5">
+        {versions.map((v) => (
+          <div key={v.id} className="rounded border border-slate-100 bg-slate-50 px-2.5 py-1.5 text-xs">
+            <span className="font-mono font-semibold text-slate-700">{v.gateway_version}</span>
+            <span className="mx-1 text-slate-400">·</span>
+            <span className="font-mono text-blue-600">{v.rule_version}</span>
+            {v.active && <span className="ml-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">active</span>}
+            {v.change_summary && <p className="mt-0.5 text-slate-500">{v.change_summary}</p>}
+          </div>
+        ))}
+        {versions.length === 0 && <div className="text-xs text-slate-400">No version history.</div>}
       </div>
     </div>
   );
