@@ -153,7 +153,6 @@ export default function CouncilRoom({ meetings }: { meetings: CspMeeting[] }) {
                   <span className="cr-status" />
                 </div>
                 <div className="cr-label">{s.name}<small>{s.sub}</small></div>
-                {s.active && speaking && current && <div className="cr-bubble">{current.message}</div>}
               </div>
             );
           })}
