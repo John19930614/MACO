@@ -2,7 +2,7 @@ import { ShieldCheck, AlertTriangle, ClipboardCheck, Bot } from "lucide-react";
 import { DarkPageHeader } from "@/components/ui/primitives";
 import {
   getCspValidationRuns, getCspReviewSummary, getCspAgent,
-  getGuardrails, getQualifications, getMemory,
+  getGuardrails, getQualifications, getMemory, getAutonomyBlockers, getEvidenceRules,
 } from "@/lib/csp/repo";
 import { CSP_POSITIONING } from "@/lib/csp/defaults";
 import ValidationWorkbench from "./ValidationWorkbench";
@@ -11,13 +11,15 @@ import ValidationWorkbench from "./ValidationWorkbench";
 // The agent validates records in the background and logs every run; high-stakes
 // or low-confidence cases land here for credentialed human sign-off.
 export default async function SAValidationPage() {
-  const [runs, summary, agent, guardrails, qualifications, memory] = await Promise.all([
+  const [runs, summary, agent, guardrails, qualifications, memory, blockers, evidenceRules] = await Promise.all([
     getCspValidationRuns(150).catch(() => []),
     getCspReviewSummary().catch(() => ({ pending: 0, urgent: 0, total: 0, autoAccepted: 0 })),
     getCspAgent().catch(() => null),
     getGuardrails().catch(() => []),
     getQualifications().catch(() => []),
     getMemory().catch(() => []),
+    getAutonomyBlockers().catch(() => []),
+    getEvidenceRules().catch(() => []),
   ]);
 
   const cards = [
@@ -63,6 +65,8 @@ export default async function SAValidationPage() {
           guardrails={guardrails}
           qualifications={qualifications}
           memory={memory}
+          blockers={blockers}
+          evidenceRules={evidenceRules}
         />
       </div>
     </div>

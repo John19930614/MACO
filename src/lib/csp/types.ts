@@ -60,6 +60,7 @@ export interface CspValidationResult {
   recommended_corrections: string[];
   human_review_required: boolean;
   human_review_reason: string | null;
+  autonomy_blockers_triggered: CspTriggeredBlocker[];
   findings: CspFinding[];
   model: string;
 }
@@ -194,6 +195,7 @@ export interface CspQualification {
   title: string;
   description: string | null;
   scope_record_types: CspRecordType[];
+  record_types: string[];
   grants_autonomy: boolean;
   status: "active" | "revoked" | "expired";
   granted_by: string | null;
@@ -218,11 +220,37 @@ export interface CspMemoryLesson {
   created_at: string;
 }
 
+export interface CspAutonomyBlocker {
+  id: string;
+  trigger_key: string;
+  label: string;
+  action: "human_review_required" | "immediate_escalation";
+  active: boolean;
+}
+
+export interface CspEvidenceRule {
+  id: string;
+  record_type: string;
+  module_label: string | null;
+  required_fields: string[];
+  optional_fields: string[];
+  autonomy_allowed: boolean;
+  autonomy_limit: string | null;
+  active: boolean;
+}
+
+export interface CspTriggeredBlocker {
+  key: string;
+  label: string;
+  action: "human_review_required" | "immediate_escalation";
+}
+
 /** Everything the validator needs to apply guardrails, qualifications, and memory. */
 export interface CspAgentContext {
   guardrails: Record<string, CspGuardrail>;
   qualifications: CspQualification[];
   memory: CspMemoryLesson[];
+  blockers: CspAutonomyBlocker[];
 }
 
 // ── Daily agent standup (GUS × EHS Validation Agent) ──────────────────────────

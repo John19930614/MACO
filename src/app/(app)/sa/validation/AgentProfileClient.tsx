@@ -4,13 +4,14 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Lock, ShieldCheck, Award, Wrench, GraduationCap, Brain, Plus, Trash2,
-  CheckCircle2, XCircle, Power, RotateCcw,
+  CheckCircle2, XCircle, Power, RotateCcw, Ban, FileCheck2, AlertOctagon,
 } from "lucide-react";
 import {
   toggleGuardrail, updateGuardrailThreshold, grantQualification,
   revokeQualification, reinstateQualification, toggleMemoryLesson, removeMemoryLesson,
+  toggleAutonomyBlocker,
 } from "@/lib/actions/csp";
-import type { CspGuardrail, CspQualification, CspMemoryLesson, CspQualKind } from "@/lib/csp/types";
+import type { CspGuardrail, CspQualification, CspMemoryLesson, CspQualKind, CspAutonomyBlocker, CspEvidenceRule } from "@/lib/csp/types";
 
 const RECORD_TYPE_OPTIONS = [
   "incident", "audit_finding", "near_miss", "chemical_sds", "chemical_inventory",
@@ -43,11 +44,13 @@ function Section({ icon, title, subtitle, children }: { icon: React.ReactNode; t
 }
 
 export default function AgentProfileClient({
-  guardrails, qualifications, memory,
+  guardrails, qualifications, memory, blockers, evidenceRules,
 }: {
   guardrails: CspGuardrail[];
   qualifications: CspQualification[];
   memory: CspMemoryLesson[];
+  blockers: CspAutonomyBlocker[];
+  evidenceRules: CspEvidenceRule[];
 }) {
   const router = useRouter();
   const [, start] = useTransition();
@@ -55,6 +58,72 @@ export default function AgentProfileClient({
 
   return (
     <div>
+      {/* ── Autonomy blockers ── */}
+      <Section
+        icon={<Ban className="h-4 w-4 text-red-300" />}
+        title="Autonomy Blockers — Human Review Required"
+        subtitle="Hard stops. When any of these is detected, the agent must route the record to a human; it can never auto-accept. Memory can never clear one."
+      >
+        <div className="space-y-2">
+          {blockers.map((b) => (
+            <div key={b.id} className="flex items-start justify-between gap-3 rounded-lg border border-white/8 bg-slate-900/40 px-3 py-2.5">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  {b.action === "immediate_escalation" ? <AlertOctagon className="h-3.5 w-3.5 text-red-400" /> : <Ban className="h-3.5 w-3.5 text-amber-400" />}
+                  <span className="text-sm font-medium text-slate-100">{b.label}</span>
+                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${b.action === "immediate_escalation" ? "bg-red-900/50 text-red-300" : "bg-amber-900/50 text-amber-300"}`}>
+                    {b.action === "immediate_escalation" ? "immediate escalation" : "human review"}
+                  </span>
+                </div>
+                <code className="mt-0.5 block text-[10px] text-slate-500">{b.trigger_key}</code>
+              </div>
+              <button
+                onClick={() => run(() => toggleAutonomyBlocker(b.id, !b.active))}
+                className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${b.active ? "bg-emerald-700 text-white" : "bg-slate-700 text-slate-300"} hover:opacity-90`}
+              >
+                {b.active ? "ACTIVE" : "OFF"}
+              </button>
+            </div>
+          ))}
+          {blockers.length === 0 && <Empty text="No autonomy blockers configured." />}
+        </div>
+      </Section>
+
+      {/* ── Evidence rules ── */}
+      <Section
+        icon={<FileCheck2 className="h-4 w-4 text-sky-300" />}
+        title="Evidence Rules — Required Evidence by Record Type"
+        subtitle="The required fields a record must have before the agent will validate it, and whether autonomy is allowed for that type."
+      >
+        <div className="space-y-2">
+          {evidenceRules.map((e) => (
+            <div key={e.id} className="rounded-lg border border-white/8 bg-slate-900/40 px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-slate-100">{e.module_label ?? e.record_type}</span>
+                <code className="text-[10px] text-slate-500">{e.record_type}</code>
+                {e.autonomy_allowed
+                  ? <span className="rounded bg-emerald-900/50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">autonomy allowed</span>
+                  : <span className="rounded bg-red-900/50 px-1.5 py-0.5 text-[10px] font-semibold text-red-300">human review only</span>}
+                {e.autonomy_limit && <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">{e.autonomy_limit.replace(/_/g, " ")}</span>}
+              </div>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {e.required_fields.map((f) => (
+                  <span key={f} className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-300">{f.replace(/_/g, " ")}</span>
+                ))}
+              </div>
+              {e.optional_fields.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {e.optional_fields.map((f) => (
+                    <span key={f} className="rounded border border-white/8 px-1.5 py-0.5 text-[10px] text-slate-500">{f.replace(/_/g, " ")} (opt)</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          {evidenceRules.length === 0 && <Empty text="No evidence rules configured." />}
+        </div>
+      </Section>
+
       {/* ── Guardrails ── */}
       <Section
         icon={<ShieldCheck className="h-4 w-4 text-emerald-300" />}
@@ -157,13 +226,16 @@ function QualRow({ q, onRevoke, onReinstate }: { q: CspQualification; onRevoke: 
           {!active && <span className="rounded bg-red-900/50 px-1.5 py-0.5 text-[10px] font-semibold text-red-300">revoked</span>}
         </div>
         {q.description && <p className="mt-0.5 text-xs text-slate-400">{q.description}</p>}
-        {q.scope_record_types.length > 0 && (
-          <div className="mt-1 flex flex-wrap gap-1">
-            {q.scope_record_types.map((s) => (
-              <span key={s} className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-300">{s.replace(/_/g, " ")}</span>
-            ))}
-          </div>
-        )}
+        {(() => {
+          const scopes = [...new Set([...q.scope_record_types, ...q.record_types])];
+          return scopes.length > 0 ? (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {scopes.map((s) => (
+                <span key={s} className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-300">{s.replace(/_/g, " ")}</span>
+              ))}
+            </div>
+          ) : null;
+        })()}
       </div>
       {active ? (
         <button onClick={onRevoke} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-red-800/50 px-2.5 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-900/30">

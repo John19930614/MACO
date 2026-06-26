@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   recordReviewDecision, validateRecordInBackground, backfillValidations,
   setGuardrail, addQualification, setQualificationStatus, setMemoryActive, deleteMemory,
+  setBlockerActive,
 } from "@/lib/csp/repo";
 import { runStandup } from "@/lib/csp/standup";
 import type { CspRecordType, CspQualKind } from "@/lib/csp/types";
@@ -133,6 +134,12 @@ export async function toggleMemoryLesson(id: string, active: boolean) {
 
 export async function removeMemoryLesson(id: string) {
   const res = await deleteMemory(id);
+  revalidatePath("/sa/validation");
+  return res;
+}
+
+export async function toggleAutonomyBlocker(id: string, active: boolean) {
+  const res = await setBlockerActive(id, active);
   revalidatePath("/sa/validation");
   return res;
 }

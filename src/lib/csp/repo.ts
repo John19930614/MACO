@@ -22,7 +22,7 @@ import type {
   CspRecordRequirement, CspRule, CspRecordType, CspValidationInput,
   CspValidationResult, CspValidationRunRow, CspReviewStatus, CspSignals,
   CspAgentContext, CspGuardrail, CspQualification, CspMemoryLesson,
-  CspQualKind, CspMemoryDirective,
+  CspQualKind, CspMemoryDirective, CspAutonomyBlocker, CspEvidenceRule,
 } from "./types";
 
 type DB = SupabaseClient;
@@ -86,6 +86,7 @@ function mapQual(r: Record<string, unknown>): CspQualification {
     title: String(r.title),
     description: (r.description as string) ?? null,
     scope_record_types: (r.scope_record_types as CspRecordType[]) ?? [],
+    record_types: (r.record_types as string[]) ?? [],
     grants_autonomy: !!r.grants_autonomy,
     status: r.status as CspQualification["status"],
     granted_by: (r.granted_by as string) ?? null,
@@ -111,15 +112,31 @@ function mapMemory(r: Record<string, unknown>): CspMemoryLesson {
   };
 }
 
+function mapBlocker(r: Record<string, unknown>): CspAutonomyBlocker {
+  return {
+    id: String(r.id), trigger_key: String(r.trigger_key), label: String(r.label),
+    action: (r.action as CspAutonomyBlocker["action"]) ?? "human_review_required", active: !!r.active,
+  };
+}
+
+function mapEvidenceRule(r: Record<string, unknown>): CspEvidenceRule {
+  return {
+    id: String(r.id), record_type: String(r.record_type), module_label: (r.module_label as string) ?? null,
+    required_fields: (r.required_fields as string[]) ?? [], optional_fields: (r.optional_fields as string[]) ?? [],
+    autonomy_allowed: !!r.autonomy_allowed, autonomy_limit: (r.autonomy_limit as string) ?? null, active: !!r.active,
+  };
+}
+
 /** Load everything the validator needs to apply governance. Empty = no DB / pre-migration. */
 export async function loadAgentContext(client: DB | null): Promise<CspAgentContext> {
-  const empty: CspAgentContext = { guardrails: {}, qualifications: [], memory: [] };
+  const empty: CspAgentContext = { guardrails: {}, qualifications: [], memory: [], blockers: [] };
   if (!client) return empty;
   try {
-    const [g, q, m] = await Promise.all([
+    const [g, q, m, b] = await Promise.all([
       client.from("csp_guardrails").select("*"),
       client.from("csp_agent_qualifications").select("*").eq("status", "active"),
       client.from("csp_agent_memory").select("*").eq("active", true),
+      client.from("ehs_autonomy_blockers").select("*").eq("active", true),
     ]);
     const guardrails: Record<string, CspGuardrail> = {};
     for (const r of g.data ?? []) {
@@ -128,10 +145,39 @@ export async function loadAgentContext(client: DB | null): Promise<CspAgentConte
         enabled: !!r.enabled, threshold: r.threshold != null ? Number(r.threshold) : null, locked: !!r.locked,
       };
     }
-    return { guardrails, qualifications: (q.data ?? []).map(mapQual), memory: (m.data ?? []).map(mapMemory) };
+    return {
+      guardrails,
+      qualifications: (q.data ?? []).map(mapQual),
+      memory: (m.data ?? []).map(mapMemory),
+      blockers: (b.data ?? []).map(mapBlocker),
+    };
   } catch {
     return empty;
   }
+}
+
+export async function getAutonomyBlockers(): Promise<CspAutonomyBlocker[]> {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data } = await client.from("ehs_autonomy_blockers").select("*").order("action").order("label");
+  return (data ?? []).map(mapBlocker);
+}
+
+export async function getEvidenceRules(): Promise<CspEvidenceRule[]> {
+  if (MOCK_MODE) return [];
+  const client = await sb();
+  if (!client) return [];
+  const { data } = await client.from("ehs_evidence_rules").select("*").order("record_type");
+  return (data ?? []).map(mapEvidenceRule);
+}
+
+export async function setBlockerActive(id: string, active: boolean): Promise<{ ok: boolean; error?: string }> {
+  if (MOCK_MODE) return { ok: false, error: "Unavailable in mock mode." };
+  const client = await sb();
+  if (!client) return { ok: false, error: "Session expired — please reload." };
+  const { error } = await client.from("ehs_autonomy_blockers").update({ active }).eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 // ── Module → validator input mappers ──────────────────────────────────────────
@@ -238,6 +284,7 @@ async function persistRun(client: DB, input: CspValidationInput, result: CspVali
       recommended_corrections: result.recommended_corrections,
       human_review_required: result.human_review_required,
       human_review_reason: result.human_review_reason,
+      autonomy_blockers_triggered: result.autonomy_blockers_triggered,
       human_review_status: result.human_review_required ? "pending" : "not_required",
       final_output: { ...result },
       completed_at: new Date().toISOString(),

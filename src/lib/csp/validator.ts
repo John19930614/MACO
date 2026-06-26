@@ -24,6 +24,7 @@ import { CSP_AGENT_VERSION, CSP_POSITIONING } from "./defaults";
 import type {
   CspValidationInput, CspValidationResult, CspRecordRequirement, CspRule,
   CspFinding, CspRiskLevel, CspValidationStatus, CspSignals, CspAgentContext,
+  CspTriggeredBlocker,
 } from "./types";
 
 /** Below this 0–100 confidence, a record is escalated to human review. */
@@ -179,6 +180,26 @@ function evaluate(
     }
   }
 
+  // 4c — Autonomy blockers: hard stops that force human review. Detected from
+  // signals + record state; memory can never clear one of these.
+  const blockerActive = new Map((ctx?.blockers ?? []).filter((b) => b.active).map((b) => [b.trigger_key, b]));
+  const triggered: CspTriggeredBlocker[] = [];
+  const fire = (key: string) => {
+    const b = blockerActive.get(key);
+    if (b && !triggered.some((t) => t.key === key)) triggered.push({ key, label: b.label, action: b.action });
+  };
+  const sg = input.signals;
+  if (sg.fatality || sg.hospitalization || sg.amputation_or_eye_loss) fire("fatality_hospitalization_amputation_eye_loss");
+  if (sg.fatality || sg.amputation_or_eye_loss || sg.high_or_critical_potential) fire("sif_potential");
+  if (sg.medical_treatment_beyond_first_aid) fire("medical_treatment_beyond_first_aid");
+  if ((sg.lost_time_days ?? 0) > 0 || sg.restricted_work) fire("lost_time_restricted_duty_transfer");
+  if (sg.medical_treatment_beyond_first_aid || (sg.lost_time_days ?? 0) > 0 || sg.restricted_work || sg.loss_of_consciousness) fire("possible_osha_recordable");
+  if (sg.high_or_critical_potential) fire("high_risk_work");
+  if (sg.repeat_finding) fire("repeat_issue");
+  if (input.record_type === "corrective_action" && !isEmpty(input.fields.completion_date) && isEmpty(input.fields.verification_evidence)) fire("corrective_action_closed_without_proof");
+  if (missing_fields.length > 0) fire("missing_required_evidence");
+  const blockerHit = triggered.length > 0;
+
   // 5 — Human-review decision (the model never overrides an escalation).
   const mandatoryHit = mandatory.length > 0;
   const recordableHit = regulatory_triggers.some((t) =>
@@ -189,20 +210,23 @@ function evaluate(
   // auto-accepted if the agent holds a qualification granting autonomy for the
   // record type and clears the minimum-confidence bar.
   const requiresQual = guard("autonomy_requires_qualification")?.enabled ?? false;
-  const isQualified = !!ctx && ctx.qualifications.some((q) =>
-    q.status === "active" && q.grants_autonomy &&
-    (q.scope_record_types.length === 0 || q.scope_record_types.includes(input.record_type)));
+  const isQualified = !!ctx && ctx.qualifications.some((q) => {
+    if (q.status !== "active" || !q.grants_autonomy) return false;
+    const scopes = [...q.scope_record_types, ...(q.record_types ?? [])];
+    return scopes.length === 0 || scopes.includes(input.record_type);
+  });
   const minConfGuard = guard("min_autonomy_confidence");
   const minConf = minConfGuard?.enabled ? Number(minConfGuard.threshold) || 0 : 0;
   const lacksQual = requiresQual && !isQualified;
   const belowMinConf = minConf > 0 && confidence < minConf;
 
   const human_review_required =
-    mandatoryHit || recordableHit || memoryEscalate ||
+    blockerHit || mandatoryHit || recordableHit || memoryEscalate ||
     confidence < LOW_CONFIDENCE || highRisk ||
     lacksQual || belowMinConf;
 
   const reasons: string[] = [];
+  if (blockerHit) reasons.push(`autonomy blocker(s): ${triggered.map((t) => t.label).join("; ")}`);
   if (mandatoryHit) reasons.push(`mandatory condition(s): ${mandatory.join(", ")}`);
   if (recordableHit) reasons.push("possible OSHA recordable/reportable");
   if (memoryEscalate) reasons.push("a learned lesson flagged this pattern");
@@ -210,7 +234,8 @@ function evaluate(
   if (highRisk) reasons.push(`${riskLevel.replace(/_/g, " ")} risk level`);
   if (lacksQual) reasons.push(`no qualification grants autonomy for ${input.record_type.replace(/_/g, " ")}`);
   if (belowMinConf) reasons.push(`confidence below autonomy minimum ${minConf}%`);
-  const human_review_reason = reasons.length ? `Escalated: ${reasons.join("; ")}.` : null;
+  const escalate = triggered.some((t) => t.action === "immediate_escalation");
+  const human_review_reason = reasons.length ? `${escalate ? "IMMEDIATE ESCALATION" : "Escalated"}: ${reasons.join("; ")}.` : null;
 
   // 6 — Overall validation status.
   let validation_status: CspValidationStatus;
@@ -246,6 +271,7 @@ function evaluate(
     recommended_corrections,
     human_review_required,
     human_review_reason,
+    autonomy_blockers_triggered: triggered,
     findings,
     model: "csp-deterministic",
   };
