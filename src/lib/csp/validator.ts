@@ -163,7 +163,13 @@ function evaluate(
         case "loss_of_consciousness": return !!input.signals.loss_of_consciousness;
         case "repeat_finding": return !!input.signals.repeat_finding;
         case "high_risk_hazard": return riskLevel === "high" || riskLevel === "critical" || riskLevel === "sif_potential";
-        case "missing_corrective_action": return required.includes("corrective_action") && isEmpty(input.fields.corrective_action);
+        case "missing_corrective_action": {
+          // Field names vary by record type (evidence-rule keys), so check any
+          // corrective-action field the mapper may have produced.
+          const ca = input.fields.final_corrective_action ?? input.fields.corrective_action
+            ?? input.fields.immediate_corrective_action ?? input.fields.closeout_evidence;
+          return isEmpty(ca);
+        }
         default: return false;
       }
     });
