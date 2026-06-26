@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import type { Chemical } from "@/lib/types";
 import { Pill } from "@/components/ui/primitives";
+import { getStorageClassName } from "@/lib/chemicalRefData";
 import { updateSdsUrl } from "@/lib/actions/ehs";
 import { X, ExternalLink } from "lucide-react";
 import { GhsLabelButton } from "./GhsLabelButton";
@@ -221,7 +222,16 @@ export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
                   <td className="px-4 py-3 text-xs text-slate-600 tabular-nums whitespace-nowrap">
                     {c.quantity} {c.unit}
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-600 max-w-48">{c.storage_location}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600 max-w-48">
+                    {c.storage_location}
+                    {c.storage_class && (
+                      <div className="mt-0.5">
+                        <Pill className="bg-slate-100 text-slate-600 text-[10px]">
+                          {getStorageClassName(c.storage_class)}
+                        </Pill>
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <Pill className={HAZARD_COLOR[hazard] ?? "bg-slate-100 text-slate-600"}>{hazard}</Pill>
                   </td>
