@@ -10,9 +10,10 @@
  * IMPORTANT: never import into a client component — it reads server secrets.
  */
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { MOCK_MODE } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { runGatewayPipeline } from "./pipeline";
+import { runGatewayPipeline, loadGatewayDataset, evaluateGateways } from "./pipeline";
 import { getPersistedTelemetry } from "@/lib/ai/telemetry";
 import { summarizeTelemetry } from "@/lib/analytics/ai";
 import { detectAiAnomalies } from "@/lib/analytics/alerts";
@@ -52,15 +53,28 @@ export interface GatewayHealthSnapshot {
 const num = (v: unknown) => (typeof v === "number" ? v : Number(v) || 0);
 
 /** Run a gateway health check. Persists a snapshot when persist=true. */
-export async function runGatewayHealthCheck(opts: { persist?: boolean; generatedBy?: string } = {}): Promise<GatewayHealthSnapshot> {
+export async function runGatewayHealthCheck(
+  opts: { persist?: boolean; generatedBy?: string; client?: SupabaseClient; tenantId?: string } = {},
+): Promise<GatewayHealthSnapshot> {
   const nowIso = new Date().toISOString();
-  const [report, telemetry, csp] = await Promise.all([
-    runGatewayPipeline().catch(() => null),
-    getPersistedTelemetry(200).catch(() => []),
-    getCspReviewSummary().catch(() => ({ pending: 0, urgent: 0, total: 0, autoAccepted: 0 })),
-  ]);
+  // Session path (page/action) uses runGatewayPipeline; the cron passes a service
+  // client + tenantId and we evaluate that tenant's dataset explicitly.
+  const report = await (opts.tenantId
+    ? loadGatewayDataset(opts.tenantId).then((d) => evaluateGateways(d, Date.now()))
+    : runGatewayPipeline()
+  ).catch(() => null);
+  const telemetry = await getPersistedTelemetry(200).catch(() => []);
   const tsum = summarizeTelemetry(telemetry);
   const anomalies = detectAiAnomalies(tsum);
+
+  let cspPending = 0;
+  if (opts.client && opts.tenantId) {
+    const { count } = await opts.client.from("csp_review_queue")
+      .select("*", { count: "exact", head: true }).eq("status", "pending").eq("tenant_id", opts.tenantId);
+    cspPending = count ?? 0;
+  } else {
+    cspPending = (await getCspReviewSummary().catch(() => ({ pending: 0 }))).pending;
+  }
 
   const findings: GatewayHealthFinding[] = [];
 
@@ -109,12 +123,12 @@ export async function runGatewayHealthCheck(opts: { persist?: boolean; generated
   }
 
   // Human-review backlog (gateway + CSP validation agent).
-  const totalReview = humanReview + csp.pending;
+  const totalReview = humanReview + cspPending;
   if (totalReview >= 5) {
     findings.push({
       title: "Human review backlog building",
       severity: totalReview >= 15 ? "warning" : "info",
-      detail: `${humanReview} AI finding(s) + ${csp.pending} validation(s) awaiting a human reviewer.`,
+      detail: `${humanReview} AI finding(s) + ${cspPending} validation(s) awaiting a human reviewer.`,
       recommendation: "Triage the review queues; sign-offs also feed the validation agent's memory.",
     });
   }
@@ -153,7 +167,7 @@ export async function runGatewayHealthCheck(opts: { persist?: boolean; generated
     reject_queue_count: rejectCount,
     resolvable_count: resolvable,
     human_review_queue: humanReview,
-    csp_pending_reviews: csp.pending,
+    csp_pending_reviews: cspPending,
     ai_calls: tsum.calls,
     ai_fallback_rate: Math.round(tsum.fallbackRate * 100) / 100,
     ai_avg_latency_ms: Math.round(tsum.avgMs),
@@ -164,9 +178,10 @@ export async function runGatewayHealthCheck(opts: { persist?: boolean; generated
   };
 
   if (opts.persist && !MOCK_MODE) {
-    const client = await createSupabaseServerClient();
+    const client = opts.client ?? await createSupabaseServerClient();
     if (client) {
       const { data } = await client.from("gateway_agent_health_log").insert({
+        tenant_id: opts.tenantId ?? null,
         overall_status: snapshot.overall_status,
         gateway_overall: snapshot.gateway_overall,
         pass_count: snapshot.pass_count, warn_count: snapshot.warn_count, fail_count: snapshot.fail_count,

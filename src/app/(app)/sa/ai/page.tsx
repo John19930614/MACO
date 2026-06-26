@@ -7,6 +7,7 @@ import { PROMPT_VERSION } from "@/lib/env";
 import { getPersistedTelemetry } from "@/lib/ai/telemetry";
 import { summarizeTelemetry } from "@/lib/analytics/ai";
 import { detectAiAnomalies } from "@/lib/analytics/alerts";
+import { getGatewayHealthSnapshots } from "@/lib/gateway/agent";
 
 const JOB_CONFIGS = [
   { job: "chemical_hazard_analysis",   label: "Chemical Hazard Analysis",  trigger: "Chemical inventory update",    frequency: "On change",  model: "claude-sonnet-4-6", enabled: true  },
@@ -41,6 +42,13 @@ export default async function SAAIPage() {
   const tsum = summarizeTelemetry(telemetry);
   const anomalies = detectAiAnomalies(tsum);
 
+  const [gatewayHealth] = await getGatewayHealthSnapshots(1).catch(() => []);
+  const ghTone = gatewayHealth?.overall_status === "critical"
+    ? { cls: "bg-red-900/20 border-red-800/50 text-red-300", label: "Critical" }
+    : gatewayHealth?.overall_status === "degraded"
+      ? { cls: "bg-amber-900/20 border-amber-800/50 text-amber-300", label: "Degraded" }
+      : { cls: "bg-emerald-900/20 border-emerald-800/50 text-emerald-300", label: "Healthy" };
+
   return (
     <div className="flex flex-1 flex-col">
       <DarkPageHeader
@@ -57,6 +65,14 @@ export default async function SAAIPage() {
           {" · "}
           <strong>Provider:</strong> Anthropic
         </div>
+
+        {/* AI Gateway Agent health — cross-surfaced from /sa/gateway */}
+        {gatewayHealth && (
+          <Link href="/sa/gateway" className={`mb-4 flex items-center justify-between gap-3 rounded-xl border p-4 text-sm ${ghTone.cls} hover:opacity-90`}>
+            <span><strong>AI Gateway Agent:</strong> {ghTone.label} — {gatewayHealth.findings.length} maintenance finding(s) · last check {new Date(gatewayHealth.checked_at).toLocaleString()}</span>
+            <span className="shrink-0 text-xs underline">View gateway →</span>
+          </Link>
+        )}
 
         {/* AI Gateway utility checks */}
         <DarkCard className="mb-5">
