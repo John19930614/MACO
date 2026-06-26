@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal, Field, Input, Select, SubmitRow } from "@/components/modals/Modal";
+import { GhsCodePicker } from "./GhsCodePicker";
+import { PpePicker } from "./PpePicker";
+import { STORAGE_CLASSES } from "@/lib/chemicalRefData";
 import { addChemical } from "@/lib/actions/ehs";
 import { playCreateSound } from "@/lib/sounds";
 
@@ -60,12 +63,30 @@ export function AddChemicalButton() {
               </Field>
             </div>
 
-            <Field label="Storage Location" required>
-              <Input name="storage_location" placeholder="Lab 3 — Flammables Cabinet A" required />
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Storage Location" required>
+                <Input name="storage_location" placeholder="Lab 3 — Flammables Cabinet A" required />
+              </Field>
+              <Field label="Storage Class">
+                <Select name="storage_class" defaultValue="">
+                  <option value="">— Select class —</option>
+                  {STORAGE_CLASSES.map((s) => (
+                    <option key={s.code} value={s.code}>{s.name}</option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+
+            <Field label="Recommended PPE">
+              <PpePicker name="recommended_ppe" />
             </Field>
 
-            <Field label="GHS Hazard Codes">
-              <Input name="hazard_codes" placeholder="e.g. H225, H319, H350" />
+            <Field label="GHS Hazard Codes (H-statements)">
+              <GhsCodePicker name="hazard_codes" mode="hazard" />
+            </Field>
+
+            <Field label="Precautionary Codes (P-statements)">
+              <GhsCodePicker name="precaution_codes" mode="precaution" />
             </Field>
 
             <div className="grid grid-cols-2 gap-4">

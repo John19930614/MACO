@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Field, Input, Select, Textarea } from "@/components/modals/Modal";
+import { Field, Input, Select } from "@/components/modals/Modal";
+import { GhsCodePicker } from "../GhsCodePicker";
+import { PpePicker } from "../PpePicker";
+import { STORAGE_CLASSES } from "@/lib/chemicalRefData";
 import { updateChemical } from "@/lib/actions/ehs";
 import type { Chemical } from "@/lib/types";
 
@@ -59,12 +62,30 @@ export function EditChemicalForm({ chemical }: { chemical: Chemical }) {
         </Field>
       </div>
 
-      <Field label="Storage Location">
-        <Input name="storage_location" defaultValue={chemical.storage_location ?? ""} placeholder="e.g. Lab 3, Chemical Store Room A" />
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Storage Location">
+          <Input name="storage_location" defaultValue={chemical.storage_location ?? ""} placeholder="e.g. Lab 3, Chemical Store Room A" />
+        </Field>
+        <Field label="Storage Class">
+          <Select name="storage_class" defaultValue={chemical.storage_class ?? ""}>
+            <option value="">— Select class —</option>
+            {STORAGE_CLASSES.map((s) => (
+              <option key={s.code} value={s.code}>{s.name}</option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+
+      <Field label="Recommended PPE">
+        <PpePicker name="recommended_ppe" defaultCodes={chemical.recommended_ppe ?? []} />
       </Field>
 
-      <Field label="GHS Hazard Codes">
-        <Input name="hazard_codes" defaultValue={chemical.hazard_statements.join(", ")} placeholder="e.g. H225, H319, H350" />
+      <Field label="GHS Hazard Codes (H-statements)">
+        <GhsCodePicker name="hazard_codes" mode="hazard" defaultCodes={chemical.hazard_statements} />
+      </Field>
+
+      <Field label="Precautionary Codes (P-statements)">
+        <GhsCodePicker name="precaution_codes" mode="precaution" defaultCodes={chemical.precautionary_statements} />
       </Field>
 
       <div className="grid grid-cols-2 gap-4">

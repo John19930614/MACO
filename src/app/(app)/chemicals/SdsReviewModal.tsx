@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle, XCircle, FileText, Loader2 } from "lucide-react";
 import { Modal } from "@/components/modals/Modal";
+import { GhsCodePicker } from "./GhsCodePicker";
 import { approveSdsExtraction, rejectSdsExtraction } from "@/lib/actions/sds";
 import type { SdsDocument, SdsExtracted } from "@/lib/types";
 
@@ -38,6 +39,8 @@ export function SdsReviewModal({ doc, open, onClose }: Props) {
   const [productName, setProductName] = useState(ext?.product_name ?? "");
   const [casNumber, setCasNumber]     = useState(ext?.cas_number ?? "");
   const [manufacturer, setManuf]      = useState(ext?.manufacturer ?? "");
+  const [hazardCodes, setHazardCodes] = useState<string[]>(ext?.hazard_statements ?? []);
+  const [precautionCodes, setPrecautionCodes] = useState<string[]>(ext?.precautionary_statements ?? []);
   const [notes, setNotes]             = useState("");
   const [pending, setPending]         = useState<"approve" | "reject" | null>(null);
   const [done, setDone]               = useState<"approved" | "rejected" | null>(null);
@@ -50,6 +53,12 @@ export function SdsReviewModal({ doc, open, onClose }: Props) {
     if (productName !== ext?.product_name) overrides.product_name = productName;
     if (casNumber   !== ext?.cas_number)   overrides.cas_number   = casNumber;
     if (manufacturer !== ext?.manufacturer) overrides.manufacturer = manufacturer;
+    // Reviewer corrections to the GHS classification flow straight into the
+    // chemical_inventory record (approveSdsExtraction merges overrides).
+    if (hazardCodes.join() !== (ext?.hazard_statements ?? []).join())
+      overrides.hazard_statements = hazardCodes;
+    if (precautionCodes.join() !== (ext?.precautionary_statements ?? []).join())
+      overrides.precautionary_statements = precautionCodes;
 
     const res = await approveSdsExtraction(doc.id, overrides, notes);
     setPending(null);
@@ -138,42 +147,24 @@ export function SdsReviewModal({ doc, open, onClose }: Props) {
               </div>
             </div>
 
+            {/* Editable GHS classification — reviewer can correct the AI before approving */}
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                  Hazard Statements (editable)
+                </p>
+                <GhsCodePicker mode="hazard" defaultCodes={ext.hazard_statements} onChange={setHazardCodes} />
+              </div>
+              <div>
+                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                  Precautionary Statements (editable)
+                </p>
+                <GhsCodePicker mode="precaution" defaultCodes={ext.precautionary_statements} onChange={setPrecautionCodes} />
+              </div>
+            </div>
+
             {/* Read-only extracted detail */}
             <div className="grid grid-cols-2 gap-4">
-              {/* H-statements */}
-              {ext.hazard_statements.length > 0 && (
-                <div>
-                  <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                    Hazard Statements ({ext.hazard_statements.length})
-                  </p>
-                  <div className="max-h-36 overflow-y-auto space-y-1 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                    {ext.hazard_statements.map((code, i) => (
-                      <p key={code} className="text-xs leading-snug text-slate-600">
-                        <span className="font-bold text-rose-700">{code}</span>
-                        {ext.hazard_statement_texts[i] ? ` ${ext.hazard_statement_texts[i]}` : ""}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* P-statements */}
-              {ext.precautionary_statements.length > 0 && (
-                <div>
-                  <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                    Precautionary Statements ({ext.precautionary_statements.length})
-                  </p>
-                  <div className="max-h-36 overflow-y-auto space-y-1 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                    {ext.precautionary_statements.map((code, i) => (
-                      <p key={code} className="text-xs leading-snug text-slate-600">
-                        <span className="font-bold text-blue-700">{code}</span>
-                        {ext.precautionary_statement_texts[i] ? ` ${ext.precautionary_statement_texts[i]}` : ""}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* PPE */}
               {ext.recommended_ppe.length > 0 && (
                 <div>

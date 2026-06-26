@@ -12,6 +12,7 @@ import { KIND_DEFS, extractRows, type RowKind } from "@/lib/ai/extractDocuments"
 import { generateStructuredJson } from "@/lib/ai/provider";
 import type { Severity, IncidentType, CapaStatus, AuditStatus, DocumentStatus } from "@/lib/constants";
 import { COMPLIANCE_STATUS_META, type ComplianceStatus, WASTE_CLASSIFICATIONS } from "@/lib/constants";
+import { STORAGE_CLASSES, PPE_TYPES } from "@/lib/chemicalRefData";
 import type { CapaSourceType, AuditType, Incident, RiskAssessment, WasteStream, Equipment, LegalRequirement, TrainingRecord, OshaCase, AiFinding, Chemical, AiAnalysisOutput, BiosafetyLab, BiohazardAgent, ErgonomicsWorkstation, ErgonomicsJobTask } from "@/lib/types";
 import { analyzeChemical, analyzeComplianceGap, analyzeTraining, buildPredictabilityForecast } from "@/lib/ai/engine";
 import { validateRecordInBackground } from "@/lib/csp/repo";
@@ -254,6 +255,9 @@ export async function updateIncident(id: string, formData: FormData) {
 // Parse free-typed GHS hazard codes ("H225, H319 H350") into a clean H-code array.
 // The platform stores H-codes in both ghs_classes and hazard_statements; the
 // dashboard/PPE/training logic maps these codes to hazard classes.
+const STORAGE_CLASS_CODES = new Set(STORAGE_CLASSES.map((s) => s.code));
+const PPE_CODES = new Set(PPE_TYPES.map((p) => p.code));
+
 function parseHazardCodes(raw: string | null): string[] {
   if (!raw) return [];
   return [...new Set(
@@ -261,9 +265,36 @@ function parseHazardCodes(raw: string | null): string[] {
   )];
 }
 
+// Parse free-typed/selected P-codes ("P210, P301+P310") into a clean array.
+// Splits on commas/semicolons/whitespace but preserves the '+' inside combined
+// P-codes (e.g. "P301+P310"). Stored in chemical_inventory.precautionary_statements.
+function parsePrecautionCodes(raw: string | null): string[] {
+  if (!raw) return [];
+  return [...new Set(
+    raw.split(/[\s,;]+/).map((s) => s.trim().toUpperCase()).filter((s) => /^P\d{3}/.test(s)),
+  )];
+}
+
+// Validate the selected storage-class code against the reference list; null if blank/unknown.
+function parseStorageClass(raw: string | null): string | null {
+  const v = (raw ?? "").trim().toUpperCase();
+  return STORAGE_CLASS_CODES.has(v) ? v : null;
+}
+
+// Parse selected PPE codes into a clean array of known PPE codes.
+function parsePpeCodes(raw: string | null): string[] {
+  if (!raw) return [];
+  return [...new Set(
+    raw.split(/[\s,;]+/).map((s) => s.trim().toUpperCase()).filter((s) => PPE_CODES.has(s)),
+  )];
+}
+
 export async function addChemical(_prev: unknown, formData: FormData) {
-  const hazards     = parseHazardCodes(formData.get("hazard_codes") as string);
-  const isScheduled = (formData.get("is_scheduled") as string) === "true";
+  const hazards      = parseHazardCodes(formData.get("hazard_codes") as string);
+  const precautions  = parsePrecautionCodes(formData.get("precaution_codes") as string);
+  const storageClass = parseStorageClass(formData.get("storage_class") as string);
+  const ppe          = parsePpeCodes(formData.get("recommended_ppe") as string);
+  const isScheduled  = (formData.get("is_scheduled") as string) === "true";
   const scheduleRef = (formData.get("schedule_ref") as string)?.trim() || null;
   const sdsExpiry   = (formData.get("sds_expiry") as string) || null;
   if (!MOCK_MODE) {
@@ -277,9 +308,12 @@ export async function addChemical(_prev: unknown, formData: FormData) {
         cas_number: (formData.get("cas_number") as string) || null,
         ghs_classes: hazards as Chemical["ghs_classes"],
         hazard_statements: hazards,
+        precautionary_statements: precautions,
         quantity: parseFloat(formData.get("quantity") as string) || 0,
         unit: (formData.get("unit") as string) || "L",
         storage_location: (formData.get("storage_location") as string) || "",
+        storage_class: storageClass,
+        recommended_ppe: ppe,
         supplier: (formData.get("supplier") as string) || null,
         sds_expiry: sdsExpiry,
         is_scheduled: isScheduled,
@@ -306,7 +340,7 @@ export async function addChemical(_prev: unknown, formData: FormData) {
       sds_url: null,
       sds_expiry: sdsExpiry,
       hazard_statements: hazards,
-      precautionary_statements: [],
+      precautionary_statements: precautions,
       is_scheduled: isScheduled,
       schedule_ref: scheduleRef,
       supplier: (formData.get("supplier") as string) || null,
@@ -328,6 +362,12 @@ export async function updateChemical(id: string, formData: FormData) {
   // Hazard fields are optional on edit — only overwrite when the form supplied them.
   const hasHazards  = formData.has("hazard_codes");
   const hazards     = parseHazardCodes(formData.get("hazard_codes") as string);
+  const hasPrecautions = formData.has("precaution_codes");
+  const precautions = parsePrecautionCodes(formData.get("precaution_codes") as string);
+  const hasStorageClass = formData.has("storage_class");
+  const storageClass = parseStorageClass(formData.get("storage_class") as string);
+  const hasPpe = formData.has("recommended_ppe");
+  const ppe = parsePpeCodes(formData.get("recommended_ppe") as string);
   const isScheduled = (formData.get("is_scheduled") as string) === "true";
   const scheduleRef = (formData.get("schedule_ref") as string)?.trim() || null;
   const sdsExpiry   = (formData.get("sds_expiry") as string) || null;
@@ -349,6 +389,9 @@ export async function updateChemical(id: string, formData: FormData) {
           schedule_ref:      scheduleRef,
           sds_expiry:        sdsExpiry,
         } : {}),
+        ...(hasPrecautions ? { precautionary_statements: precautions } : {}),
+        ...(hasStorageClass ? { storage_class: storageClass } : {}),
+        ...(hasPpe ? { recommended_ppe: ppe } : {}),
         updated_at:       now,
       }).eq("id", id).eq("tenant_id", ctx.tenantId);
     }
@@ -371,6 +414,7 @@ export async function updateChemical(id: string, formData: FormData) {
           schedule_ref:      scheduleRef,
           sds_expiry:        sdsExpiry,
         } : {}),
+        ...(hasPrecautions ? { precautionary_statements: precautions } : {}),
         updated_at:       now,
       };
     }

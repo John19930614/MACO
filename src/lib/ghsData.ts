@@ -315,3 +315,21 @@ export function getHText(code: string): string {
 export function getPText(code: string): string {
   return P_TEXTS[code.trim()] ?? "";
 }
+
+// GHS pictogram code → human-readable name (OSHA HCS / GHS Annex). GHS09 is the
+// environmental pictogram, which is supplemental (not mandatory) under OSHA HazCom.
+export const PICTOGRAM_NAMES: Record<string, string> = {
+  GHS01: "Exploding Bomb",
+  GHS02: "Flame",
+  GHS03: "Flame Over Circle",
+  GHS04: "Gas Cylinder",
+  GHS05: "Corrosion",
+  GHS06: "Skull & Crossbones",
+  GHS07: "Exclamation Mark",
+  GHS08: "Health Hazard",
+  GHS09: "Environment",
+};
+
+export function getPictogramName(code: string): string {
+  return PICTOGRAM_NAMES[code.trim().toUpperCase()] ?? code;
+}

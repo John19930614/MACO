@@ -173,6 +173,8 @@ export interface Chemical {
   quantity: number;
   unit: string;                      // kg, L, t, m³
   storage_location: string;
+  storage_class?: string | null;     // GHS storage-class code (see STORAGE_CLASSES)
+  recommended_ppe?: string[];        // PPE codes (see PPE_TYPES)
   sds_url: string | null;            // Safety Data Sheet link
   sds_expiry: string | null;         // SDS review date
   hazard_statements: string[];       // H-statements (H200-H420)
