@@ -14,6 +14,7 @@ export const H_TEXTS: Record<string, string> = {
   H221: "Flammable gas",
   H222: "Extremely flammable aerosol",
   H223: "Flammable aerosol",
+  H229: "Pressurized container: may burst if heated",
   // Flammable liquids
   H224: "Extremely flammable liquid and vapour",
   H225: "Highly flammable liquid and vapour",
@@ -282,7 +283,7 @@ const DANGER_H = new Set([
 
 // H-codes that trigger WARNING signal word
 const WARNING_H = new Set([
-  "H221","H223","H226","H227","H228",
+  "H221","H223","H226","H227","H228","H229",
   "H242","H252","H261","H272",
   "H280","H281",
   "H302","H303","H304",

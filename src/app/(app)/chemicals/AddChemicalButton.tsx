@@ -19,8 +19,10 @@ export function AddChemicalButton() {
   const [name, setName] = useState("");
   const [cas, setCas] = useState("");
   const [storageClass, setStorageClass] = useState("");
+  const [isScheduled, setIsScheduled] = useState("false");
+  const [scheduleRef, setScheduleRef] = useState("");
   // Prefill for the code/PPE pickers; bumping prefillKey remounts them with new defaults.
-  const [prefill, setPrefill] = useState<{ hazards: string[]; ppe: string[] }>({ hazards: [], ppe: [] });
+  const [prefill, setPrefill] = useState<{ hazards: string[]; precautions: string[]; ppe: string[] }>({ hazards: [], precautions: [], ppe: [] });
   const [prefillKey, setPrefillKey] = useState(0);
   const [filledFrom, setFilledFrom] = useState<string | null>(null);
 
@@ -28,7 +30,9 @@ export function AddChemicalButton() {
     setName(chem.name);
     setCas(chem.cas);
     setStorageClass(chem.storageClass);
-    setPrefill({ hazards: chem.hazardCodes, ppe: chem.ppe });
+    setIsScheduled(chem.scheduled ? "true" : "false");
+    setScheduleRef(chem.scheduleRef ?? "");
+    setPrefill({ hazards: chem.hazardCodes, precautions: chem.precautionCodes, ppe: chem.ppe });
     setPrefillKey((k) => k + 1);
     setFilledFrom(chem.name);
   }
@@ -37,7 +41,9 @@ export function AddChemicalButton() {
     setName("");
     setCas("");
     setStorageClass("");
-    setPrefill({ hazards: [], ppe: [] });
+    setIsScheduled("false");
+    setScheduleRef("");
+    setPrefill({ hazards: [], precautions: [], ppe: [] });
     setPrefillKey((k) => k + 1);
     setFilledFrom(null);
   }
@@ -127,7 +133,7 @@ export function AddChemicalButton() {
             </Field>
 
             <Field label="Precautionary Codes (P-statements)">
-              <GhsCodePicker key={`p-${prefillKey}`} name="precaution_codes" mode="precaution" />
+              <GhsCodePicker key={`p-${prefillKey}`} name="precaution_codes" mode="precaution" defaultCodes={prefill.precautions} />
             </Field>
 
             {filledFrom && (
@@ -139,7 +145,7 @@ export function AddChemicalButton() {
 
             <div className="grid grid-cols-2 gap-4">
               <Field label="Scheduled / Regulated">
-                <Select name="is_scheduled" defaultValue="false">
+                <Select name="is_scheduled" value={isScheduled} onChange={(e) => setIsScheduled(e.target.value)}>
                   <option value="false">No</option>
                   <option value="true">Yes — regulated substance</option>
                 </Select>
@@ -150,7 +156,7 @@ export function AddChemicalButton() {
             </div>
 
             <Field label="Schedule Reference">
-              <Input name="schedule_ref" placeholder="e.g. OSHA 29 CFR 1910.1048" />
+              <Input name="schedule_ref" value={scheduleRef} onChange={(e) => setScheduleRef(e.target.value)} placeholder="e.g. OSHA 29 CFR 1910.1048" />
             </Field>
           </div>
           <SubmitRow onClose={handleClose} submitting={pending} />
