@@ -232,6 +232,7 @@ function SignOffForm({ run }: { run: CspValidationRunRow }) {
           <option value="" disabled>Decision…</option>
           <option value="approved">Approve</option>
           <option value="approved_with_changes">Approve with changes</option>
+          <option value="returned_for_correction">Return for correction</option>
           <option value="rejected">Reject</option>
           <option value="escalated">Escalate</option>
         </select>

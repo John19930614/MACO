@@ -23,7 +23,7 @@ export type CspValidationStatus =
 
 export type CspReviewStatus =
   | "not_required" | "pending" | "approved" | "approved_with_changes"
-  | "rejected" | "escalated" | "closed";
+  | "rejected" | "escalated" | "closed" | "returned_for_correction";
 
 export type CspFindingCategory =
   | "missing_field" | "evidence_gap" | "regulatory_trigger"
@@ -218,6 +218,8 @@ export interface CspMemoryLesson {
   source: "human_decision" | "manual";
   times_applied: number;
   active: boolean;
+  expiration_date: string | null;
+  review_date: string | null;
   created_at: string;
 }
 

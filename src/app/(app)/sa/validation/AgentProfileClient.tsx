@@ -349,7 +349,7 @@ function MemoryRow({ m, onToggle, onDelete }: { m: CspMemoryLesson; onToggle: ()
           <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-500">{m.source.replace(/_/g, " ")}</span>
         </div>
         <p className="mt-1 text-sm text-slate-200">{m.lesson}</p>
-        <p className="mt-0.5 text-[11px] text-slate-500">weight {m.weight} · applied {m.times_applied}× · {new Date(m.created_at).toLocaleDateString()}</p>
+        <p className="mt-0.5 text-[11px] text-slate-500">weight {m.weight} · applied {m.times_applied}× · {new Date(m.created_at).toLocaleDateString()}{m.expiration_date ? ` · expires ${new Date(m.expiration_date).toLocaleDateString()}` : ""}</p>
       </div>
       <div className="flex shrink-0 items-center gap-1">
         <button onClick={onToggle} title={m.active ? "Disable" : "Enable"} className="rounded p-1.5 text-slate-400 hover:bg-white/5 hover:text-white">

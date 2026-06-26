@@ -19,13 +19,13 @@ export async function submitCspReviewDecision(_prev: unknown, formData: FormData
   const tenantId = String(formData.get("tenant_id") || "");
   const reviewerName = String(formData.get("reviewer_name") || "").trim();
   const decision = String(formData.get("decision") || "") as
-    "approved" | "approved_with_changes" | "rejected" | "escalated";
+    "approved" | "approved_with_changes" | "rejected" | "escalated" | "returned_for_correction";
   const decisionSummary = String(formData.get("decision_summary") || "").trim();
 
   if (!runId || !tenantId) return { ok: false, error: "Missing run reference." };
   if (!reviewerName) return { ok: false, error: "Reviewer name is required for sign-off." };
   if (!decisionSummary) return { ok: false, error: "A decision summary is required." };
-  if (!["approved", "approved_with_changes", "rejected", "escalated"].includes(decision)) {
+  if (!["approved", "approved_with_changes", "rejected", "escalated", "returned_for_correction"].includes(decision)) {
     return { ok: false, error: "Select a decision." };
   }
 

@@ -109,6 +109,8 @@ function mapMemory(r: Record<string, unknown>): CspMemoryLesson {
     source: r.source as CspMemoryLesson["source"],
     times_applied: Number(r.times_applied) || 0,
     active: !!r.active,
+    expiration_date: (r.expiration_date as string) ?? null,
+    review_date: (r.review_date as string) ?? null,
     created_at: String(r.created_at),
   };
 }
@@ -574,7 +576,7 @@ export interface ReviewDecisionInput {
   tenantId: string;
   reviewerName: string;
   reviewerCredentials: string;
-  decision: Extract<CspReviewStatus, "approved" | "approved_with_changes" | "rejected" | "escalated">;
+  decision: Extract<CspReviewStatus, "approved" | "approved_with_changes" | "rejected" | "escalated" | "returned_for_correction">;
   decisionSummary: string;
   reviewerNotes?: string;
   signatureText: string;
@@ -601,11 +603,13 @@ export async function recordReviewDecision(input: ReviewDecisionInput): Promise<
   }).select("id").single();
   if (decErr) return { ok: false, error: decErr.message };
 
-  const reviewStatus: CspReviewStatus = input.decision === "escalated" ? "escalated" : "closed";
+  const stillOpen = input.decision === "escalated" || input.decision === "returned_for_correction";
+  const reviewStatus: CspReviewStatus = input.decision === "escalated" ? "escalated"
+    : input.decision === "returned_for_correction" ? "returned_for_correction" : "closed";
   await client.from("csp_validation_runs").update({ human_review_status: input.decision }).eq("id", input.runId);
   if (input.queueId) {
     await client.from("csp_review_queue")
-      .update({ status: reviewStatus, closed_at: input.decision === "escalated" ? null : now })
+      .update({ status: reviewStatus, closed_at: stillOpen ? null : now })
       .eq("id", input.queueId);
   }
 
@@ -664,10 +668,16 @@ async function learnFromDecision(client: DB, input: ReviewDecisionInput, decisio
   const who = `${input.reviewerCredentials ? input.reviewerCredentials + " " : ""}${input.reviewerName}`.trim();
   const lesson = `Reviewer ${who} ${verb} a ${String(run.record_type).replace(/_/g, " ")}${category ? ` flagged for ${category.replace(/_/g, " ")}` : ""}.`;
 
+  // Every lesson must carry an expiration + review date (spec §8): 1-year life,
+  // 6-month review, so learned behaviour is revisited, never permanent.
+  const day = 86_400_000;
+  const expiration = new Date(Date.now() + 365 * day).toISOString().slice(0, 10);
+  const review = new Date(Date.now() + 182 * day).toISOString().slice(0, 10);
   await client.from("csp_agent_memory").insert({
     tenant_id: null, scope: "global", record_type: run.record_type, finding_category: category,
     directive, lesson, weight: 3, source: "human_decision",
     source_run_id: input.runId, source_decision_id: decisionId, created_by: input.reviewerName,
+    expiration_date: expiration, review_date: review,
   });
 }
 

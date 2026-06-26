@@ -51,6 +51,14 @@ const RISK_SCORE: Record<CspRiskLevel, number> = {
   low: 15, medium: 40, high: 70, critical: 88, sif_potential: 95, idlh_imminent_danger: 100,
 };
 
+/**
+ * Per-risk auto-accept confidence thresholds (spec §5). null = never eligible
+ * for auto-validation — high/critical/SIF/IDLH always require a human.
+ */
+const RISK_AUTOACCEPT_THRESHOLD: Record<CspRiskLevel, number | null> = {
+  low: 85, medium: 90, high: null, critical: null, sif_potential: null, idlh_imminent_danger: null,
+};
+
 /** Which mandatory-review condition tokens are currently satisfied by the signals. */
 function matchedMandatoryConditions(conditions: string[], s: CspSignals): string[] {
   const has = (cond: string): boolean => {
@@ -190,8 +198,10 @@ function evaluate(
   let memoryEscalate = false;
   const guard = (k: string) => ctx?.guardrails?.[k];
   if (ctx && guard("apply_learned_memory")?.enabled) {
+    const today = new Date().toISOString().slice(0, 10);
     for (const m of ctx.memory) {
       if (!m.active) continue;
+      if (m.expiration_date && m.expiration_date < today) continue; // expired lessons are ignored
       if (m.record_type && m.record_type !== input.record_type) continue;
       if (m.finding_category && !findings.some((f) => f.finding_category === m.finding_category)) continue;
       const w = Number(m.weight) || 0;
@@ -244,11 +254,15 @@ function evaluate(
   const belowMinConf = minConf > 0 && confidence < minConf;
   // The evidence rule can forbid autonomy for a record type outright (e.g. incidents).
   const evidenceForbidsAutonomy = evidenceRule ? evidenceRule.autonomy_allowed === false : false;
+  // Per-risk confidence threshold (spec §5): high/critical never auto-accept;
+  // low needs ≥85%, medium ≥90%.
+  const riskThreshold = RISK_AUTOACCEPT_THRESHOLD[riskLevel];
+  const belowRiskThreshold = riskThreshold === null || confidence < riskThreshold;
 
   const human_review_required =
     blockerHit || mandatoryHit || recordableHit || memoryEscalate ||
     confidence < LOW_CONFIDENCE || highRisk ||
-    lacksQual || belowMinConf || evidenceForbidsAutonomy;
+    lacksQual || belowMinConf || evidenceForbidsAutonomy || belowRiskThreshold;
 
   const reasons: string[] = [];
   if (evidenceForbidsAutonomy) reasons.push(`${input.record_type.replace(/_/g, " ")} records are not eligible for AI auto-validation`);
@@ -256,8 +270,10 @@ function evaluate(
   if (mandatoryHit) reasons.push(`mandatory condition(s): ${mandatory.join(", ")}`);
   if (recordableHit) reasons.push("possible OSHA recordable/reportable");
   if (memoryEscalate) reasons.push("a learned lesson flagged this pattern");
-  if (confidence < LOW_CONFIDENCE) reasons.push(`confidence ${confidence}% below ${LOW_CONFIDENCE}% threshold`);
   if (highRisk) reasons.push(`${riskLevel.replace(/_/g, " ")} risk level`);
+  if (belowRiskThreshold && !highRisk) reasons.push(riskThreshold === null
+    ? `${riskLevel.replace(/_/g, " ")} risk is never eligible for auto-validation`
+    : `confidence ${confidence}% below the ${riskLevel} threshold (${riskThreshold}%)`);
   if (lacksQual) reasons.push(`no qualification grants autonomy for ${input.record_type.replace(/_/g, " ")}`);
   if (belowMinConf) reasons.push(`confidence below autonomy minimum ${minConf}%`);
   const escalate = triggered.some((t) => t.action === "immediate_escalation");
