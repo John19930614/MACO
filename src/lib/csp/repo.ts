@@ -130,14 +130,15 @@ function mapEvidenceRule(r: Record<string, unknown>): CspEvidenceRule {
 
 /** Load everything the validator needs to apply governance. Empty = no DB / pre-migration. */
 export async function loadAgentContext(client: DB | null): Promise<CspAgentContext> {
-  const empty: CspAgentContext = { guardrails: {}, qualifications: [], memory: [], blockers: [] };
+  const empty: CspAgentContext = { guardrails: {}, qualifications: [], memory: [], blockers: [], evidenceRules: [] };
   if (!client) return empty;
   try {
-    const [g, q, m, b] = await Promise.all([
+    const [g, q, m, b, e] = await Promise.all([
       client.from("csp_guardrails").select("*"),
       client.from("csp_agent_qualifications").select("*").eq("status", "active"),
       client.from("csp_agent_memory").select("*").eq("active", true),
       client.from("ehs_autonomy_blockers").select("*").eq("active", true),
+      client.from("ehs_evidence_rules").select("*").eq("active", true),
     ]);
     const guardrails: Record<string, CspGuardrail> = {};
     for (const r of g.data ?? []) {
@@ -151,6 +152,7 @@ export async function loadAgentContext(client: DB | null): Promise<CspAgentConte
       qualifications: (q.data ?? []).map(mapQual),
       memory: (m.data ?? []).map(mapMemory),
       blockers: (b.data ?? []).map(mapBlocker),
+      evidenceRules: (e.data ?? []).map(mapEvidenceRule),
     };
   } catch {
     return empty;
@@ -241,18 +243,26 @@ function incidentToInput(row: Record<string, unknown>): CspValidationInput {
     source_id: str(row.id),
     record_type: "incident",
     module_name: "Incident Management",
+    // Keyed to the ehs_evidence_rules 'incident' field names. Fields the platform
+    // doesn't yet capture are left empty so the agent flags them (and routes to a
+    // human) — exactly the spec's intent for incidents (never auto-validated).
     fields: {
       title: str(row.title),
       severity: sev,
-      event_date: str(row.occurred_at),
+      date_time: str(row.occurred_at),
       location: str(row.location),
-      person_involved: str(row.injured_party),
-      description: str(row.description),
-      immediate_action: str(row.immediate_actions),
-      injury_or_illness: str(row.injuries_description) || (["injury", "illness"].includes(incidentType) ? incidentType : ""),
-      treatment_level: med === true ? "medical_treatment_beyond_first_aid" : med === false ? "first_aid_or_none" : "",
-      work_relatedness: "work_related", // workplace incident records are work-related by construction
-      corrective_action: str(row.root_cause) || str(row.immediate_actions),
+      contractor_or_company: "",
+      affected_person: str(row.injured_party),
+      event_description: str(row.description),
+      injury_or_illness_status: str(row.injuries_description) || (["injury", "illness"].includes(incidentType) ? incidentType : ""),
+      first_aid_or_medical_treatment: med === true ? "medical_treatment_beyond_first_aid" : med === false ? "first_aid_or_none" : "",
+      witnesses: "",
+      immediate_corrective_action: str(row.immediate_actions),
+      root_cause: str(row.root_cause),
+      final_corrective_action: "",
+      supervisor_review: "",
+      safety_review: "",
+      human_recordability_decision: "",
     },
     evidence_count: 0,
     signals,
@@ -268,19 +278,19 @@ function auditFindingToInput(row: Record<string, unknown>, siteId: string | null
     source_id: str(row.id),
     record_type: "audit_finding",
     module_name: "Audit Management",
+    // Keyed to the ehs_evidence_rules 'audit_finding' field names.
     fields: {
       title: str(row.title),
       severity: sev,
-      finding_description: str(row.description),
-      risk_level: sev,
-      responsible_party: row.owner_id ? str(row.owner_id) : "",
-      corrective_action: row.capa_id ? "linked_capa" : "",
-      due_date: str(row.due_date),
-      // audit_date / auditor / location come from the parent audit; left for the
-      // reviewer to confirm (flagged as missing if absent).
-      audit_date: "",
-      auditor: "",
+      finding_type: str(row.category) || str(row.title),
       location: "",
+      contractor_or_trade: "",
+      hazard_category: str(row.category),
+      description: str(row.description),
+      corrective_action_owner: row.owner_id ? str(row.owner_id) : "",
+      due_date: str(row.due_date),
+      closeout_evidence: row.capa_id ? "linked_capa" : "",
+      reviewer_approval: "",
     },
     evidence_count: 0,
     signals: {
@@ -383,7 +393,8 @@ export async function validateRecordInBackground(
     const [requirement, rules, ctx] = await Promise.all([
       loadRequirement(client, recordType), loadRules(client), loadAgentContext(client),
     ]);
-    const result = await validateEhsRecord(input, requirement, rules, { enrich: opts.enrich, ctx });
+    const evidenceRule = ctx.evidenceRules.find((e) => e.record_type === input.record_type);
+    const result = await validateEhsRecord(input, requirement, rules, { enrich: opts.enrich, ctx, evidenceRule });
     return await persistRun(client, input, result);
   } catch (err) {
     if (process.env.NODE_ENV !== "production") console.error("[csp] background validation failed", err);
@@ -410,13 +421,14 @@ export async function backfillValidations(opts: { enrich?: boolean; limit?: numb
   const [requirement, rules, ctx] = await Promise.all([
     loadRequirement(client, "incident"), loadRules(client), loadAgentContext(client),
   ]);
+  const evidenceRule = ctx.evidenceRules.find((e) => e.record_type === "incident");
   let created = 0, skipped = 0;
   for (const row of incidents) {
     if (done.has(row.id)) { skipped++; continue; }
     const input = incidentToInput(row as Record<string, unknown>);
     if (!input.tenant_id || !input.source_id) { skipped++; continue; }
     try {
-      const result = await validateEhsRecord(input, requirement, rules, { enrich: opts.enrich, ctx });
+      const result = await validateEhsRecord(input, requirement, rules, { enrich: opts.enrich, ctx, evidenceRule });
       const id = await persistRun(client, input, result);
       if (id) created++; else skipped++;
     } catch { skipped++; }

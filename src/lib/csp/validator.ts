@@ -24,7 +24,7 @@ import { CSP_AGENT_VERSION, CSP_POSITIONING } from "./defaults";
 import type {
   CspValidationInput, CspValidationResult, CspRecordRequirement, CspRule,
   CspFinding, CspRiskLevel, CspValidationStatus, CspSignals, CspAgentContext,
-  CspTriggeredBlocker,
+  CspTriggeredBlocker, CspEvidenceRule,
 } from "./types";
 
 /** Below this 0–100 confidence, a record is escalated to human review. */
@@ -80,22 +80,44 @@ function evaluate(
   requirement: CspRecordRequirement | undefined,
   rules: CspRule[],
   ctx?: CspAgentContext,
+  evidenceRule?: CspEvidenceRule,
 ): CspValidationResult {
   const findings: CspFinding[] = [];
   const severity = typeof input.fields.severity === "string" ? input.fields.severity : undefined;
   const riskLevel = deriveRiskLevel(severity, input.signals);
 
-  // 1 — Required-field completeness.
-  const required = requirement?.required_fields ?? [];
+  // 1 — Required-field completeness, driven by the ehs_evidence_rules for this
+  // record type (falls back to the built-in requirement set). One consolidated
+  // finding rather than one per field.
+  const required = (evidenceRule?.required_fields?.length ? evidenceRule.required_fields : requirement?.required_fields) ?? [];
   const missing_fields = required.filter((f) => isEmpty(input.fields[f]));
-  for (const f of missing_fields) {
+  if (missing_fields.length > 0) {
     findings.push({
-      finding_title: `Missing required field: ${f.replace(/_/g, " ")}`,
-      finding_description: `The ${input.module_name} record is missing "${f.replace(/_/g, " ")}", which is required for a complete, defensible record.`,
+      finding_title: `Missing ${missing_fields.length} required field${missing_fields.length === 1 ? "" : "s"}`,
+      finding_description: `Required evidence not present: ${missing_fields.map((f) => f.replace(/_/g, " ")).join(", ")}.`,
       finding_category: "missing_field",
       risk_level: "medium",
       requires_corrective_action: false,
-      requires_human_review: false,
+      requires_human_review: true,
+    });
+  }
+
+  // 1b — Conflicting-information detection.
+  const conflicts: string[] = [];
+  if (input.signals.medical_treatment_beyond_first_aid && isEmpty(input.fields.injury_or_illness_status))
+    conflicts.push("medical treatment indicated but no injury/illness described");
+  if ((input.signals.lost_time_days ?? 0) > 0 && input.signals.medical_treatment_beyond_first_aid === false)
+    conflicts.push("lost-time days recorded but treatment marked first-aid only");
+  if (severity === "critical" && input.record_type === "near_miss")
+    conflicts.push("critical severity on a near-miss record");
+  if (conflicts.length > 0) {
+    findings.push({
+      finding_title: "Conflicting information in the record",
+      finding_description: `${conflicts.join("; ")}.`,
+      finding_category: "inconsistency",
+      risk_level: "medium",
+      requires_corrective_action: false,
+      requires_human_review: true,
     });
   }
 
@@ -198,6 +220,7 @@ function evaluate(
   if (sg.repeat_finding) fire("repeat_issue");
   if (input.record_type === "corrective_action" && !isEmpty(input.fields.completion_date) && isEmpty(input.fields.verification_evidence)) fire("corrective_action_closed_without_proof");
   if (missing_fields.length > 0) fire("missing_required_evidence");
+  if (conflicts.length > 0) fire("conflicting_information");
   const blockerHit = triggered.length > 0;
 
   // 5 — Human-review decision (the model never overrides an escalation).
@@ -219,13 +242,16 @@ function evaluate(
   const minConf = minConfGuard?.enabled ? Number(minConfGuard.threshold) || 0 : 0;
   const lacksQual = requiresQual && !isQualified;
   const belowMinConf = minConf > 0 && confidence < minConf;
+  // The evidence rule can forbid autonomy for a record type outright (e.g. incidents).
+  const evidenceForbidsAutonomy = evidenceRule ? evidenceRule.autonomy_allowed === false : false;
 
   const human_review_required =
     blockerHit || mandatoryHit || recordableHit || memoryEscalate ||
     confidence < LOW_CONFIDENCE || highRisk ||
-    lacksQual || belowMinConf;
+    lacksQual || belowMinConf || evidenceForbidsAutonomy;
 
   const reasons: string[] = [];
+  if (evidenceForbidsAutonomy) reasons.push(`${input.record_type.replace(/_/g, " ")} records are not eligible for AI auto-validation`);
   if (blockerHit) reasons.push(`autonomy blocker(s): ${triggered.map((t) => t.label).join("; ")}`);
   if (mandatoryHit) reasons.push(`mandatory condition(s): ${mandatory.join(", ")}`);
   if (recordableHit) reasons.push("possible OSHA recordable/reportable");
@@ -261,7 +287,7 @@ function evaluate(
     citations_used: [...new Set(citations_used)],
     evidence_reviewed: input.evidence_count > 0 ? [`${input.evidence_count} attachment(s)`] : [],
     missing_fields,
-    inconsistencies_found: [],
+    inconsistencies_found: conflicts,
     regulatory_triggers: [...new Set(regulatory_triggers)],
     ai_summary: summary,
     ai_reasoning_summary: `Checked ${rules_checked.length} rule(s) and ${required.length} required field(s). ${missing_fields.length} missing, ${regulatory_triggers.length} regulatory trigger(s).${appliedLessons.length ? ` Applied ${appliedLessons.length} learned lesson(s): ${appliedLessons.join("; ")}.` : ""}`,
@@ -314,9 +340,9 @@ export async function validateEhsRecord(
   input: CspValidationInput,
   requirement: CspRecordRequirement | undefined,
   rules: CspRule[],
-  opts: { enrich?: boolean; ctx?: CspAgentContext } = {},
+  opts: { enrich?: boolean; ctx?: CspAgentContext; evidenceRule?: CspEvidenceRule } = {},
 ): Promise<CspValidationResult> {
-  const base = evaluate(input, requirement, rules, opts.ctx);
+  const base = evaluate(input, requirement, rules, opts.ctx, opts.evidenceRule);
 
   // enrich defaults to false so inline save hooks stay instant; the review
   // panel's "re-run with AI" passes enrich:true for the model narrative.

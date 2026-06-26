@@ -285,6 +285,7 @@ export interface CspAgentContext {
   qualifications: CspQualification[];
   memory: CspMemoryLesson[];
   blockers: CspAutonomyBlocker[];
+  evidenceRules: CspEvidenceRule[];
 }
 
 // ── Daily agent standup (GUS × EHS Validation Agent) ──────────────────────────

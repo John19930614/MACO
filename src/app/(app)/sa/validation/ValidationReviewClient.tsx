@@ -4,20 +4,37 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown, ChevronRight, ShieldCheck, AlertTriangle, FileWarning,
-  CheckCircle2, XCircle, Bot, Sparkles, PenLine, Hash,
+  CheckCircle2, XCircle, Bot, Sparkles, PenLine, Hash, Download,
 } from "lucide-react";
 import { submitCspReviewDecision, rerunCspValidation } from "@/lib/actions/csp";
 import type { CspValidationRunRow, CspValidationStatus, CspRiskLevel } from "@/lib/csp/types";
 
 const STATUS_META: Record<CspValidationStatus, { label: string; cls: string }> = {
-  accepted: { label: "Accepted", cls: "bg-emerald-900/50 text-emerald-300" },
-  accepted_with_minor_corrections: { label: "Minor corrections", cls: "bg-teal-900/50 text-teal-300" },
-  rejected_incomplete: { label: "Incomplete", cls: "bg-amber-900/50 text-amber-300" },
-  needs_human_review: { label: "Needs review", cls: "bg-blue-900/50 text-blue-300" },
-  potential_regulatory_issue: { label: "Regulatory issue", cls: "bg-orange-900/50 text-orange-300" },
-  potential_recordable_or_reportable: { label: "Possible recordable", cls: "bg-red-900/50 text-red-300" },
-  system_error: { label: "System error", cls: "bg-slate-800 text-slate-300" },
+  accepted: { label: "Auto-Validated", cls: "bg-emerald-900/50 text-emerald-300" },
+  accepted_with_minor_corrections: { label: "Auto-Validated (minor)", cls: "bg-teal-900/50 text-teal-300" },
+  rejected_incomplete: { label: "Missing Evidence", cls: "bg-amber-900/50 text-amber-300" },
+  needs_human_review: { label: "Needs Human Review", cls: "bg-blue-900/50 text-blue-300" },
+  potential_regulatory_issue: { label: "Regulatory Review", cls: "bg-orange-900/50 text-orange-300" },
+  potential_recordable_or_reportable: { label: "Recordability Review", cls: "bg-red-900/50 text-red-300" },
+  system_error: { label: "System Error", cls: "bg-slate-800 text-slate-300" },
 };
+
+function exportRunsCsv(runs: CspValidationRunRow[]) {
+  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const header = ["date", "tenant", "record_type", "status", "risk_level", "confidence", "human_review_required", "human_review_status", "blockers", "missing_fields", "decision"];
+  const rows = runs.map((r) => [
+    new Date(r.created_at).toISOString(), r.tenant_name, r.record_type, r.validation_status, r.risk_level,
+    r.confidence_score ?? "", r.human_review_required, r.human_review_status,
+    r.autonomy_blockers_triggered.map((b) => b.key).join("|"), r.missing_fields.join("|"),
+    r.decision ? `${r.decision.decision} by ${r.decision.reviewer_name}` : "",
+  ].map(esc).join(","));
+  const csv = [header.join(","), ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `ehs-validation-log.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
 
 const RISK_CLS: Record<CspRiskLevel, string> = {
   low: "bg-slate-700 text-slate-200",
@@ -37,6 +54,15 @@ export default function ValidationReviewClient({ runs }: { runs: CspValidationRu
 
   return (
     <div className="space-y-2">
+      <div className="flex items-center justify-between pb-1">
+        <span className="text-xs text-slate-400">{runs.length} validation run(s)</span>
+        <button
+          onClick={() => exportRunsCsv(runs)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700"
+        >
+          <Download className="h-3.5 w-3.5" /> Export CSV
+        </button>
+      </div>
       {runs.map((run) => {
         const meta = STATUS_META[run.validation_status] ?? STATUS_META.system_error;
         const open = openId === run.id;

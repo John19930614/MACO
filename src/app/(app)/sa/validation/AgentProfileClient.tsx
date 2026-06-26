@@ -166,6 +166,15 @@ export default function AgentProfileClient({
         title="Memory Bank"
         subtitle="Lessons the agent learned from human sign-offs (when the matching learn-from guardrail is on). Disable or delete any lesson."
       >
+        <div className="mb-3 rounded-lg border border-violet-800/40 bg-violet-950/20 p-3 text-[11px] text-violet-200">
+          <div className="mb-1 font-semibold uppercase tracking-wide text-violet-300">What memory can never do</div>
+          <ul className="space-y-0.5">
+            <li>• Override an autonomy blocker or a human-review requirement</li>
+            <li>• Approve OSHA recordability, legal interpretation, or high-risk work</li>
+            <li>• Override regulatory requirements</li>
+            <li>• It may only adjust confidence — and every lesson is tied to a source record and a human reviewer</li>
+          </ul>
+        </div>
         <div className="space-y-2">
           {memory.map((m) => (
             <MemoryRow key={m.id} m={m}
