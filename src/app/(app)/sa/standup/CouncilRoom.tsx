@@ -165,6 +165,7 @@ export default function CouncilRoom({ meetings }: { meetings: CspMeeting[] }) {
                   <span className="cr-status" />
                 </div>
                 <div className="cr-label">{s.name}<small>{s.sub}</small></div>
+                {s.active && speaking && current && <div className="cr-bubble">{current.message}</div>}
               </div>
             );
           })}
@@ -331,8 +332,8 @@ function CouncilStyles() {
 .cr-bubble{position:absolute;left:50%;bottom:138px;width:200px;transform:translateX(-50%);background:rgba(244,250,255,.98);color:#081326;border-radius:15px;padding:10px 11px;font-size:10.5px;line-height:1.32;border:1px solid rgba(103,232,249,.55);box-shadow:0 18px 34px rgba(0,0,0,.28);z-index:9}
 .cr-bubble:after{content:"";position:absolute;left:50%;bottom:-9px;border:9px solid transparent;border-top-color:rgba(244,250,255,.98);transform:translateX(-50%)}
 .gus{left:14%;top:40%}.hse{right:14%;top:40%}
-.gateway{left:46%;top:30%}.verity{left:2%;top:55%}.compliance{right:2%;top:55%}
-.capa{left:16%;top:66%}.doc{right:16%;top:66%}.contractor{left:30%;top:74%}.prediction{right:30%;top:74%}.training{left:46%;top:78%}
+.gateway{left:46%;top:70%}.verity{left:2%;top:55%}.compliance{right:2%;top:55%}
+.capa{left:16%;top:66%}.doc{right:16%;top:66%}.contractor{left:28%;top:78%}.prediction{right:28%;top:78%}.training{left:46%;top:30%}
 .cr-aside{border:1px solid rgba(255,255,255,.12);border-radius:22px;background:linear-gradient(180deg,rgba(14,35,67,.96),rgba(5,13,28,.98));box-shadow:0 28px 90px rgba(0,0,0,.5);overflow:hidden;display:flex;flex-direction:column;max-height:620px}
 .cr-aside-head{padding:14px 16px 10px}.cr-aside-head h2{font-size:15px;margin:0}
 .cr-tabs{display:flex;gap:5px;padding:0 12px 10px;flex-wrap:wrap}
