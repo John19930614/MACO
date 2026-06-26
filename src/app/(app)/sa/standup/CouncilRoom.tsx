@@ -105,6 +105,16 @@ export default function CouncilRoom({ meetings }: { meetings: CspMeeting[] }) {
         <button className="cr-btn" onClick={() => { setStep(0); setPlaying(false); }} disabled={!exchange.length}>↻ Reset</button>
       </div>
 
+      {/* Live "now speaking" caption — fixed spot above the room, no overlap */}
+      {meeting && (
+        <div className="cr-nowline">
+          <span className={`cr-nowwho ${activeSpeaker === "GUS" ? "gus" : activeSpeaker ? "ehs" : ""}`}>
+            {activeSpeaker ? (activeSpeaker === "GUS" ? "Gus" : "EHS Agent") : "Council"}
+          </span>
+          <span className="cr-nowmsg">{current ? current.message : (meeting.shared_summary ?? "Ready — press Play to run the meeting.")}</span>
+        </div>
+      )}
+
       <div className="cr-grid">
         {/* Stage */}
         <div className="cr-stage">
@@ -257,6 +267,11 @@ function CouncilStyles() {
 .cr-btn.primary{background:linear-gradient(180deg,rgba(14,165,233,.45),rgba(37,99,235,.22));border-color:rgba(103,232,249,.6)}
 .cr-select{appearance:none;cursor:pointer}
 .cr-dot{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 13px var(--green);display:inline-block;margin-right:7px}
+.cr-nowline{display:flex;align-items:center;gap:11px;margin-bottom:14px;padding:11px 14px;border-radius:14px;background:linear-gradient(180deg,rgba(13,42,86,.72),rgba(7,18,37,.72));border:1px solid rgba(103,232,249,.3);box-shadow:0 10px 30px rgba(0,0,0,.3)}
+.cr-nowwho{flex:0 0 auto;padding:5px 11px;border-radius:999px;font-size:11px;font-weight:900;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:#dff7ff}
+.cr-nowwho.gus{background:rgba(103,232,249,.12);color:#bdf3ff;border-color:rgba(103,232,249,.42)}
+.cr-nowwho.ehs{background:rgba(167,139,250,.14);color:#dcd2ff;border-color:rgba(167,139,250,.42)}
+.cr-nowmsg{flex:1;font-size:12px;line-height:1.42;color:#e8f2ff;min-width:0}
 .cr-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px}
 @media(max-width:1100px){.cr-grid{grid-template-columns:1fr}}
 .cr-stage{position:relative;min-height:560px;border:1px solid rgba(255,255,255,.12);border-radius:24px;overflow:hidden;background:radial-gradient(circle at 18% -8%,rgba(59,130,246,.28),transparent 38%),linear-gradient(180deg,#081b35 0%,#061226 44%,#030713 100%);box-shadow:0 28px 90px rgba(0,0,0,.5);perspective:1300px}
