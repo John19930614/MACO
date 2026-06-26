@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import {
   Bot, ShieldCheck, ShieldAlert, ShieldX, RefreshCw, ChevronDown, ChevronRight,
   AlertTriangle, AlertOctagon, Info, Wrench, Settings, GitBranch, StickyNote, Download, Plus,
+  Award, GraduationCap,
 } from "lucide-react";
 import { runGatewayAgentCheck, updateGatewaySettings, addGatewayNote } from "@/lib/actions/gatewayAgent";
-import type { GatewayHealthSnapshot, FindingSeverity, GatewaySettings, GatewayVersion, GatewayNote } from "@/lib/gateway/agent";
+import type { GatewayHealthSnapshot, FindingSeverity, GatewaySettings, GatewayVersion, GatewayNote, GatewayQualification } from "@/lib/gateway/agent";
 
 function exportSnapshotsCsv(rows: GatewayHealthSnapshot[]) {
   const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -36,19 +37,22 @@ const SEV_META: Record<FindingSeverity, { cls: string; icon: React.ReactNode }> 
 };
 
 export default function GatewayAgentPanel({
-  live, history, settings, versions, notes,
+  live, history, settings, versions, notes, qualifications, positioning,
 }: {
   live: GatewayHealthSnapshot | null;
   history: GatewayHealthSnapshot[];
   settings: GatewaySettings | null;
   versions: GatewayVersion[];
   notes: GatewayNote[];
+  qualifications: GatewayQualification[];
+  positioning: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
 
   if (!live) return null;
   const meta = STATUS_META[live.overall_status];
@@ -123,6 +127,39 @@ export default function GatewayAgentPanel({
             })}
           </div>
         )}
+
+        {/* Profile & qualifications (modeled on the HSE agent) */}
+        <div className="mt-3 border-t border-slate-100 pt-3">
+          <button onClick={() => setShowProfile((v) => !v)} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700">
+            {showProfile ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />} <Award className="h-3.5 w-3.5" /> Profile &amp; qualifications ({qualifications.filter((q) => q.status === "active").length})
+          </button>
+          {showProfile && (
+            <div className="mt-2">
+              <div className="mb-2 rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-xs text-slate-600">{positioning}</div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {qualifications.map((q) => (
+                  <div key={q.id} className={`rounded-lg border px-3 py-2 ${q.status === "active" ? "border-slate-200 bg-white" : "border-slate-100 bg-slate-50 opacity-60"}`}>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {q.kind === "certification" ? <Award className="h-3.5 w-3.5 text-amber-500" /> : <GraduationCap className="h-3.5 w-3.5 text-blue-500" />}
+                      <span className="text-sm font-semibold text-slate-800">{q.title}</span>
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">{q.kind}</span>
+                      {q.grants_autonomy
+                        ? <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">flags autonomously</span>
+                        : <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">recommend only</span>}
+                    </div>
+                    {q.description && <p className="mt-0.5 text-xs text-slate-500">{q.description}</p>}
+                    {q.scope.length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {q.scope.map((s) => <span key={s} className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">{s.replace(/_/g, " ")}</span>)}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {qualifications.length === 0 && <div className="text-xs text-slate-400">No qualifications configured.</div>}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* History */}
         {history.length > 0 && (

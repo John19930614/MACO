@@ -319,3 +319,31 @@ export async function getGatewayNotes(limit = 20): Promise<GatewayNote[]> {
   const { data } = await client.from("gateway_agent_notes").select("*").order("created_at", { ascending: false }).limit(limit);
   return (data ?? []).map((r) => ({ id: r.id, note: r.note, author: r.author ?? null, created_at: r.created_at }));
 }
+
+// ── Profile + qualifications (modeled on the HSE/EHS agent) ───────────────────
+
+export const GATEWAY_AGENT_NAME = "AI Gateway Agent";
+export const GATEWAY_POSITIONING =
+  "AI Gateway Agent — monitors and helps maintain the AI Gateway. It watches the validation pipeline, the AI engine, and the review backlog, then surfaces maintenance findings and recommendations. It gates no traffic and writes no records — humans act on its recommendations.";
+
+export interface GatewayQualification {
+  id: string;
+  kind: "certification" | "skill" | "qualification";
+  code: string;
+  title: string;
+  description: string | null;
+  scope: string[];
+  grants_autonomy: boolean;
+  status: "active" | "revoked";
+}
+
+export async function getGatewayQualifications(): Promise<GatewayQualification[]> {
+  if (MOCK_MODE) return [];
+  const client = await createSupabaseServerClient();
+  if (!client) return [];
+  const { data } = await client.from("gateway_agent_qualifications").select("*").order("kind").order("title");
+  return (data ?? []).map((r) => ({
+    id: r.id, kind: r.kind, code: r.code, title: r.title, description: r.description ?? null,
+    scope: (r.scope as string[]) ?? [], grants_autonomy: !!r.grants_autonomy, status: r.status,
+  }));
+}

@@ -9,7 +9,7 @@ import {
   getRiskAssessments,
 } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
-import { runGatewayHealthCheck, getGatewayHealthSnapshots, getGatewaySettings, getGatewayVersions, getGatewayNotes } from "@/lib/gateway/agent";
+import { runGatewayHealthCheck, getGatewayHealthSnapshots, getGatewaySettings, getGatewayVersions, getGatewayNotes, getGatewayQualifications, GATEWAY_POSITIONING } from "@/lib/gateway/agent";
 import { EhsGatewayDashboard } from "./EhsGatewayDashboard";
 import GatewayAgentPanel from "./GatewayAgentPanel";
 
@@ -33,10 +33,11 @@ export default async function EhsGatewayPage() {
     runGatewayHealthCheck({ persist: false }).catch(() => null),
     getGatewayHealthSnapshots(12).catch(() => []),
   ]);
-  const [settings, versions, notes] = await Promise.all([
+  const [settings, versions, notes, qualifications] = await Promise.all([
     getGatewaySettings().catch(() => null),
     getGatewayVersions().catch(() => []),
     getGatewayNotes(20).catch(() => []),
+    getGatewayQualifications().catch(() => []),
   ]);
 
   return (
@@ -49,7 +50,7 @@ export default async function EhsGatewayPage() {
       wasteStreams={wasteStreams}
       equipment={equipment}
       riskAssessments={riskAssessments}
-      topSlot={<GatewayAgentPanel live={health} history={history} settings={settings} versions={versions} notes={notes} />}
+      topSlot={<GatewayAgentPanel live={health} history={history} settings={settings} versions={versions} notes={notes} qualifications={qualifications} positioning={GATEWAY_POSITIONING} />}
     />
   );
 }

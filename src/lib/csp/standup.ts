@@ -45,12 +45,19 @@ interface StandupData {
     overdueCapas: number;
     openIncidents: number;
   };
+  gateway: {
+    status: string;              // healthy | degraded | critical
+    gatewayOverall: string | null;
+    rejectQueue: number;
+    fail: number;
+    findingsCount: number;
+  } | null;
 }
 
 // ── Data gathering (cross-tenant; admin or service client) ────────────────────
 
 async function gather(client: DB, now: number): Promise<StandupData> {
-  const [runsRes, findingsRes, queueRes, memRes, qualRes, complianceRes, capaRes, incRes, tenantRes] =
+  const [runsRes, findingsRes, queueRes, memRes, qualRes, complianceRes, capaRes, incRes, tenantRes, gwRes] =
     await Promise.all([
       client.from("csp_validation_runs").select("validation_status, human_review_required, record_type, missing_fields").order("created_at", { ascending: false }).limit(400),
       client.from("csp_validation_findings").select("finding_category").limit(800),
@@ -61,7 +68,17 @@ async function gather(client: DB, now: number): Promise<StandupData> {
       client.from("capa_records").select("id", { count: "exact", head: true }).not("status", "in", "(closed,cancelled)").lt("due_date", todayISO(now)),
       client.from("incidents").select("id", { count: "exact", head: true }).not("status", "in", "(closed,resolved)"),
       client.from("tenants").select("id", { count: "exact", head: true }),
+      client.from("gateway_agent_health_log").select("overall_status, gateway_overall, reject_queue_count, fail_count, findings").order("checked_at", { ascending: false }).limit(1),
     ]);
+
+  const gwRow = (gwRes.data ?? [])[0];
+  const gateway = gwRow ? {
+    status: String(gwRow.overall_status),
+    gatewayOverall: (gwRow.gateway_overall as string) ?? null,
+    rejectQueue: num(gwRow.reject_queue_count),
+    fail: num(gwRow.fail_count),
+    findingsCount: Array.isArray(gwRow.findings) ? gwRow.findings.length : 0,
+  } : null;
 
   const runs = runsRes.data ?? [];
   const needsReview = runs.filter((r) => r.human_review_required).length;
@@ -120,6 +137,7 @@ async function gather(client: DB, now: number): Promise<StandupData> {
       overdueCapas: capaRes.count ?? 0,
       openIncidents: incRes.count ?? 0,
     },
+    gateway,
   };
 }
 
@@ -130,20 +148,37 @@ function nice(s: string) { return s.replace(/_/g, " "); }
 function buildMeeting(d: StandupData): {
   gus: string; ehs: string; exchange: CspMeetingExchange[];
   gaps: CspMeetingGap[]; actions: CspMeetingActionItem[]; summary: string;
-  agenda: CspAgendaItem[]; reflections: CspReflection[];
+  agenda: CspAgendaItem[]; reflections: CspReflection[]; gateway: string;
 } {
-  const { ehs, platform } = d;
+  const { ehs, platform, gateway } = d;
 
   const gus = `Platform pulse: ${platform.tenants} tenant(s)${platform.avgCompliance != null ? `, average compliance ${platform.avgCompliance}%` : ""}. ${platform.overdueCapas} overdue corrective action(s), ${platform.openIncidents} open incident(s).${platform.weakestModule ? ` Weakest module: ${nice(platform.weakestModule.module)} at ${platform.weakestModule.score}%.` : ""}`;
 
   const ehsB = `${ehs.totalRuns} record(s) validated. ${ehs.needsReview} routed to human review (${ehs.pendingReviews} still pending), ${ehs.autoAccepted} auto-accepted, ${ehs.recordable} flagged possibly recordable. Top finding: ${ehs.topFindings[0] ? `${nice(ehs.topFindings[0].category)} (${ehs.topFindings[0].count})` : "none"}. ${ehs.memoryLessons} learned lesson(s) in memory.`;
 
+  const gwB = gateway
+    ? `Gateway is ${gateway.status}${gateway.gatewayOverall ? ` (pipeline ${gateway.gatewayOverall.toUpperCase()})` : ""}. ${gateway.rejectQueue} record(s) in the reject queue, ${gateway.findingsCount} maintenance finding(s) open.`
+    : `No recent gateway health check on record — I'll run one and report next standup.`;
+
   const exchange: CspMeetingExchange[] = [];
   exchange.push({ speaker: "GUS", message: gus });
   exchange.push({ speaker: "EHS Validation Agent", message: ehsB });
+  exchange.push({ speaker: "AI Gateway Agent", message: gwB });
 
   const gaps: CspMeetingGap[] = [];
   const actions: CspMeetingActionItem[] = [];
+
+  // Gap 0 — gateway health degraded/critical.
+  if (gateway && gateway.status !== "healthy") {
+    gaps.push({
+      title: `Gateway is ${gateway.status}`,
+      detail: `${gateway.findingsCount} maintenance finding(s); ${gateway.rejectQueue} record(s) blocked in the reject queue.`,
+      severity: gateway.status === "critical" ? "high" : "medium",
+    });
+    actions.push({ item: `Work the gateway's ${gateway.findingsCount} maintenance finding(s) on /sa/gateway.`, owner: "Operator", priority: gateway.status === "critical" ? "high" : "normal" });
+    exchange.push({ speaker: "AI Gateway Agent", message: `${gateway.rejectQueue > 0 ? `${gateway.rejectQueue} record(s) are stuck at my gate. ` : ""}EHS — anything you escalate that I'm also blocking, flag it so we don't double-handle.` });
+    exchange.push({ speaker: "EHS Validation Agent", message: `Will do. If a record clears my validation but trips your gate, that's a rule mismatch worth reconciling.` });
+  }
 
   // Gap 1 — a dominant missing field signals a data-capture gap upstream.
   if (ehs.topMissingFields[0] && ehs.topMissingFields[0].count >= 2) {
@@ -203,6 +238,7 @@ function buildMeeting(d: StandupData): {
       note: ehs.recordable > 0 ? `${ehs.recordable} possible recordable/reportable case(s) flagged for immediate human review.` : "No critical or immediate-risk conditions in this window." },
     { key: "ehs_brief", title: "EHS Agent briefing — records & escalations", covered: true, note: ehsB },
     { key: "gus_brief", title: "GUS briefing — platform health & forecast", covered: true, note: gus },
+    { key: "gateway_brief", title: "Gateway Agent briefing — gateway health", covered: true, note: gwB },
     { key: "reconcile", title: "Evidence reconciliation", covered: true,
       note: platform.overdueCapas > 0 ? "Cross-checking overdue corrective actions against incident findings to rank them." : "Both agents agree on the review window; no conflicting counts." },
     { key: "gaps", title: "Gaps & blind spots", covered: gaps.length > 0,
@@ -229,14 +265,24 @@ function buildMeeting(d: StandupData): {
         ? "I'm validating cleanly, but I haven't learned your house standards yet. A few sign-offs would let me start calibrating to how you actually decide."
         : "Running clean. I'll keep feeding anything anomalous forward so tomorrow's standup starts sharper than today's.";
 
+  const gwThought = !gateway
+    ? "I have no recent health snapshot — wire my daily check into the cron so I arrive at standup with current numbers, not stale ones."
+    : gateway.rejectQueue > 0
+      ? `My reject queue is my best early-warning signal. ${gateway.rejectQueue} record(s) are stuck — clearing them keeps clean data flowing and tells me whether a gate rule is over-firing.`
+      : gateway.status !== "healthy"
+        ? "I'm degraded but not blocking — the warnings are quality drift. Worth watching before it becomes a hard fail."
+        : "Gateway's healthy. My value is staying boring — I'd rather catch drift early than report an outage after the fact.";
+
   const reflections: CspReflection[] = [
     { speaker: "GUS", thought: gusThought },
     { speaker: "EHS Validation Agent", thought: ehsThought },
+    { speaker: "AI Gateway Agent", thought: gwThought },
   ];
   exchange.push({ speaker: "GUS", message: `Open thought — ${gusThought}` });
   exchange.push({ speaker: "EHS Validation Agent", message: `Open thought — ${ehsThought}` });
+  exchange.push({ speaker: "AI Gateway Agent", message: `Open thought — ${gwThought}` });
 
-  return { gus, ehs: ehsB, exchange, gaps, actions, summary, agenda, reflections };
+  return { gus, ehs: ehsB, exchange, gaps, actions, summary, agenda, reflections, gateway: gwB };
 }
 
 // ── Optional LLM rewrite of the dialogue (live mode only) ──────────────────────
@@ -257,7 +303,7 @@ const DIALOGUE_SCHEMA = {
           required: ["speaker", "message"],
           additionalProperties: false,
           properties: {
-            speaker: { type: "string", enum: ["GUS", "EHS Validation Agent"] },
+            speaker: { type: "string", enum: ["GUS", "EHS Validation Agent", "AI Gateway Agent"] },
             message: { type: "string" },
           },
         },
@@ -268,8 +314,8 @@ const DIALOGUE_SCHEMA = {
 
 async function enrichDialogue(base: ReturnType<typeof buildMeeting>): Promise<{ exchange: CspMeetingExchange[]; summary: string; model: string } | null> {
   try {
-    const system = `You are scripting a short daily standup between two AI agents on an EHS safety platform: GUS (Global Unified Safety Intelligence — platform-wide health and forecasting) and the EHS Records Validation Agent (CSP-informed; validates records and routes risk to human review). Keep it concise, professional, specific to the numbers given, and oriented to finding gaps and improvements. 6–10 turns. Do not invent metrics beyond what is given.`;
-    const user = `GUS briefing: ${base.gus}\nEHS briefing: ${base.ehs}\nGaps: ${base.gaps.map((g) => g.title).join("; ") || "none"}\nAction items: ${base.actions.map((a) => a.item).join("; ") || "none"}\nRewrite as a natural back-and-forth and a one-line summary.`;
+    const system = `You are scripting a short daily standup between THREE AI agents on an EHS safety platform: GUS (Global Unified Safety Intelligence — platform-wide health and forecasting), the EHS Records Validation Agent (CSP-informed; validates records and routes risk to human review), and the AI Gateway Agent (monitors and maintains the AI gateway — pipeline health, reject queue, AI telemetry). All three should speak. Keep it concise, professional, specific to the numbers given, and oriented to finding gaps and improvements. 7–11 turns. Do not invent metrics beyond what is given.`;
+    const user = `GUS briefing: ${base.gus}\nEHS briefing: ${base.ehs}\nGateway briefing: ${base.gateway}\nGaps: ${base.gaps.map((g) => g.title).join("; ") || "none"}\nAction items: ${base.actions.map((a) => a.item).join("; ") || "none"}\nRewrite as a natural back-and-forth (all three agents speak) and a one-line summary.`;
     const { data, model } = await generateStructuredJson({ system, user, schema: DIALOGUE_SCHEMA, maxTokens: 900, timeoutMs: 20_000, tier: "deep" });
     const d = data as { summary?: string; exchange?: CspMeetingExchange[] };
     if (!Array.isArray(d.exchange) || d.exchange.length < 2) return null;
@@ -296,8 +342,9 @@ export async function runStandup(client: DB, opts: { now: number; generatedBy: s
 
   const row = {
     meeting_date: todayISO(opts.now),
-    title: "Daily Agent Standup — GUS × EHS Validation Agent",
+    title: "Daily Agent Standup — GUS × EHS Validation Agent × AI Gateway Agent",
     status: "completed",
+    participants: ["GUS", "EHS Records Validation Agent", "AI Gateway Agent"],
     gus_briefing: base.gus,
     ehs_briefing: base.ehs,
     exchange,

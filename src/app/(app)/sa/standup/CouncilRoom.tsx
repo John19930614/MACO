@@ -25,7 +25,8 @@ const SEATS: Seat[] = [
     role: "AI Safety Coach / Platform Intelligence", desc: "Gus brings the platform picture — compliance health, P-Engine forecast, module weakness, overdue actions, and emerging risk signals." },
   { key: "ehs", name: "EHS Agent", sub: "Active", cls: "hse", active: true,
     role: "CSP-informed EHS Records Validation Agent", desc: "Reviews records for completeness, evidence, and regulatory triggers; routes high-stakes cases to human review; learns from sign-offs." },
-  { key: "gateway", name: "AI Gateway", sub: "Shell", cls: "gateway", role: "Future AI Action Control Agent", desc: "Will approve, block, log, or escalate AI actions before they affect the platform." },
+  { key: "gateway", name: "AI Gateway", sub: "Active", cls: "gateway", active: true,
+    role: "AI Gateway Agent — Monitor & Maintain", desc: "Monitors the AI gateway pipeline, AI-engine telemetry, and the review backlog; surfaces maintenance findings and recommendations. Gates no traffic and writes no records." },
   { key: "verity", name: "Verity", sub: "Shell", cls: "verity", role: "Future Quality Management Agent", desc: "Will review quality documents, evidence completeness, CAPA strength, and audit readiness." },
   { key: "compliance", name: "Compliance", sub: "Shell", cls: "compliance", role: "Future Compliance Register Agent", desc: "Will map findings to approved regulatory, client, and site requirements." },
   { key: "capa", name: "CAPA", sub: "Shell", cls: "capa", role: "Future Corrective Action Agent", desc: "Will assign actions, track deadlines, collect proof, and verify effectiveness." },
@@ -108,8 +109,8 @@ export default function CouncilRoom({ meetings }: { meetings: CspMeeting[] }) {
       {/* Live "now speaking" caption — fixed spot above the room, no overlap */}
       {meeting && (
         <div className="cr-nowline">
-          <span className={`cr-nowwho ${activeSpeaker === "GUS" ? "gus" : activeSpeaker ? "ehs" : ""}`}>
-            {activeSpeaker ? (activeSpeaker === "GUS" ? "Gus" : "EHS Agent") : "Council"}
+          <span className={`cr-nowwho ${activeSpeaker === "GUS" ? "gus" : activeSpeaker === "AI Gateway Agent" ? "gw" : activeSpeaker ? "ehs" : ""}`}>
+            {activeSpeaker ? (activeSpeaker === "GUS" ? "Gus" : activeSpeaker === "AI Gateway Agent" ? "Gateway Agent" : "EHS Agent") : "Council"}
           </span>
           <span className="cr-nowmsg">{current ? current.message : (meeting.shared_summary ?? "Ready — press Play to run the meeting.")}</span>
         </div>
@@ -119,8 +120,8 @@ export default function CouncilRoom({ meetings }: { meetings: CspMeeting[] }) {
         {/* Stage */}
         <div className="cr-stage">
           <div className="cr-hud">
-            <span className="cr-chip">Active: Gus + EHS Agent</span>
-            <span className="cr-chip">Shells: 8 preview only</span>
+            <span className="cr-chip">Active: Gus + EHS + Gateway</span>
+            <span className="cr-chip">Shells: 7 preview only</span>
             <span className="cr-chip cr-chip-id">{meeting ? `Agenda ${coveredCount}/${agenda.length} · Gaps ${meeting.gaps_found.length}` : "—"}</span>
           </div>
 
@@ -151,7 +152,8 @@ export default function CouncilRoom({ meetings }: { meetings: CspMeeting[] }) {
 
           {/* seats */}
           {SEATS.map((s) => {
-            const speaking = (s.key === "gus" && activeSpeaker === "GUS") || (s.key === "ehs" && activeSpeaker && activeSpeaker !== "GUS");
+            const speakerSeat = activeSpeaker === "GUS" ? "gus" : activeSpeaker === "AI Gateway Agent" ? "gateway" : activeSpeaker ? "ehs" : null;
+            const speaking = speakerSeat === s.key;
             return (
               <div key={s.key} className={`cr-seat ${s.cls} ${s.active ? "active" : "shell"} ${speaking ? "speaking" : ""}`} onClick={() => setModal(s)}>
                 <div className="cr-halo" />
@@ -194,8 +196,8 @@ export default function CouncilRoom({ meetings }: { meetings: CspMeeting[] }) {
             ) : tab === "transcript" ? (
               <div className="cr-log">
                 {exchange.map((e, i) => (
-                  <div key={i} className={`cr-logitem ${e.speaker === "GUS" ? "gus" : "ehs"} ${i === step ? "now" : ""}`}>
-                    <div className="cr-av">{e.speaker === "GUS" ? "GUS" : "EHS"}</div>
+                  <div key={i} className={`cr-logitem ${e.speaker === "GUS" ? "gus" : e.speaker === "AI Gateway Agent" ? "gw" : "ehs"} ${i === step ? "now" : ""}`}>
+                    <div className="cr-av">{e.speaker === "GUS" ? "GUS" : e.speaker === "AI Gateway Agent" ? "GW" : "EHS"}</div>
                     <div><div className="cr-logmeta">{e.speaker}</div><div className="cr-logbody">{e.message}</div></div>
                   </div>
                 ))}
@@ -271,6 +273,7 @@ function CouncilStyles() {
 .cr-nowwho{flex:0 0 auto;padding:5px 11px;border-radius:999px;font-size:11px;font-weight:900;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:#dff7ff}
 .cr-nowwho.gus{background:rgba(103,232,249,.12);color:#bdf3ff;border-color:rgba(103,232,249,.42)}
 .cr-nowwho.ehs{background:rgba(167,139,250,.14);color:#dcd2ff;border-color:rgba(167,139,250,.42)}
+.cr-nowwho.gw{background:rgba(59,130,246,.16);color:#bcd6ff;border-color:rgba(59,130,246,.45)}
 .cr-nowmsg{flex:1;font-size:12px;line-height:1.42;color:#e8f2ff;min-width:0}
 .cr-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px}
 @media(max-width:1100px){.cr-grid{grid-template-columns:1fr}}
@@ -339,7 +342,7 @@ function CouncilStyles() {
 .cr-empty{padding:20px 12px;text-align:center;color:#8398b3;font-size:11px;line-height:1.5;border:1px dashed rgba(255,255,255,.12);border-radius:14px}
 .cr-log{display:grid;gap:8px}
 .cr-logitem{display:grid;grid-template-columns:34px 1fr;gap:9px;padding:9px;border-radius:13px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08)}
-.cr-logitem.gus{border-color:rgba(103,232,249,.25)}.cr-logitem.ehs{border-color:rgba(167,139,250,.25)}
+.cr-logitem.gus{border-color:rgba(103,232,249,.25)}.cr-logitem.ehs{border-color:rgba(167,139,250,.25)}.cr-logitem.gw{border-color:rgba(59,130,246,.3)}
 .cr-logitem.now{box-shadow:0 0 0 1px rgba(103,232,249,.5);background:rgba(103,232,249,.07)}
 .cr-av{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(59,130,246,.34),rgba(103,232,249,.1));border:1px solid rgba(103,232,249,.27);font-size:8.5px;font-weight:900}
 .cr-logmeta{font-size:10px;font-weight:800;color:#cfe2f6}.cr-logbody{font-size:10.5px;line-height:1.42;color:#dbe8f6;margin-top:2px}
