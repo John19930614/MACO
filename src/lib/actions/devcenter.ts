@@ -11,6 +11,7 @@ import {
   STAGE_CONFIG, STAGE_PLANNERS, nextStage, isGate, isTerminal, isWorkflowStage, buildDevManagerUpdate,
 } from "@/lib/devcenter/workflow";
 import { runPlanningAgent } from "@/lib/devcenter/planning-agents";
+import { generateFilePlans } from "@/lib/devcenter/file-plans";
 
 const nowIso = () => new Date().toISOString();
 
@@ -221,6 +222,25 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
     });
   }
 
+  // 1b. Phase 7: the file_change_plan stage produces proposed file changes
+  // (plans only — nothing is written to disk or the database).
+  if (next === "file_change_plan") {
+    const plans = generateFilePlans(task);
+    for (const p of plans) {
+      const { data: fp } = await client.from("dev_file_change_plans").insert({
+        task_id: taskId, file_path: p.file_path, change_type: p.change_type, language: p.language,
+        diff: p.diff, rationale: p.rationale, proposed_summary: p.proposed_summary,
+        approval_required: p.approval_required, risk_level: p.risk_level,
+        status: p.approval_required ? "needs_approval" : "planned",
+      }).select("id").single();
+      await client.from("dev_audit_log").insert({
+        task_id: taskId, actor_type: "agent", actor_id: "backend-api", agent_id: idOf("backend-api"),
+        action: "file_plan_created", entity: "dev_file_change_plans", entity_id: fp?.id ?? taskId,
+        risk_level: p.risk_level, detail: { file_path: p.file_path, change_type: p.change_type },
+      });
+    }
+  }
+
   // 2. Dev Manager decision message.
   const after = nextStage(next);
   const dm = buildDevManagerUpdate({
@@ -312,6 +332,42 @@ export async function decideApproval(
     revalidatePath(`/admin/dev-command/tasks/${appr.task_id}`);
   }
   revalidatePath("/admin/dev-command/approvals");
+  revalidatePath("/admin/dev-command");
+  return { ok: true };
+}
+
+/**
+ * Approve or reject a proposed file change plan (Phase 7). No file is touched —
+ * this records your decision. Applying real changes comes in a later phase.
+ */
+export async function decideFilePlan(
+  _prev: { ok: boolean; error?: string },
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  if (MOCK_MODE) return { ok: false, error: "Approvals need the live database." };
+  if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
+  const client = await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired — please reload." };
+
+  const id = String(formData.get("plan_id") ?? "");
+  const decision = String(formData.get("decision") ?? "");
+  if (!id || (decision !== "approved" && decision !== "rejected")) {
+    return { ok: false, error: "Something went wrong — please try again." };
+  }
+  const decidedBy = (await getServerUser())?.display_name ?? "Reliance Admin";
+
+  const { data: plan, error } = await client.from("dev_file_change_plans")
+    .update({ status: decision })
+    .eq("id", id).in("status", ["planned", "needs_approval"])
+    .select("task_id, file_path").single();
+  if (error || !plan) return { ok: false, error: error?.message ?? "That plan was already decided." };
+
+  await client.from("dev_audit_log").insert({
+    task_id: plan.task_id, actor_type: "human", actor_id: decidedBy,
+    action: decision === "approved" ? "file_plan_approved" : "file_plan_rejected",
+    entity: "dev_file_change_plans", entity_id: id, detail: { file_path: plan.file_path },
+  });
+  revalidatePath(`/admin/dev-command/tasks/${plan.task_id}`);
   revalidatePath("/admin/dev-command");
   return { ok: true };
 }

@@ -133,7 +133,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
         <div className="space-y-5">
           <TaskTimeline runs={view.runs} messages={view.messages} agents={agents} />
           <AgentOutputPanel artifacts={view.artifacts} />
-          <FileChangePlanViewer plans={view.filePlans} />
+          <FileChangePlanViewer plans={view.filePlans} actionable={isReal} />
         </div>
         <div className="space-y-5">
           <ApprovalCenter approvals={view.approvals} title="Approvals for this task" subtitle="Risky steps paused for your decision" actionable={isReal} />

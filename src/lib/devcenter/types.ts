@@ -56,8 +56,11 @@ export type ArtifactKind =
 export type ArtifactStatus =
   | "draft" | "proposed" | "approved" | "rejected" | "applied" | "superseded";
 
-export type FileChangeType = "create" | "modify" | "delete" | "rename";
-export type FileChangeStatus = "proposed" | "approved" | "rejected" | "applied";
+export type FileChangeType =
+  | "create" | "modify" | "delete" | "rename"
+  | "migration" | "test" | "documentation" | "config";
+export type FileChangeStatus =
+  | "planned" | "needs_approval" | "approved" | "rejected" | "drafted" | "applied_later";
 
 export type ReviewVerdict = "approved" | "changes_requested" | "rejected" | "pending";
 export type SecurityVerdict = "pass" | "fail" | "needs_changes" | "pending";
@@ -176,8 +179,10 @@ export interface DevFileChangePlan {
   file_path: string;
   change_type: FileChangeType;
   language: string | null;
-  diff: string | null;
-  rationale: string | null;
+  diff: string | null;            // proposed_diff
+  rationale: string | null;       // reason
+  proposed_summary: string | null;
+  approval_required: boolean;
   risk_level: RiskLevel;
   status: FileChangeStatus;
   applied_at: string | null;

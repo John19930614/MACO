@@ -9,6 +9,7 @@ import type {
   DevTaskStatus, DevTaskPriority, RiskLevel, ApprovalType, ApprovalStatus,
   AgentRunStatus, DeploymentStatus, TestStatus, SecurityVerdict, ReviewVerdict,
   ExperiencePerspective, AgentMemoryKind, FeedbackCategory,
+  FileChangeType, FileChangeStatus,
 } from "./types";
 
 /** Tone of a badge — drives the shared color/shape classes. */
@@ -160,6 +161,36 @@ export const FEEDBACK_CATEGORY_LABEL: Record<FeedbackCategory, string> = {
   bug:                  "Something is broken",
   other:                "Other",
 };
+
+// ── File change plans (Phase 7) ───────────────────────────────────────────────
+export const FILE_CHANGE_TYPE_META: Record<FileChangeType, Meta> = {
+  create:        { label: "New file",        tone: "info" },
+  modify:        { label: "Edit file",       tone: "info" },
+  delete:        { label: "Delete file",     tone: "danger" },
+  rename:        { label: "Rename file",     tone: "warn" },
+  migration:     { label: "Database change", tone: "danger" },
+  test:          { label: "Tests",           tone: "success" },
+  documentation: { label: "Docs",            tone: "neutral" },
+  config:        { label: "Config change",   tone: "warn" },
+};
+
+export const FILE_PLAN_STATUS_META: Record<FileChangeStatus, Meta> = {
+  planned:        { label: "Planned",             tone: "neutral" },
+  needs_approval: { label: "Needs your approval", tone: "violet" },
+  approved:       { label: "Approved",            tone: "success" },
+  rejected:       { label: "Rejected",            tone: "neutral" },
+  drafted:        { label: "Drafted",             tone: "info" },
+  applied_later:  { label: "Will apply later",    tone: "info" },
+};
+
+/** The 5 experience checks an admin reads before approving a file plan. */
+export const FILE_PLAN_EXPERIENCE_CHECKS: string[] = [
+  "Will this make the feature easier to use?",
+  "Will this reduce admin confusion?",
+  "Does this add unnecessary complexity?",
+  "Does this need help text or tooltips?",
+  "Does this match the platform style?",
+];
 
 /**
  * Technical-phrase → plain-English translation, per the Phase 2 spec examples.

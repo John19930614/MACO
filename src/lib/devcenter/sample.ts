@@ -94,9 +94,9 @@ export const SAMPLE_ARTIFACTS: DevArtifact[] = [
 
 // ── File change plans (draft code plans) ──────────────────────────────────────
 export const SAMPLE_FILE_PLANS: DevFileChangePlan[] = [
-  { id: "fcp-1", task_id: "task-1", artifact_id: "art-2", file_path: "src/app/(app)/incidents/ExportButton.tsx", change_type: "create", language: "tsx", diff: "+ export function ExportButton() { /* … */ }", rationale: "New button component for CSV export.", risk_level: "low", status: "proposed", applied_at: null, created_at: ago(58), updated_at: ago(58) },
-  { id: "fcp-2", task_id: "task-1", artifact_id: "art-2", file_path: "src/lib/incidents/csv.ts", change_type: "create", language: "ts", diff: "+ export function incidentsToCsv(rows) { /* … */ }", rationale: "Helper that turns incidents into CSV text.", risk_level: "low", status: "proposed", applied_at: null, created_at: ago(58), updated_at: ago(58) },
-  { id: "fcp-3", task_id: "task-2", artifact_id: null, file_path: "src/middleware.ts", change_type: "modify", language: "ts", diff: "~ adjust post-login redirect for invited users", rationale: "Send invited users to the right page after setting a password.", risk_level: "high", status: "proposed", applied_at: null, created_at: ago(28), updated_at: ago(28) },
+  { id: "fcp-1", task_id: "task-1", artifact_id: "art-2", file_path: "src/app/(app)/incidents/ExportButton.tsx", change_type: "create", language: "tsx", diff: "+ export function ExportButton() { /* … */ }", rationale: "New button component for CSV export.", proposed_summary: "Add an Export button to the Incidents toolbar.", approval_required: true, risk_level: "low", status: "needs_approval", applied_at: null, created_at: ago(58), updated_at: ago(58) },
+  { id: "fcp-2", task_id: "task-1", artifact_id: "art-2", file_path: "src/lib/incidents/csv.ts", change_type: "create", language: "ts", diff: "+ export function incidentsToCsv(rows) { /* … */ }", rationale: "Helper that turns incidents into CSV text.", proposed_summary: "Add a small helper that builds the CSV file.", approval_required: true, risk_level: "low", status: "needs_approval", applied_at: null, created_at: ago(58), updated_at: ago(58) },
+  { id: "fcp-3", task_id: "task-2", artifact_id: null, file_path: "src/middleware.ts", change_type: "modify", language: "ts", diff: "~ adjust post-login redirect for invited users", rationale: "Send invited users to the right page after setting a password.", proposed_summary: "Fix where invited users land after login.", approval_required: true, risk_level: "high", status: "needs_approval", applied_at: null, created_at: ago(28), updated_at: ago(28) },
 ];
 
 // ── Code reviews ──────────────────────────────────────────────────────────────
@@ -180,7 +180,7 @@ export function dashboardMetrics(): DashboardMetric[] {
   const failedRuns = SAMPLE_RUNS.filter((r) => r.status === "failed").length;
   const securityWarnings = SAMPLE_SECURITY_REVIEWS.filter((s) => s.verdict === "fail" || s.verdict === "needs_changes").length;
   const xpFailures = SAMPLE_EXPERIENCE_REVIEWS.filter((e) => e.verdict === "changes_requested" || e.verdict === "rejected").length;
-  const draftPlans = SAMPLE_FILE_PLANS.filter((p) => p.status === "proposed").length;
+  const draftPlans = SAMPLE_FILE_PLANS.filter((p) => p.status === "planned" || p.status === "needs_approval").length;
   const activePRs = SAMPLE_DEPLOYMENTS.filter((d) => d.status === "pr_open").length;
   const recentDeploys = SAMPLE_DEPLOYMENTS.length;
   const auditActivity = SAMPLE_AUDIT.filter((a) => isToday(a.created_at)).length;
