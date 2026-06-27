@@ -12,8 +12,29 @@
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 
 export type DevTaskStatus =
-  | "queued" | "planning" | "in_progress" | "awaiting_approval"
-  | "in_review" | "blocked" | "done" | "rejected" | "cancelled" | "failed";
+  | "intake" | "planning" | "requirements_review" | "architecture_review"
+  | "experience_review" | "code_plan" | "needs_approval" | "approved"
+  | "building" | "testing" | "security_review" | "documentation"
+  | "ready_for_release" | "complete" | "rejected" | "blocked";
+
+/**
+ * The structured intake fields stored in dev_tasks.metadata (jsonb). Kept in
+ * metadata (not columns) so Phase 3 needs only the status-constraint migration.
+ */
+export interface DevTaskMeta {
+  business_goal?: string;
+  feature_description?: string;
+  who_uses_it?: string;
+  data_involved?: string;
+  ai_role?: string;
+  success_criteria?: string;
+  notes?: string;
+  human_approval_required?: boolean;
+  database_changes_allowed?: boolean;
+  file_changes_allowed?: boolean;
+  github_branch_allowed?: boolean;
+  deployment_allowed?: boolean;
+}
 
 export type DevTaskPriority = "low" | "medium" | "high" | "urgent";
 

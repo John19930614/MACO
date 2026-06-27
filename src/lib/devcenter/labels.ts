@@ -30,19 +30,28 @@ export const TONE_DOT: Record<Tone, string> = {
 
 interface Meta { label: string; tone: Tone }
 
-// ── Task status ───────────────────────────────────────────────────────────────
+// ── Task status (16-state lifecycle) ──────────────────────────────────────────
 export const TASK_STATUS_META: Record<DevTaskStatus, Meta> = {
-  queued:            { label: "Waiting to start", tone: "neutral" },
-  planning:          { label: "Planning",         tone: "info" },
-  in_progress:       { label: "In progress",      tone: "info" },
-  awaiting_approval: { label: "Needs your approval", tone: "violet" },
-  in_review:         { label: "In review",        tone: "info" },
-  blocked:           { label: "Blocked",          tone: "warn" },
-  done:              { label: "Done",             tone: "success" },
-  rejected:          { label: "Rejected",         tone: "neutral" },
-  cancelled:         { label: "Cancelled",        tone: "neutral" },
-  failed:            { label: "Failed",           tone: "danger" },
+  intake:              { label: "New — just added",        tone: "neutral" },
+  planning:            { label: "Planning",                tone: "info" },
+  requirements_review: { label: "Checking requirements",   tone: "info" },
+  architecture_review: { label: "Reviewing the design",    tone: "info" },
+  experience_review:   { label: "Reviewing ease of use",   tone: "info" },
+  code_plan:           { label: "Planning the code",       tone: "info" },
+  needs_approval:      { label: "Needs your approval",     tone: "violet" },
+  approved:            { label: "Approved",                tone: "success" },
+  building:            { label: "Building",                tone: "info" },
+  testing:             { label: "Testing",                 tone: "info" },
+  security_review:     { label: "Security review",         tone: "info" },
+  documentation:       { label: "Writing docs",            tone: "info" },
+  ready_for_release:   { label: "Ready to release",        tone: "success" },
+  complete:            { label: "Done",                    tone: "success" },
+  rejected:            { label: "Rejected",                tone: "neutral" },
+  blocked:             { label: "Blocked",                 tone: "warn" },
 };
+
+/** Statuses that count as "closed" (not open work). */
+export const CLOSED_TASK_STATUSES: DevTaskStatus[] = ["complete", "rejected"];
 
 // ── Priority ──────────────────────────────────────────────────────────────────
 export const PRIORITY_META: Record<DevTaskPriority, Meta> = {
