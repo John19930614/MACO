@@ -19,7 +19,25 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
   DevTask, DevTaskStatus, DevTaskPriority, RiskLevel,
   DevAgent, DevApproval, DevAuditEntry,
+  DevAgentRun, DevAgentMessage, DevArtifact, DevFileChangePlan,
+  DevCodeReview, DevTestResult, DevSecurityReview, DevExperienceReview, DevDeployment,
 } from "./types";
+
+/** Everything the task detail page needs, read from the live dev_* tables. */
+export interface TaskDetail {
+  task: DevTask | null;
+  runs: DevAgentRun[];
+  messages: DevAgentMessage[];
+  artifacts: DevArtifact[];
+  filePlans: DevFileChangePlan[];
+  codeReviews: DevCodeReview[];
+  testResults: DevTestResult[];
+  securityReviews: DevSecurityReview[];
+  experienceReviews: DevExperienceReview[];
+  approvals: DevApproval[];
+  deployments: DevDeployment[];
+  audit: DevAuditEntry[];
+}
 
 type ApprovalInsert = {
   task_id?: string | null;
@@ -75,6 +93,60 @@ export async function getDevTask(id: string): Promise<DevTask | null> {
   if (!client) return null;
   const { data } = await client.from("dev_tasks").select("*").eq("id", id).maybeSingle();
   return (data as DevTask) ?? null;
+}
+
+/**
+ * Load a task and every related record for the detail page. Returns
+ * { task: null, ... } when the id isn't a real task (so the page can fall back
+ * to sample data for the Phase 2 example tasks).
+ */
+export async function getTaskDetail(id: string): Promise<TaskDetail> {
+  const empty: TaskDetail = {
+    task: null, runs: [], messages: [], artifacts: [], filePlans: [],
+    codeReviews: [], testResults: [], securityReviews: [], experienceReviews: [],
+    approvals: [], deployments: [], audit: [],
+  };
+  if (MOCK_MODE) return empty;
+  const client = await createSupabaseServerClient();
+  if (!client) return empty;
+
+  const { data: task } = await client.from("dev_tasks").select("*").eq("id", id).maybeSingle();
+  if (!task) return empty;
+
+  const byTask = (table: string, order = "created_at", asc = true) =>
+    client.from(table).select("*").eq("task_id", id).order(order, { ascending: asc });
+
+  const [
+    runs, messages, artifacts, filePlans, codeReviews,
+    testResults, securityReviews, experienceReviews, approvals, deployments, audit,
+  ] = await Promise.all([
+    byTask("dev_agent_runs", "created_at", false),
+    byTask("dev_agent_messages", "seq", true),
+    byTask("dev_artifacts", "created_at", false),
+    byTask("dev_file_change_plans", "created_at", false),
+    byTask("dev_code_reviews", "created_at", false),
+    byTask("dev_test_results", "created_at", false),
+    byTask("dev_security_reviews", "created_at", false),
+    byTask("dev_experience_reviews", "created_at", false),
+    byTask("dev_approvals", "created_at", false),
+    byTask("dev_deployments", "created_at", false),
+    byTask("dev_audit_log", "created_at", false),
+  ]);
+
+  return {
+    task: task as DevTask,
+    runs: (runs.data ?? []) as DevAgentRun[],
+    messages: (messages.data ?? []) as DevAgentMessage[],
+    artifacts: (artifacts.data ?? []) as DevArtifact[],
+    filePlans: (filePlans.data ?? []) as DevFileChangePlan[],
+    codeReviews: (codeReviews.data ?? []) as DevCodeReview[],
+    testResults: (testResults.data ?? []) as DevTestResult[],
+    securityReviews: (securityReviews.data ?? []) as DevSecurityReview[],
+    experienceReviews: (experienceReviews.data ?? []) as DevExperienceReview[],
+    approvals: (approvals.data ?? []) as DevApproval[],
+    deployments: (deployments.data ?? []) as DevDeployment[],
+    audit: (audit.data ?? []) as DevAuditEntry[],
+  };
 }
 
 export async function createDevTask(input: {

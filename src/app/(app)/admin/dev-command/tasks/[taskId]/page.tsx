@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { TaskStatusBadge, PriorityBadge, RiskLevelBadge } from "../../_components/badges";
+import { Card, CardHeader } from "@/components/ui/primitives";
+import { TaskStatusBadge, PriorityBadge, RiskLevelBadge, Badge } from "../../_components/badges";
 import { TaskTimeline } from "../../_components/TaskTimeline";
 import { AgentOutputPanel } from "../../_components/AgentOutputPanel";
 import { FileChangePlanViewer } from "../../_components/FileChangePlanViewer";
@@ -9,15 +10,34 @@ import { TestResultsPanel } from "../../_components/TestResultsPanel";
 import { SecurityReviewPanel } from "../../_components/SecurityReviewPanel";
 import { ExperienceReviewPanel } from "../../_components/ExperienceReviewPanel";
 import { DeploymentPanel } from "../../_components/DeploymentPanel";
-import { taskBundle, SAMPLE_AGENTS } from "@/lib/devcenter/sample";
+import { AgentTeamBoard } from "../../_components/AgentTeamBoard";
+import { AuditLogTable } from "../../_components/AuditLogTable";
+import { getTaskDetail } from "@/lib/devcenter/repo";
+import { taskBundle, SAMPLE_AUDIT, getAgentsOrSample } from "@/lib/devcenter/sample";
 import { relativeTime } from "@/lib/utils";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Target, Flag, ShieldCheck, Lock } from "lucide-react";
+import type { DevTaskMeta } from "@/lib/devcenter/types";
 
 export default async function TaskDetailPage({ params }: { params: Promise<{ taskId: string }> }) {
   const { taskId } = await params;
-  const b = taskBundle(taskId);
-  if (!b.task) notFound();
-  const t = b.task;
+
+  // Real task from Supabase; fall back to the Phase 2 sample tasks by id.
+  const real = await getTaskDetail(taskId);
+  const view = real.task
+    ? real
+    : { ...taskBundle(taskId), audit: SAMPLE_AUDIT.filter((a) => a.task_id === taskId) };
+  if (!view.task) notFound();
+
+  const t = view.task;
+  const meta = (t.metadata ?? {}) as DevTaskMeta;
+  const { agents } = await getAgentsOrSample();
+
+  const permissions = [
+    { label: "Database changes", on: meta.database_changes_allowed },
+    { label: "File changes", on: meta.file_changes_allowed },
+    { label: "Code branch", on: meta.github_branch_allowed },
+    { label: "Deploy preview", on: meta.deployment_allowed },
+  ];
 
   return (
     <div className="space-y-5">
@@ -25,13 +45,13 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
         <ArrowLeft className="h-4 w-4" /> Back to tasks
       </Link>
 
-      {/* Task header */}
+      {/* 1-4. Task summary + status + priority + risk */}
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-lg font-bold text-slate-900 dark:text-white">{t.title}</h2>
             {t.description && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t.description}</p>}
-            <p className="mt-2 text-xs text-slate-400">{t.target_area ?? "Platform"} · created {relativeTime(t.created_at)} · updated {relativeTime(t.updated_at)}</p>
+            <p className="mt-2 text-xs text-slate-400">{t.target_area ?? "Platform"} · created {relativeTime(t.created_at)} · updated {relativeTime(t.updated_at)}{t.created_by ? ` · by ${t.created_by}` : ""}</p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-1.5">
             <PriorityBadge priority={t.priority} />
@@ -41,21 +61,71 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
         </div>
       </div>
 
-      {/* Panels */}
+      {/* 5-6. Business goal + success criteria + details + safety controls */}
+      <Card>
+        <CardHeader title="About this task" subtitle="What it's for and how we'll know it's done" />
+        <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+          <Detail icon={<Flag className="h-4 w-4" />} label="Business goal" value={meta.business_goal} />
+          <Detail icon={<Target className="h-4 w-4" />} label="Success criteria" value={meta.success_criteria} />
+          <Detail label="Who uses it" value={meta.who_uses_it} />
+          <Detail label="Data involved" value={meta.data_involved} />
+          <Detail label="AI's role" value={meta.ai_role} />
+          <Detail label="Notes" value={meta.notes} />
+        </div>
+        <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-700">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <ShieldCheck className="h-3.5 w-3.5" /> Safety controls
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            <Badge label="Your approval required" tone="success" />
+            {permissions.map((p) =>
+              p.on ? (
+                <Badge key={p.label} label={`${p.label}: allowed`} tone="info" />
+              ) : (
+                <span key={p.label} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                  <Lock className="h-3 w-3" /> {p.label}: off
+                </span>
+              ),
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* 8-15. Work panels */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div className="space-y-5">
-          <TaskTimeline runs={b.runs} messages={b.messages} agents={SAMPLE_AGENTS} />
-          <AgentOutputPanel artifacts={b.artifacts} />
-          <FileChangePlanViewer plans={b.filePlans} />
+          <TaskTimeline runs={view.runs} messages={view.messages} agents={agents} />
+          <AgentOutputPanel artifacts={view.artifacts} />
+          <FileChangePlanViewer plans={view.filePlans} />
         </div>
         <div className="space-y-5">
-          <ApprovalCenter approvals={b.approvals} title="Approvals for this task" subtitle="Risky steps paused for your decision" />
-          <TestResultsPanel results={b.testResults} />
-          <SecurityReviewPanel reviews={b.securityReviews} />
-          <ExperienceReviewPanel reviews={b.experienceReviews} />
-          <DeploymentPanel deployments={b.deployments} />
+          <ApprovalCenter approvals={view.approvals} title="Approvals for this task" subtitle="Risky steps paused for your decision" />
+          <TestResultsPanel results={view.testResults} />
+          <SecurityReviewPanel reviews={view.securityReviews} />
+          <ExperienceReviewPanel reviews={view.experienceReviews} />
+          <DeploymentPanel deployments={view.deployments} />
         </div>
       </div>
+
+      {/* 7. Agent team board */}
+      <div>
+        <h3 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">The AI team on this task</h3>
+        <AgentTeamBoard agents={agents} />
+      </div>
+
+      {/* 16. Audit log */}
+      <AuditLogTable entries={view.audit} />
+    </div>
+  );
+}
+
+function Detail({ icon, label, value }: { icon?: React.ReactNode; label: string; value?: string }) {
+  return (
+    <div>
+      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        {icon}{label}
+      </p>
+      <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">{value?.trim() ? value : <span className="text-slate-300 dark:text-slate-600">—</span>}</p>
     </div>
   );
 }
