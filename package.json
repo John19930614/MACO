@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:live": "bash scripts/live-rls-test.sh",
+    "test:system": "node scripts/system-test.mjs",
     "etl:import": "node scripts/etl-import.mjs",
     "db:start": "npx supabase start",
     "db:reset": "npx supabase db reset",

@@ -1,9 +1,9 @@
 # AGENTS.md — conventions & guardrails for AI coding tools
 
-This file guides AI coding assistants working in the AMAYA repo. Read it before
+This file guides AI coding assistants working in the SafetyIQ repo. Read it before
 making changes.
 
-## What AMAYA is
+## What SafetyIQ is
 Map-first safety intelligence platform built on the **Safety Cell** model and the
 **ARC (Adaptive Risk Continuum)** method. Next.js 15 (App Router) + TypeScript +
 Tailwind v4 + Supabase + MapLibre + React Flow + OpenAI.
@@ -36,12 +36,13 @@ Tailwind v4 + Supabase + MapLibre + React Flow + OpenAI.
   `"use client"` and dynamically imported with `ssr: false` where they touch
   `window`. Pages are server components that fetch via the repo and pass props.
 - **Path alias:** `@/*` → `src/*`.
-- **Styling:** Tailwind v4 with ARC palette tokens in `globals.css`
-  (`--color-exp`, `--color-pclss`, `--color-hsl`, `--color-curve`, severity vars).
+- **Styling:** Tailwind v4 with palette tokens in `src/app/globals.css`
+  (`--color-primary`, `--color-accent`, `--color-ai`, `--color-hazard`,
+  `--color-safe`, `--color-warning`, severity vars `--color-sev-{low,medium,high,critical}`).
 
 ## Before you finish
 - `npm run typecheck` and `npm run build` must pass.
 - New API routes follow the pattern in `src/app/api/cells/route.ts`
   (Zod parse → repo call → `NextResponse.json`).
-- Keep ARC the methodology and AMAYA the product: new intelligence features map
+- Keep ARC the methodology and SafetyIQ the product: new intelligence features map
   to an ARC layer (EXP / P-CLSS / HSL / GUS / VELA) — see docs/arc-integration.md.
