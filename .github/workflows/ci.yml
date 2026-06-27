@@ -53,3 +53,12 @@ jobs:
             sleep 1
           done
           SYSTEM_TEST_BASE=http://localhost:3210 npm run test:system
+
+      # Record the gate result so /api/ops + the Ops Console can show it honestly.
+      # No-ops unless the repo has Supabase service creds (skipped on forks).
+      - name: Record gate status
+        if: always()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/write-gate-status.mjs ${{ job.status }}
