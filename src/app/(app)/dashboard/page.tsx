@@ -5,7 +5,8 @@ import {
   getOshaCases, overallComplianceScore, latestPredictabilityRun, getTenantName,
   getTenantSettings,
 } from "@/lib/data/ehsRepo";
-import { getEffectiveTenantId } from "@/lib/auth/session";
+import { redirect } from "next/navigation";
+import { getEffectiveTenantId, isSuperadmin } from "@/lib/auth/session";
 import { oshaRate, resolveOshaHours, OSHA_DART_BENCHMARK } from "@/lib/osha";
 import { MOCK_MODE } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -27,6 +28,11 @@ export default async function DashboardPage({
 }) {
   const params      = await searchParams;
   const justOnboarded = params.onboarding === "complete";
+
+  // Superadmins manage the platform, not a client tenant — send them to the SA
+  // console. This also keeps the tenant dashboard's onboarding prompt (which has
+  // no meaning for a tenant-less platform admin) away from them.
+  if (await isSuperadmin()) redirect("/sa/companies");
 
   const tenantId   = await getEffectiveTenantId();
   const tenantName = await getTenantName(tenantId);

@@ -1,6 +1,6 @@
 import "server-only";
 import { MOCK_MODE } from "@/lib/env";
-import { MOCK_TENANT_ID } from "@/lib/data/mock";
+import { MOCK_TENANT_ID, MOCK_PROFILES_ALL } from "@/lib/data/mock";
 import { getAuthUser, getAuthProfile, DEMO_SARAH_ID } from "@/lib/supabase/server";
 import type { ServerUser } from "./types";
 
@@ -50,6 +50,18 @@ export async function getServerProfileId(): Promise<string> {
   // could match seeded demo rows). Use the nil UUID so queries return nothing.
   const profile = await getAuthProfile();
   return profile?.id ?? NIL_UUID;
+}
+
+// True when the caller is a Reliance platform superadmin (profile.tenant_id IS
+// NULL). Superadmins manage the platform (the /sa console) and never belong to a
+// client tenant, so they bypass tenant onboarding and the tenant dashboard.
+export async function isSuperadmin(): Promise<boolean> {
+  if (MOCK_MODE) {
+    const pid = await getServerProfileId();
+    return MOCK_PROFILES_ALL.find((p) => p.id === pid)?.tenant_id === null;
+  }
+  const profile = await getAuthProfile();
+  return !!profile && profile.tenant_id === null;
 }
 
 // Returns a lightweight user object for TopBar display.
