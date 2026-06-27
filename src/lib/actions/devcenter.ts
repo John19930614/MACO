@@ -6,6 +6,12 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isSuperadmin, getServerUser } from "@/lib/auth/session";
 import { MOCK_MODE } from "@/lib/env";
+import type { DevTask } from "@/lib/devcenter/types";
+import {
+  STAGE_CONFIG, nextStage, isGate, isTerminal, isWorkflowStage, buildDevManagerUpdate,
+} from "@/lib/devcenter/workflow";
+
+const nowIso = () => new Date().toISOString();
 
 export interface CreateTaskState {
   error?: string;
@@ -115,4 +121,162 @@ export async function createDevTask(
   revalidatePath("/admin/dev-command/tasks");
   revalidatePath("/admin/dev-command");
   redirect(`/admin/dev-command/tasks/${taskId}`);
+}
+
+// ── Phase 5: workflow engine (Dev Manager) ────────────────────────────────────
+
+export interface RunStepState {
+  ok: boolean;
+  message?: string;
+  paused?: boolean;
+}
+
+/**
+ * Run the next workflow step for a task (the "Run Next Agent Step" button).
+ * Deterministic and manual — one click = one stage. The Dev Manager records an
+ * agent run, two timeline messages, and an audit entry; gate stages create an
+ * approval request and pause until you approve. No real AI/file/deploy actions.
+ */
+export async function runNextStep(taskId: string): Promise<RunStepState> {
+  if (MOCK_MODE) return { ok: false, message: "Running steps needs the live database." };
+  if (!(await isSuperadmin())) return { ok: false, message: "You don't have permission for this." };
+  const client = await createSupabaseServerClient();
+  if (!client) return { ok: false, message: "Your session expired — please reload." };
+
+  const { data: taskRow } = await client.from("dev_tasks").select("*").eq("id", taskId).maybeSingle();
+  if (!taskRow) return { ok: false, message: "Task not found." };
+  const task = taskRow as DevTask;
+  const status = task.status;
+
+  if (isTerminal(status)) return { ok: false, message: "This task is already finished." };
+  if (status === "blocked") return { ok: false, message: "This task is paused. Reopen it to continue." };
+  if (!isWorkflowStage(status)) return { ok: false, message: "This task isn't in the workflow." };
+
+  // Agent lookup (key → id/name).
+  const { data: agentRows } = await client.from("dev_agents").select("id, key, name");
+  const byKey = new Map((agentRows ?? []).map((a) => [a.key as string, a]));
+  const nameOf = (key: string) => (byKey.get(key)?.name as string) ?? key;
+  const idOf = (key: string) => (byKey.get(key)?.id as string) ?? null;
+
+  // Gate: if we're sitting on a gate stage, its approval must be granted to move on.
+  if (isGate(status)) {
+    const { data: appr } = await client.from("dev_approvals")
+      .select("status").eq("task_id", taskId)
+      .eq("approval_type", STAGE_CONFIG[status].gate!.approvalType)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (!appr || appr.status === "pending")
+      return { ok: false, paused: true, message: "Waiting for your approval before continuing." };
+    if (appr.status === "rejected")
+      return { ok: false, paused: true, message: "This step was rejected — the task is paused." };
+  }
+
+  const next = nextStage(status);
+  if (!next) return { ok: false, message: "There are no further steps." };
+  const cfg = STAGE_CONFIG[next];
+  const workerId = idOf(cfg.agentKey);
+  const workerName = nameOf(cfg.agentKey);
+  const entersGate = !!cfg.gate;
+
+  // 1. Agent run for the worked stage.
+  const { data: run } = await client.from("dev_agent_runs").insert({
+    task_id: taskId, agent_id: workerId, phase: cfg.phase, status: "succeeded",
+    input: { stage: next }, output: { summary: cfg.found },
+    started_at: nowIso(), finished_at: nowIso(),
+  }).select("id").single();
+
+  // 2. Timeline: the worker's message + the Dev Manager's decision.
+  const after = nextStage(next);
+  const dm = buildDevManagerUpdate({
+    task, ranStage: next, agentName: workerName, next: after,
+    nextAgentName: after ? nameOf(STAGE_CONFIG[after].agentKey) : null, paused: entersGate,
+  });
+  const seq = Date.now() % 1_000_000;
+  await client.from("dev_agent_messages").insert([
+    { task_id: taskId, run_id: run?.id ?? null, agent_id: workerId, role: "assistant", content: cfg.found, seq },
+    { task_id: taskId, run_id: run?.id ?? null, agent_id: idOf("dev-manager"), role: "assistant",
+      content: `Dev Manager: ${workerName} finished “${next.replace(/_/g, " ")}”. ${dm.next_action}`,
+      structured: dm, seq: seq + 1 },
+  ]);
+
+  // 3. Audit.
+  await client.from("dev_audit_log").insert({
+    task_id: taskId, actor_type: "agent", actor_id: cfg.agentKey, agent_id: workerId,
+    action: "stage_advanced", entity: "dev_tasks", entity_id: taskId,
+    risk_level: task.risk_level, detail: { from: status, to: next, agent: workerName },
+  });
+
+  // 4. Gate stage → create the approval request and pause.
+  if (entersGate) {
+    await client.from("dev_approvals").insert({
+      task_id: taskId, approval_type: cfg.gate!.approvalType, risk_level: task.risk_level,
+      summary: cfg.gate!.summary, requested_by: "Dev Manager Agent", status: "pending",
+      target_type: "dev_tasks", target_id: taskId,
+    });
+    await client.from("dev_audit_log").insert({
+      task_id: taskId, actor_type: "agent", actor_id: "dev-manager", agent_id: idOf("dev-manager"),
+      action: "approval_requested", entity: "dev_approvals", entity_id: taskId,
+      risk_level: task.risk_level, detail: { approval_type: cfg.gate!.approvalType },
+    });
+  }
+
+  // 5. Advance the task.
+  await client.from("dev_tasks").update({ status: next }).eq("id", taskId);
+
+  revalidatePath(`/admin/dev-command/tasks/${taskId}`);
+  revalidatePath("/admin/dev-command/tasks");
+  revalidatePath("/admin/dev-command");
+  return {
+    ok: true, paused: entersGate,
+    message: entersGate
+      ? "Reached an approval step — your approval is needed to continue."
+      : `Moved to “${next.replace(/_/g, " ")}”.`,
+  };
+}
+
+/**
+ * Approve or reject a pending approval (the real human gate). Approving lets the
+ * next "Run Next Agent Step" continue; rejecting pauses the task.
+ */
+export async function decideApproval(
+  _prev: { ok: boolean; error?: string },
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  if (MOCK_MODE) return { ok: false, error: "Approvals need the live database." };
+  if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
+  const client = await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired — please reload." };
+
+  const id = String(formData.get("approval_id") ?? "");
+  const decision = String(formData.get("decision") ?? "");
+  const note = (String(formData.get("note") ?? "").trim() || null) as string | null;
+  if (!id || (decision !== "approved" && decision !== "rejected")) {
+    return { ok: false, error: "Something went wrong — please try again." };
+  }
+  const decidedBy = (await getServerUser())?.display_name ?? "Reliance Admin";
+
+  const { data: appr, error } = await client.from("dev_approvals")
+    .update({ status: decision, decided_by: decidedBy, decided_at: nowIso(), decision_note: note })
+    .eq("id", id).eq("status", "pending")
+    .select("task_id, approval_type").single();
+  if (error || !appr) return { ok: false, error: error?.message ?? "That request was already decided." };
+
+  await client.from("dev_audit_log").insert({
+    task_id: appr.task_id, actor_type: "human", actor_id: decidedBy,
+    action: decision === "approved" ? "approval_granted" : "approval_rejected",
+    entity: "dev_approvals", entity_id: id, detail: { approval_type: appr.approval_type },
+  });
+  if (appr.task_id) {
+    await client.from("dev_agent_messages").insert({
+      task_id: appr.task_id, role: "user",
+      content: decision === "approved" ? "You approved this step." : "You rejected this step.",
+      seq: Date.now() % 1_000_000,
+    });
+    if (decision === "rejected") {
+      await client.from("dev_tasks").update({ status: "blocked" }).eq("id", appr.task_id);
+    }
+    revalidatePath(`/admin/dev-command/tasks/${appr.task_id}`);
+  }
+  revalidatePath("/admin/dev-command/approvals");
+  revalidatePath("/admin/dev-command");
+  return { ok: true };
 }

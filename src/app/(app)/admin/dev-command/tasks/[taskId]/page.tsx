@@ -12,10 +12,12 @@ import { ExperienceReviewPanel } from "../../_components/ExperienceReviewPanel";
 import { DeploymentPanel } from "../../_components/DeploymentPanel";
 import { AgentTeamBoard } from "../../_components/AgentTeamBoard";
 import { AuditLogTable } from "../../_components/AuditLogTable";
+import { RunNextStepButton } from "../../_components/RunNextStepButton";
 import { getTaskDetail } from "@/lib/devcenter/repo";
 import { taskBundle, SAMPLE_AUDIT, getAgentsOrSample } from "@/lib/devcenter/sample";
+import { WORKFLOW_STAGES, stageIndex, isWorkflowStage, isTerminal } from "@/lib/devcenter/workflow";
 import { relativeTime } from "@/lib/utils";
-import { ArrowLeft, Target, Flag, ShieldCheck, Lock } from "lucide-react";
+import { ArrowLeft, Target, Flag, ShieldCheck, Lock, Workflow } from "lucide-react";
 import type { DevTaskMeta } from "@/lib/devcenter/types";
 
 export default async function TaskDetailPage({ params }: { params: Promise<{ taskId: string }> }) {
@@ -29,8 +31,12 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
   if (!view.task) notFound();
 
   const t = view.task;
+  const isReal = !!real.task;
   const meta = (t.metadata ?? {}) as DevTaskMeta;
   const { agents } = await getAgentsOrSample();
+  const onStage = isWorkflowStage(t.status);
+  const stageNum = isWorkflowStage(t.status) ? stageIndex(t.status) + 1 : 0;
+  const canRun = isReal && onStage && !isTerminal(t.status) && t.status !== "blocked";
 
   const permissions = [
     { label: "Database changes", on: meta.database_changes_allowed },
@@ -60,6 +66,33 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
           </div>
         </div>
       </div>
+
+      {/* Workflow control — run the next stage (real tasks only) */}
+      {isReal && (
+        <Card>
+          <CardHeader title="Workflow" subtitle="The Dev Manager moves this task one stage at a time" right={<Workflow className="h-4 w-4 text-slate-300" />} />
+          <div className="space-y-3 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-slate-500 dark:text-slate-400">Current stage:</span>
+                <TaskStatusBadge status={t.status} />
+                {onStage && <span className="text-xs text-slate-400">Step {stageNum} of {WORKFLOW_STAGES.length}</span>}
+              </div>
+              {canRun
+                ? <RunNextStepButton taskId={t.id} />
+                : <span className="text-xs font-medium text-slate-400">{isTerminal(t.status) ? "This task is finished." : t.status === "blocked" ? "Paused." : ""}</span>}
+            </div>
+            {onStage && (
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${Math.round((stageNum / WORKFLOW_STAGES.length) * 100)}%` }} />
+              </div>
+            )}
+            {t.status === "approval_required" || t.status === "human_final_approval" ? (
+              <p className="text-xs text-violet-600">This task is waiting on your approval below. Approve it, then run the next step.</p>
+            ) : null}
+          </div>
+        </Card>
+      )}
 
       {/* 5-6. Business goal + success criteria + details + safety controls */}
       <Card>
@@ -99,7 +132,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
           <FileChangePlanViewer plans={view.filePlans} />
         </div>
         <div className="space-y-5">
-          <ApprovalCenter approvals={view.approvals} title="Approvals for this task" subtitle="Risky steps paused for your decision" />
+          <ApprovalCenter approvals={view.approvals} title="Approvals for this task" subtitle="Risky steps paused for your decision" actionable={isReal} />
           <TestResultsPanel results={view.testResults} />
           <SecurityReviewPanel reviews={view.securityReviews} />
           <ExperienceReviewPanel reviews={view.experienceReviews} />

@@ -30,24 +30,27 @@ export const TONE_DOT: Record<Tone, string> = {
 
 interface Meta { label: string; tone: Tone }
 
-// ── Task status (16-state lifecycle) ──────────────────────────────────────────
+// ── Task status (17-stage workflow + 2 off-ramps) ─────────────────────────────
 export const TASK_STATUS_META: Record<DevTaskStatus, Meta> = {
-  intake:              { label: "New — just added",        tone: "neutral" },
-  planning:            { label: "Planning",                tone: "info" },
-  requirements_review: { label: "Checking requirements",   tone: "info" },
-  architecture_review: { label: "Reviewing the design",    tone: "info" },
-  experience_review:   { label: "Reviewing ease of use",   tone: "info" },
-  code_plan:           { label: "Planning the code",       tone: "info" },
-  needs_approval:      { label: "Needs your approval",     tone: "violet" },
-  approved:            { label: "Approved",                tone: "success" },
-  building:            { label: "Building",                tone: "info" },
-  testing:             { label: "Testing",                 tone: "info" },
-  security_review:     { label: "Security review",         tone: "info" },
-  documentation:       { label: "Writing docs",            tone: "info" },
-  ready_for_release:   { label: "Ready to release",        tone: "success" },
-  complete:            { label: "Done",                    tone: "success" },
-  rejected:            { label: "Rejected",                tone: "neutral" },
-  blocked:             { label: "Blocked",                 tone: "warn" },
+  intake:                  { label: "New — just added",        tone: "neutral" },
+  requirements_review:     { label: "Checking requirements",   tone: "info" },
+  architecture_review:     { label: "Planning the design",     tone: "info" },
+  ui_ux_review:            { label: "Designing the screens",   tone: "info" },
+  experience_review:       { label: "Checking ease of use",    tone: "info" },
+  code_plan:               { label: "Planning the code",       tone: "info" },
+  file_change_plan:        { label: "Listing file changes",    tone: "info" },
+  approval_required:       { label: "Needs your approval",     tone: "violet" },
+  approved_for_drafting:   { label: "Approved — ready to build", tone: "success" },
+  code_draft:              { label: "Writing draft code",      tone: "info" },
+  qa_review:               { label: "Testing",                 tone: "info" },
+  security_review:         { label: "Security review",         tone: "info" },
+  experience_final_review: { label: "Final ease-of-use check", tone: "info" },
+  documentation:           { label: "Writing docs",            tone: "info" },
+  release_plan:            { label: "Planning the release",    tone: "info" },
+  human_final_approval:    { label: "Needs your final approval", tone: "violet" },
+  complete:                { label: "Done",                    tone: "success" },
+  rejected:                { label: "Rejected",                tone: "neutral" },
+  blocked:                 { label: "Blocked",                 tone: "warn" },
 };
 
 /** Statuses that count as "closed" (not open work). */

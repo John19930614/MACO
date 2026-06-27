@@ -1,6 +1,7 @@
 import { Card, CardHeader } from "@/components/ui/primitives";
 import { ApprovalStatusBadge, RiskLevelBadge } from "./badges";
 import { EmptyStateCard } from "./states";
+import { ApprovalActions } from "./ApprovalActions";
 import { APPROVAL_TYPE_LABEL } from "@/lib/devcenter/labels";
 import { relativeTime } from "@/lib/utils";
 import { ShieldQuestion, Lock } from "lucide-react";
@@ -17,10 +18,13 @@ export function ApprovalCenter({
   approvals,
   title = "Approvals",
   subtitle = "Risky actions the AI team needs you to approve before it continues",
+  actionable = false,
 }: {
   approvals: DevApproval[];
   title?: string;
   subtitle?: string;
+  /** When true, render real Approve/Reject buttons (live tasks). */
+  actionable?: boolean;
 }) {
   const pending = approvals.filter((a) => a.status === "pending");
   const decided = approvals.filter((a) => a.status !== "pending");
@@ -73,13 +77,17 @@ export function ApprovalCenter({
                     {a.status !== "pending" && a.decided_by ? ` · decided by ${a.decided_by}` : ""}
                   </p>
                   {a.status === "pending" && (
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
-                        <Lock className="h-3 w-3" /> Enabled in a later phase
-                      </span>
-                      <button type="button" disabled className="cursor-not-allowed rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-400 dark:bg-slate-800">Reject</button>
-                      <button type="button" disabled className="cursor-not-allowed rounded-lg bg-emerald-200/60 px-3 py-1.5 text-xs font-semibold text-emerald-700/60 dark:bg-emerald-900/40 dark:text-emerald-300/60">Approve</button>
-                    </div>
+                    actionable ? (
+                      <ApprovalActions approvalId={a.id} />
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
+                          <Lock className="h-3 w-3" /> Open this task to approve
+                        </span>
+                        <button type="button" disabled className="cursor-not-allowed rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-400 dark:bg-slate-800">Reject</button>
+                        <button type="button" disabled className="cursor-not-allowed rounded-lg bg-emerald-200/60 px-3 py-1.5 text-xs font-semibold text-emerald-700/60 dark:bg-emerald-900/40 dark:text-emerald-300/60">Approve</button>
+                      </div>
+                    )
                   )}
                   {a.status !== "pending" && a.decision_note && (
                     <p className="text-[11px] italic text-slate-400">“{a.decision_note}”</p>

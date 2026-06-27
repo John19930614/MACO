@@ -11,11 +11,16 @@
 // ── Shared unions (mirror the SQL CHECK constraints) ─────────────────────────
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 
-export type DevTaskStatus =
-  | "intake" | "planning" | "requirements_review" | "architecture_review"
-  | "experience_review" | "code_plan" | "needs_approval" | "approved"
-  | "building" | "testing" | "security_review" | "documentation"
-  | "ready_for_release" | "complete" | "rejected" | "blocked";
+/** The ordered workflow stages a task moves through (Phase 5). */
+export type WorkflowStage =
+  | "intake" | "requirements_review" | "architecture_review" | "ui_ux_review"
+  | "experience_review" | "code_plan" | "file_change_plan" | "approval_required"
+  | "approved_for_drafting" | "code_draft" | "qa_review" | "security_review"
+  | "experience_final_review" | "documentation" | "release_plan"
+  | "human_final_approval" | "complete";
+
+/** A task's status is its workflow stage, plus the two off-ramp states. */
+export type DevTaskStatus = WorkflowStage | "rejected" | "blocked";
 
 /**
  * The structured intake fields stored in dev_tasks.metadata (jsonb). Kept in
