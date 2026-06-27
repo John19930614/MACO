@@ -1,0 +1,313 @@
+/**
+ * AI Software Development Command Center — manual table types (Phase 1).
+ *
+ * This project uses hand-written types (src/lib/types.ts), not generated Supabase
+ * types, so these mirror the dev_* tables created in
+ * supabase/migrations/20260627010000_dev_command_center.sql.
+ *
+ * All of these are INTERNAL, superadmin-only tables — never tenant/customer data.
+ */
+
+// ── Shared unions (mirror the SQL CHECK constraints) ─────────────────────────
+export type RiskLevel = "low" | "medium" | "high" | "critical";
+
+export type DevTaskStatus =
+  | "queued" | "planning" | "in_progress" | "awaiting_approval"
+  | "in_review" | "blocked" | "done" | "rejected" | "cancelled" | "failed";
+
+export type DevTaskPriority = "low" | "medium" | "high" | "urgent";
+
+export type AgentRunPhase =
+  | "plan" | "design" | "recommend" | "draft" | "test" | "review" | "document" | "other";
+
+export type AgentRunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+export type AgentMessageRole = "system" | "user" | "assistant" | "tool" | "thought";
+
+export type ArtifactKind =
+  | "plan" | "design" | "sql_draft" | "code_draft" | "doc" | "summary" | "test_plan" | "other";
+
+export type ArtifactStatus =
+  | "draft" | "proposed" | "approved" | "rejected" | "applied" | "superseded";
+
+export type FileChangeType = "create" | "modify" | "delete" | "rename";
+export type FileChangeStatus = "proposed" | "approved" | "rejected" | "applied";
+
+export type ReviewVerdict = "approved" | "changes_requested" | "rejected" | "pending";
+export type SecurityVerdict = "pass" | "fail" | "needs_changes" | "pending";
+
+export type TestKind = "unit" | "integration" | "system" | "lint" | "typecheck" | "qa" | "other";
+export type TestStatus = "passed" | "failed" | "error" | "skipped" | "pending";
+
+export type ExperiencePerspective =
+  | "ux" | "plain_english" | "accessibility" | "onboarding" | "simplification" | "other";
+
+/** The full dangerous-action set the human approval gate covers. */
+export type ApprovalType =
+  | "database_change" | "auth_permission_change" | "file_write"
+  | "github_branch" | "pull_request" | "deployment"
+  | "production_release" | "delete_action" | "ai_tool_permission_change";
+
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired" | "cancelled";
+
+export type DeploymentEnvironment = "preview" | "staging" | "production";
+export type DeploymentStatus =
+  | "planned" | "branch_created" | "pr_open" | "preview_ready"
+  | "merged" | "released" | "failed" | "rolled_back";
+
+export type AuditActorType = "agent" | "human" | "system";
+
+export type AgentMemoryKind =
+  | "approved_pattern" | "rejected_pattern" | "user_preference" | "lesson_learned";
+
+export type FeedbackCategory =
+  | "confusing_screen" | "wrong_recommendation" | "improvement" | "bug" | "other";
+export type FeedbackStatus = "open" | "triaged" | "in_progress" | "resolved" | "wontfix";
+
+type Json = Record<string, unknown>;
+
+// ── Row types ────────────────────────────────────────────────────────────────
+export interface DevTask {
+  id: string;
+  title: string;
+  description: string | null;
+  target_area: string | null;
+  priority: DevTaskPriority;
+  status: DevTaskStatus;
+  risk_level: RiskLevel;
+  metadata: Json;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DevAgent {
+  id: string;
+  key: string;
+  name: string;
+  role: string;
+  description: string | null;
+  system_prompt: string | null;
+  allowed_tools: string[];
+  restrictions: string[];
+  model: string | null;
+  is_manager: boolean;
+  sort_order: number;
+  status: "active" | "inactive";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DevAgentRun {
+  id: string;
+  task_id: string;
+  agent_id: string | null;
+  phase: AgentRunPhase;
+  status: AgentRunStatus;
+  input: Json;
+  output: Json;
+  model: string | null;
+  tokens_used: number | null;
+  error: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DevAgentMessage {
+  id: string;
+  run_id: string | null;
+  task_id: string | null;
+  agent_id: string | null;
+  role: AgentMessageRole;
+  content: string | null;
+  structured: Json;
+  seq: number | null;
+  created_at: string;
+}
+
+export interface DevArtifact {
+  id: string;
+  task_id: string;
+  run_id: string | null;
+  kind: ArtifactKind;
+  title: string | null;
+  path: string | null;
+  content: string | null;
+  structured: Json;
+  status: ArtifactStatus;
+  version: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DevFileChangePlan {
+  id: string;
+  task_id: string;
+  artifact_id: string | null;
+  file_path: string;
+  change_type: FileChangeType;
+  language: string | null;
+  diff: string | null;
+  rationale: string | null;
+  risk_level: RiskLevel;
+  status: FileChangeStatus;
+  applied_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DevCodeReview {
+  id: string;
+  task_id: string;
+  run_id: string | null;
+  artifact_id: string | null;
+  reviewer_agent_id: string | null;
+  summary: string | null;
+  findings: unknown[];
+  verdict: ReviewVerdict;
+  risk_level: RiskLevel;
+  status: "open" | "resolved";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DevTestResult {
+  id: string;
+  task_id: string;
+  run_id: string | null;
+  kind: TestKind;
+  status: TestStatus;
+  summary: string | null;
+  passed: number;
+  failed: number;
+  skipped: number;
+  details: Json;
+  log: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DevSecurityReview {
+  id: string;
+  task_id: string;
+  run_id: string | null;
+  reviewer_agent_id: string | null;
+  summary: string | null;
+  findings: unknown[];
+  risk_level: RiskLevel;
+  verdict: SecurityVerdict;
+  status: "open" | "resolved";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DevExperienceReview {
+  id: string;
+  task_id: string;
+  run_id: string | null;
+  reviewer_agent_id: string | null;
+  perspective: ExperiencePerspective;
+  summary: string | null;
+  findings: unknown[];
+  score: number | null;
+  verdict: ReviewVerdict;
+  status: "open" | "resolved";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DevApproval {
+  id: string;
+  task_id: string | null;
+  approval_type: ApprovalType;
+  target_type: string | null;
+  target_id: string | null;
+  risk_level: RiskLevel;
+  summary: string;
+  proposed_change: string | null;
+  details: Json;
+  status: ApprovalStatus;
+  requested_by: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DevDeployment {
+  id: string;
+  task_id: string | null;
+  approval_id: string | null;
+  branch: string | null;
+  pull_request_url: string | null;
+  pr_number: number | null;
+  preview_url: string | null;
+  release_tag: string | null;
+  commit_sha: string | null;
+  environment: DeploymentEnvironment;
+  status: DeploymentStatus;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DevAuditEntry {
+  id: string;
+  task_id: string | null;
+  actor_type: AuditActorType;
+  actor_id: string | null;
+  agent_id: string | null;
+  action: string;
+  entity: string | null;
+  entity_id: string | null;
+  risk_level: RiskLevel | null;
+  detail: Json;
+  created_at: string;
+}
+
+export interface DevAgentMemory {
+  id: string;
+  agent_id: string | null;
+  task_id: string | null;
+  kind: AgentMemoryKind;
+  title: string | null;
+  content: string | null;
+  structured: Json;
+  tags: string[];
+  status: "active" | "archived";
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DevToolPermission {
+  id: string;
+  agent_id: string;
+  tool: string;
+  allowed: boolean;
+  requires_approval: boolean;
+  scope: Json;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DevFeedback {
+  id: string;
+  task_id: string | null;
+  screen: string | null;
+  category: FeedbackCategory;
+  risk_level: RiskLevel;
+  message: string;
+  status: FeedbackStatus;
+  created_by: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}

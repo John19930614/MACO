@@ -108,6 +108,7 @@ const SA_NAV: NavSection[] = [
     group: "🔒 Reliance Internal",
     gold: true,
     items: [
+      { href: "/admin/dev-command", label: "AI Dev Command Center",  description: "Give software tasks to the AI team", icon: "🤖" },
       { href: "/sa/modules",     label: "Module Control Panel",    description: "Enable / disable EHS modules",  icon: "🔌" },
       { href: "/sa/companies",   label: "Companies & Tenants",     description: "Manage client accounts",        icon: "🏢" },
       { href: "/sa/impl",        label: "Implementation Tracker",  description: "Onboarding progress",           icon: "🚀" },

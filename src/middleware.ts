@@ -69,9 +69,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  // SA routes (/sa/*) require a Reliance admin (tenant_id IS NULL in profiles)
-  const isSaRoute = pathname === "/sa" || pathname.startsWith("/sa/");
-  if (isSaRoute) {
+  // Reliance-admin-only areas require a superadmin (profiles.tenant_id IS NULL):
+  //   /sa/*    — the existing platform console
+  //   /admin/* — the AI Dev Command Center (added in Phase 2). Same gate, same
+  //              tenant_id IS NULL check; additive — no other path is affected.
+  const isAdminArea =
+    pathname === "/sa" || pathname.startsWith("/sa/") ||
+    pathname === "/admin" || pathname.startsWith("/admin/");
+  if (isAdminArea) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("tenant_id")
