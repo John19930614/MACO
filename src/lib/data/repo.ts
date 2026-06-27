@@ -706,14 +706,22 @@ export async function updateAction(id: string, patch: Partial<SafetyAction>, use
 
 // ── Audit ────────────────────────────────────────────────────────────────────
 export async function addAudit(entry: Omit<AuditEntry, "id" | "created_at" | "tenant_id">): Promise<void> {
-  // Use the acting user's tenant (the real authenticated user in live mode), so
-  // the audit row passes the in_tenant RLS check — tenantScope() is the mock
-  // session and would be null in live.
-  const row: AuditEntry = { id: nextId("aud"), tenant_id: (await getActingUser()).tenant_id, created_at: now(), ...entry };
-  if (MOCK_MODE) store.audit.unshift(row);
-  else {
+  // Acting user's tenant so the row passes the audit_log RLS check (tenantScope()
+  // is the mock session and is null in live).
+  const tenant_id = (await getActingUser()).tenant_id;
+  if (MOCK_MODE) {
+    store.audit.unshift({ id: nextId("aud"), tenant_id, created_at: now(), ...entry });
+    return;
+  }
+  // Live: let Postgres generate the uuid id + created_at. nextId() is a mock
+  // counter that resets on every cold start, so reusing it in prod produced
+  // colliding primary keys. Audit is best-effort — a failed audit write must
+  // never break the user action that triggered it.
+  try {
     const c = await sb();
-    await dbWrite(c!.from("audit_log").insert(row));
+    await dbWrite(c!.from("audit_log").insert({ tenant_id, ...entry }));
+  } catch (e) {
+    console.error("audit write failed (non-fatal):", e);
   }
 }
 
