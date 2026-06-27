@@ -35,7 +35,7 @@ export function AgentCard({ agent }: { agent: DevAgent }) {
       )}
 
       <div className="mt-3 border-t border-slate-100 pt-3 dark:border-slate-700">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">What it can't do</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">What it can&apos;t do</p>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {(agent.restrictions.length ? agent.restrictions : ["no_deploy"]).map((r) => (
             <span
