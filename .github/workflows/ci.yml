@@ -1,0 +1,55 @@
+name: CI
+
+# The SOP-01/SOP-11 gate, enforced automatically: typecheck + tests + build +
+# the all-nav system test must pass on every push and PR. In CI there are no
+# Supabase/AI keys, so the app runs on deterministic mock fixtures (MOCK_MODE).
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [master]
+
+# A newer push to the same branch cancels the older, still-running check.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: typecheck · test · build · system-test
+    runs-on: ubuntu-latest
+    env:
+      # No backend keys in CI → mock mode (every screen works offline on fixtures).
+      NEXT_PUBLIC_SAFETYIQ_MOCK: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit & integration tests
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      - name: System test (all nav routes)
+        run: |
+          npx next start -p 3210 &
+          echo "Waiting for the app to accept requests…"
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3210/dashboard || true)
+            if [ "$code" = "200" ]; then echo "ready after ${i}s"; break; fi
+            sleep 1
+          done
+          SYSTEM_TEST_BASE=http://localhost:3210 npm run test:system
