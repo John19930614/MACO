@@ -8,8 +8,9 @@ import { isSuperadmin, getServerUser } from "@/lib/auth/session";
 import { MOCK_MODE } from "@/lib/env";
 import type { DevTask } from "@/lib/devcenter/types";
 import {
-  STAGE_CONFIG, nextStage, isGate, isTerminal, isWorkflowStage, buildDevManagerUpdate,
+  STAGE_CONFIG, STAGE_PLANNERS, nextStage, isGate, isTerminal, isWorkflowStage, buildDevManagerUpdate,
 } from "@/lib/devcenter/workflow";
+import { runPlanningAgent } from "@/lib/devcenter/planning-agents";
 
 const nowIso = () => new Date().toISOString();
 
@@ -177,28 +178,62 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
   const workerName = nameOf(cfg.agentKey);
   const entersGate = !!cfg.gate;
 
-  // 1. Agent run for the worked stage.
-  const { data: run } = await client.from("dev_agent_runs").insert({
-    task_id: taskId, agent_id: workerId, phase: cfg.phase, status: "succeeded",
-    input: { stage: next }, output: { summary: cfg.found },
-    started_at: nowIso(), finished_at: nowIso(),
-  }).select("id").single();
+  let seq = Date.now() % 1_000_000;
+  const nextSeq = () => seq++;
 
-  // 2. Timeline: the worker's message + the Dev Manager's decision.
+  // 1. Run the stage. Planning stages (Phase 6) run real planning agents — one
+  // run + artifact + message + audit per agent. Other stages get one stage run.
+  const planners = STAGE_PLANNERS[next] ?? [];
+  if (planners.length) {
+    for (const key of planners) {
+      const result = await runPlanningAgent(key, task);
+      const aId = idOf(key);
+      const { data: prun } = await client.from("dev_agent_runs").insert({
+        task_id: taskId, agent_id: aId, phase: cfg.phase, status: "succeeded",
+        input: { stage: next, agent: key }, output: result?.structured ?? { note: "no output" },
+        model: result?.aiBacked ? "ai" : "heuristic", started_at: nowIso(), finished_at: nowIso(),
+      }).select("id").single();
+      if (!result) continue;
+      await client.from("dev_artifacts").insert({
+        task_id: taskId, run_id: prun?.id ?? null, kind: result.kind,
+        title: `${result.label} — plan`, content: result.content, structured: result.structured,
+        status: "proposed", created_by: `${result.label} Agent`,
+      });
+      await client.from("dev_agent_messages").insert({
+        task_id: taskId, run_id: prun?.id ?? null, agent_id: aId, role: "assistant",
+        content: `${result.label}: produced a structured plan${result.aiBacked ? " (AI-written)" : ""}.`,
+        structured: result.structured, seq: nextSeq(),
+      });
+      await client.from("dev_audit_log").insert({
+        task_id: taskId, actor_type: "agent", actor_id: key, agent_id: aId,
+        action: "planning_output", entity: "dev_artifacts", entity_id: taskId,
+        risk_level: task.risk_level, detail: { agent: key, ai_backed: result.aiBacked },
+      });
+    }
+  } else {
+    const { data: run } = await client.from("dev_agent_runs").insert({
+      task_id: taskId, agent_id: workerId, phase: cfg.phase, status: "succeeded",
+      input: { stage: next }, output: { summary: cfg.found },
+      started_at: nowIso(), finished_at: nowIso(),
+    }).select("id").single();
+    await client.from("dev_agent_messages").insert({
+      task_id: taskId, run_id: run?.id ?? null, agent_id: workerId, role: "assistant", content: cfg.found, seq: nextSeq(),
+    });
+  }
+
+  // 2. Dev Manager decision message.
   const after = nextStage(next);
   const dm = buildDevManagerUpdate({
     task, ranStage: next, agentName: workerName, next: after,
     nextAgentName: after ? nameOf(STAGE_CONFIG[after].agentKey) : null, paused: entersGate,
   });
-  const seq = Date.now() % 1_000_000;
-  await client.from("dev_agent_messages").insert([
-    { task_id: taskId, run_id: run?.id ?? null, agent_id: workerId, role: "assistant", content: cfg.found, seq },
-    { task_id: taskId, run_id: run?.id ?? null, agent_id: idOf("dev-manager"), role: "assistant",
-      content: `Dev Manager: ${workerName} finished “${next.replace(/_/g, " ")}”. ${dm.next_action}`,
-      structured: dm, seq: seq + 1 },
-  ]);
+  await client.from("dev_agent_messages").insert({
+    task_id: taskId, agent_id: idOf("dev-manager"), role: "assistant",
+    content: `Dev Manager: ${workerName} finished “${next.replace(/_/g, " ")}”. ${dm.next_action}`,
+    structured: dm, seq: nextSeq(),
+  });
 
-  // 3. Audit.
+  // 3. Audit the stage advance.
   await client.from("dev_audit_log").insert({
     task_id: taskId, actor_type: "agent", actor_id: cfg.agentKey, agent_id: workerId,
     action: "stage_advanced", entity: "dev_tasks", entity_id: taskId,

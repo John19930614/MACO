@@ -12,6 +12,7 @@ import { ExperienceReviewPanel } from "../../_components/ExperienceReviewPanel";
 import { DeploymentPanel } from "../../_components/DeploymentPanel";
 import { AgentTeamBoard } from "../../_components/AgentTeamBoard";
 import { AuditLogTable } from "../../_components/AuditLogTable";
+import { PlanningOutputPanel } from "../../_components/PlanningOutputPanel";
 import { RunNextStepButton } from "../../_components/RunNextStepButton";
 import { getTaskDetail } from "@/lib/devcenter/repo";
 import { taskBundle, SAMPLE_AUDIT, getAgentsOrSample } from "@/lib/devcenter/sample";
@@ -123,6 +124,9 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
           </div>
         </div>
       </Card>
+
+      {/* Phase 6 — structured planning outputs */}
+      <PlanningOutputPanel artifacts={view.artifacts} />
 
       {/* 8-15. Work panels */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">

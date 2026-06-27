@@ -73,6 +73,17 @@ export const STAGE_CONFIG: Record<WorkflowStage, StageConfig> = {
     found: "Task complete." },
 };
 
+/**
+ * Which real planning agents run at each stage (Phase 6). The experience_review
+ * stage runs the three experience agents so their review lands before code_plan.
+ */
+export const STAGE_PLANNERS: Partial<Record<WorkflowStage, string[]>> = {
+  requirements_review: ["product-requirements"],
+  architecture_review: ["platform-architect"],
+  ui_ux_review: ["ui-ux"],
+  experience_review: ["human-experience", "plain-english", "workflow-simplification"],
+};
+
 export function stageIndex(stage: WorkflowStage): number {
   return WORKFLOW_STAGES.indexOf(stage);
 }
