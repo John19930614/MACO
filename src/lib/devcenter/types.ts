@@ -53,8 +53,14 @@ export type AgentMessageRole = "system" | "user" | "assistant" | "tool" | "thoug
 export type ArtifactKind =
   | "plan" | "design" | "sql_draft" | "code_draft" | "doc" | "summary" | "test_plan" | "other";
 
+/** Specific code-draft classification (Phase 8). */
+export type ArtifactType =
+  | "react_component" | "nextjs_route" | "server_action" | "api_route" | "supabase_sql"
+  | "rls_policy" | "test_file" | "documentation" | "config_change" | "release_notes";
+
 export type ArtifactStatus =
-  | "draft" | "proposed" | "approved" | "rejected" | "applied" | "superseded";
+  | "draft" | "proposed" | "approved" | "rejected" | "applied" | "superseded"
+  | "needs_review" | "revised" | "ready_for_branch";
 
 export type FileChangeType =
   | "create" | "modify" | "delete" | "rename"
@@ -161,13 +167,18 @@ export interface DevArtifact {
   task_id: string;
   run_id: string | null;
   kind: ArtifactKind;
+  artifact_type: ArtifactType | null;   // Phase 8 code-draft classification
   title: string | null;
-  path: string | null;
+  description: string | null;
+  path: string | null;                   // file_path_suggestion
   content: string | null;
+  language: string | null;
+  risk_level: RiskLevel | null;
+  approval_required: boolean;
   structured: Json;
   status: ArtifactStatus;
   version: number;
-  created_by: string | null;
+  created_by: string | null;             // agent_name
   created_at: string;
   updated_at: string;
 }

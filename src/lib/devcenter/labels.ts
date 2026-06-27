@@ -9,7 +9,7 @@ import type {
   DevTaskStatus, DevTaskPriority, RiskLevel, ApprovalType, ApprovalStatus,
   AgentRunStatus, DeploymentStatus, TestStatus, SecurityVerdict, ReviewVerdict,
   ExperiencePerspective, AgentMemoryKind, FeedbackCategory,
-  FileChangeType, FileChangeStatus,
+  FileChangeType, FileChangeStatus, ArtifactType, ArtifactStatus,
 } from "./types";
 
 /** Tone of a badge — drives the shared color/shape classes. */
@@ -181,6 +181,32 @@ export const FILE_PLAN_STATUS_META: Record<FileChangeStatus, Meta> = {
   rejected:       { label: "Rejected",            tone: "neutral" },
   drafted:        { label: "Drafted",             tone: "info" },
   applied_later:  { label: "Will apply later",    tone: "info" },
+};
+
+// ── Code draft artifacts (Phase 8) ────────────────────────────────────────────
+export const ARTIFACT_TYPE_META: Record<ArtifactType, Meta> = {
+  react_component: { label: "React component",  tone: "info" },
+  nextjs_route:    { label: "Page route",        tone: "info" },
+  server_action:   { label: "Server action",     tone: "info" },
+  api_route:       { label: "API route",         tone: "info" },
+  supabase_sql:    { label: "Database SQL",      tone: "danger" },
+  rls_policy:      { label: "Data-access rule",  tone: "danger" },
+  test_file:       { label: "Test file",         tone: "success" },
+  documentation:   { label: "Documentation",     tone: "neutral" },
+  config_change:   { label: "Config change",     tone: "warn" },
+  release_notes:   { label: "Release notes",     tone: "neutral" },
+};
+
+export const ARTIFACT_STATUS_META: Record<ArtifactStatus, Meta> = {
+  draft:            { label: "Draft",             tone: "neutral" },
+  proposed:         { label: "Proposed",          tone: "info" },
+  approved:         { label: "Approved",          tone: "success" },
+  rejected:         { label: "Rejected",          tone: "neutral" },
+  applied:          { label: "Applied",           tone: "success" },
+  superseded:       { label: "Replaced",          tone: "neutral" },
+  needs_review:     { label: "Needs your review", tone: "violet" },
+  revised:          { label: "Revision requested", tone: "warn" },
+  ready_for_branch: { label: "Ready for a branch", tone: "info" },
 };
 
 /** The 5 experience checks an admin reads before approving a file plan. */

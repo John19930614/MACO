@@ -12,6 +12,7 @@ import {
 } from "@/lib/devcenter/workflow";
 import { runPlanningAgent } from "@/lib/devcenter/planning-agents";
 import { generateFilePlans } from "@/lib/devcenter/file-plans";
+import { generateCodeDrafts } from "@/lib/devcenter/code-drafts";
 
 const nowIso = () => new Date().toISOString();
 
@@ -241,6 +242,32 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
     }
   }
 
+  // 1c. Phase 8: the code_draft stage produces code/SQL/test/doc DRAFTS
+  // (artifacts only — nothing is written to the codebase or database).
+  if (next === "code_draft") {
+    const { data: planRows } = await client.from("dev_file_change_plans")
+      .select("file_path, change_type, risk_level, proposed_summary, status")
+      .eq("task_id", taskId).neq("status", "rejected");
+    const plans = planRows && planRows.length
+      ? planRows.map((r) => ({ file_path: r.file_path as string, change_type: r.change_type, risk_level: r.risk_level, proposed_summary: r.proposed_summary as string | null }))
+      : generateFilePlans(task).map((p) => ({ file_path: p.file_path, change_type: p.change_type, risk_level: p.risk_level, proposed_summary: p.proposed_summary }));
+    for (const d of generateCodeDrafts(task, plans)) {
+      const kind = d.artifact_type === "supabase_sql" || d.artifact_type === "rls_policy"
+        ? "sql_draft"
+        : d.artifact_type === "documentation" || d.artifact_type === "release_notes" ? "doc" : "code_draft";
+      const { data: art } = await client.from("dev_artifacts").insert({
+        task_id: taskId, kind, artifact_type: d.artifact_type, title: d.title, description: d.description,
+        path: d.file_path_suggestion, content: d.content, language: d.language, risk_level: d.risk_level,
+        approval_required: d.approval_required, structured: d.structured, status: "needs_review", created_by: d.agent_name,
+      }).select("id").single();
+      await client.from("dev_audit_log").insert({
+        task_id: taskId, actor_type: "agent", actor_id: d.agent_name, agent_id: null,
+        action: "code_draft_created", entity: "dev_artifacts", entity_id: art?.id ?? taskId,
+        risk_level: d.risk_level, detail: { artifact_type: d.artifact_type, file: d.file_path_suggestion },
+      });
+    }
+  }
+
   // 2. Dev Manager decision message.
   const after = nextStage(next);
   const dm = buildDevManagerUpdate({
@@ -368,6 +395,40 @@ export async function decideFilePlan(
     entity: "dev_file_change_plans", entity_id: id, detail: { file_path: plan.file_path },
   });
   revalidatePath(`/admin/dev-command/tasks/${plan.task_id}`);
+  revalidatePath("/admin/dev-command");
+  return { ok: true };
+}
+
+/**
+ * Approve, reject, or request a revision on a code draft artifact (Phase 8).
+ * Records your decision — no code is applied to the project.
+ */
+export async function decideArtifact(
+  _prev: { ok: boolean; error?: string },
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  if (MOCK_MODE) return { ok: false, error: "Reviews need the live database." };
+  if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
+  const client = await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired — please reload." };
+
+  const id = String(formData.get("artifact_id") ?? "");
+  const decision = String(formData.get("decision") ?? "");
+  const next = decision === "approve" ? "approved" : decision === "reject" ? "rejected" : decision === "revise" ? "revised" : null;
+  if (!id || !next) return { ok: false, error: "Something went wrong — please try again." };
+  const decidedBy = (await getServerUser())?.display_name ?? "Reliance Admin";
+
+  const { data: art, error } = await client.from("dev_artifacts")
+    .update({ status: next })
+    .eq("id", id).in("status", ["draft", "needs_review", "revised"])
+    .select("task_id, title").single();
+  if (error || !art) return { ok: false, error: error?.message ?? "That draft was already decided." };
+
+  await client.from("dev_audit_log").insert({
+    task_id: art.task_id, actor_type: "human", actor_id: decidedBy,
+    action: `artifact_${next}`, entity: "dev_artifacts", entity_id: id, detail: { title: art.title },
+  });
+  revalidatePath(`/admin/dev-command/tasks/${art.task_id}`);
   revalidatePath("/admin/dev-command");
   return { ok: true };
 }

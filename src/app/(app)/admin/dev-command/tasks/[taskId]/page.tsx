@@ -13,6 +13,7 @@ import { DeploymentPanel } from "../../_components/DeploymentPanel";
 import { AgentTeamBoard } from "../../_components/AgentTeamBoard";
 import { AuditLogTable } from "../../_components/AuditLogTable";
 import { PlanningOutputPanel } from "../../_components/PlanningOutputPanel";
+import { ArtifactViewer } from "../../_components/ArtifactViewer";
 import { RunNextStepButton } from "../../_components/RunNextStepButton";
 import { getTaskDetail } from "@/lib/devcenter/repo";
 import { taskBundle, SAMPLE_AUDIT, getAgentsOrSample } from "@/lib/devcenter/sample";
@@ -38,6 +39,11 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
   const onStage = isWorkflowStage(t.status);
   const stageNum = isWorkflowStage(t.status) ? stageIndex(t.status) + 1 : 0;
   const canRun = isReal && onStage && !isTerminal(t.status) && t.status !== "blocked";
+
+  // Split artifacts so each panel shows its own kind (no duplication).
+  const planningArtifacts = view.artifacts.filter((a) => (a.structured as Record<string, unknown> | null)?._agent);
+  const codeDraftArtifacts = view.artifacts.filter((a) => a.artifact_type);
+  const otherArtifacts = view.artifacts.filter((a) => !(a.structured as Record<string, unknown> | null)?._agent && !a.artifact_type);
 
   const permissions = [
     { label: "Database changes", on: meta.database_changes_allowed },
@@ -126,13 +132,16 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
       </Card>
 
       {/* Phase 6 — structured planning outputs */}
-      <PlanningOutputPanel artifacts={view.artifacts} />
+      <PlanningOutputPanel artifacts={planningArtifacts} />
+
+      {/* Phase 8 — code draft artifacts */}
+      <ArtifactViewer artifacts={codeDraftArtifacts} actionable={isReal} />
 
       {/* 8-15. Work panels */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div className="space-y-5">
           <TaskTimeline runs={view.runs} messages={view.messages} agents={agents} />
-          <AgentOutputPanel artifacts={view.artifacts} />
+          <AgentOutputPanel artifacts={otherArtifacts} />
           <FileChangePlanViewer plans={view.filePlans} actionable={isReal} />
         </div>
         <div className="space-y-5">
