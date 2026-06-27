@@ -25,6 +25,16 @@ export async function middleware(request: NextRequest) {
   );
   if (isPublic) return NextResponse.next();
 
+  // Self-authenticating API routes enforce their OWN auth at the route handler
+  // (Bearer Supabase JWT or CRON_SECRET — see src/lib/ops/auth.ts). The
+  // cookie-based redirect below must not intercept them, or a token-bearing
+  // caller (the standalone Ops Console) gets 307'd to /login before its auth
+  // runs. These routes stay fully gated — just at the handler, not here.
+  const SELF_AUTH_API = ["/api/ops"];
+  if (SELF_AUTH_API.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
+    return NextResponse.next();
+  }
+
   // Build response object so Supabase can refresh the session cookie
   let response = NextResponse.next({
     request: { headers: request.headers },
