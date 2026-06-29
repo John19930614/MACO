@@ -141,8 +141,9 @@ export const STAGE_REVIEW_GATES: Record<string, ReviewGateType[]> = {
   documentation: ["documentation"],
 };
 
-/** Gates that MUST pass (or be waived) before a task can move toward release. */
-export const REQUIRED_FOR_RELEASE: ReviewGateType[] = ["qa", "security", "experience", "documentation"];
+/** Gates that MUST pass (or be waived) before a task can move toward release.
+ * Must match what the completion gate checks in actions/devcenter.ts. */
+export const REQUIRED_FOR_RELEASE: ReviewGateType[] = ["qa", "security", "experience", "plain_english", "documentation"];
 
 /** A gate counts as cleared when it passed or the admin waived it. */
 export function gateCleared(status: ReviewGateStatus): boolean {
