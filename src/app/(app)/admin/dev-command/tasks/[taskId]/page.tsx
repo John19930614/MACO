@@ -26,6 +26,7 @@ import { testPlan } from "@/lib/devcenter/qa-tests";
 import { BranchPlanPanel } from "../../_components/BranchPlanPanel";
 import { PullRequestPlanPanel } from "../../_components/PullRequestPlanPanel";
 import { RunNextStepButton } from "../../_components/RunNextStepButton";
+import { DeleteTaskButton } from "../../_components/DeleteTaskButton";
 import { getTaskDetail, getGithubSettings } from "@/lib/devcenter/repo";
 import { taskBundle, SAMPLE_AUDIT, getAgentsOrSample } from "@/lib/devcenter/sample";
 import { WORKFLOW_STAGES, stageIndex, isWorkflowStage, isTerminal } from "@/lib/devcenter/workflow";
@@ -100,6 +101,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
             <PriorityBadge priority={t.priority} />
             <RiskLevelBadge level={t.risk_level} />
             <TaskStatusBadge status={t.status} />
+            {isReal && <DeleteTaskButton taskId={t.id} taskTitle={t.title} />}
           </div>
         </div>
       </div>

@@ -938,3 +938,31 @@ export async function decideReviewGate(
   revalidatePath("/admin/dev-command");
   return { ok: true };
 }
+
+/**
+ * Permanently delete a task and all its related records. No recovery — shown
+ * to the user as a destructive action requiring confirmation in the UI.
+ */
+export async function deleteDevTask(taskId: string): Promise<{ ok: boolean; error?: string }> {
+  if (MOCK_MODE) return { ok: false, error: "Delete needs the live database." };
+  if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
+  const client = await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired — please reload." };
+
+  // Delete child tables first in case FKs don't cascade.
+  const childTables = [
+    "dev_agent_runs", "dev_approvals", "dev_audit_log", "dev_agent_messages",
+    "dev_review_gates", "dev_test_results", "dev_security_reviews",
+    "dev_file_change_plans", "dev_artifacts", "dev_deployments", "dev_changelog",
+  ] as const;
+  for (const table of childTables) {
+    await client.from(table as string).delete().eq("task_id", taskId);
+  }
+
+  const { error } = await client.from("dev_tasks").delete().eq("id", taskId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/admin/dev-command/tasks");
+  revalidatePath("/admin/dev-command");
+  return { ok: true };
+}
