@@ -17,6 +17,9 @@ import { AuditLogTable } from "../../_components/AuditLogTable";
 import { PlanningOutputPanel } from "../../_components/PlanningOutputPanel";
 import { ArtifactViewer } from "../../_components/ArtifactViewer";
 import { ReviewChecklistPanel } from "../../_components/ReviewChecklistPanel";
+import { ExperienceScorecard } from "../../_components/ExperienceScorecard";
+import { RequiredFixesPanel } from "../../_components/RequiredFixesPanel";
+import { PlainEnglishTable } from "../../_components/PlainEnglishTable";
 import { AppliedChangesPanel } from "../../_components/AppliedChangesPanel";
 import { BranchPlanPanel } from "../../_components/BranchPlanPanel";
 import { PullRequestPlanPanel } from "../../_components/PullRequestPlanPanel";
@@ -165,8 +168,15 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
       {/* Phase 12 — applied changes (working area) */}
       <AppliedChangesPanel changes={view.appliedChanges} />
 
+      {/* Phase 15 — experience skill layer scorecard */}
+      <ExperienceScorecard gates={view.reviewGates} approvals={view.approvals} />
+
       {/* Phase 9 — required review gates */}
       <ReviewChecklistPanel gates={view.reviewGates} actionable={isReal} />
+
+      {/* Phase 15 — required fixes + plain-English reference */}
+      <RequiredFixesPanel gates={view.reviewGates} />
+      <PlainEnglishTable />
 
       {/* Phase 11 — GitHub branch + pull request plan (prepared only) */}
       <BranchPlanPanel

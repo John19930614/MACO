@@ -114,7 +114,8 @@ export type FeedbackType =
 
 // ── Review gates (Phase 9) ────────────────────────────────────────────────────
 export type ReviewGateType =
-  | "qa" | "security" | "experience" | "plain_english" | "admin_workflow" | "documentation";
+  | "qa" | "security" | "experience" | "plain_english" | "admin_workflow" | "documentation"
+  | "workflow" | "accessibility" | "performance";
 export type ReviewGateStatus =
   | "pending" | "passed" | "failed" | "needs_revision" | "waived_by_admin";
 

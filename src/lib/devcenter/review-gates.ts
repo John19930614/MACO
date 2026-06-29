@@ -8,7 +8,7 @@
  * touch, so risky tasks need a fix or a human waiver before release.
  */
 import "server-only";
-import { REVIEW_GATE_META } from "./labels";
+import { REVIEW_GATE_META, SCORE_GATE_TYPES } from "./labels";
 import type { DevTask, DevTaskMeta, ReviewChecklistItem, ReviewGateStatus, ReviewGateType } from "./types";
 
 const CHECKLISTS: Record<ReviewGateType, string[]> = {
@@ -23,9 +23,9 @@ const CHECKLISTS: Record<ReviewGateType, string[]> = {
     "No unsafe delete action", "No unexpected permission changes", "No environment variable risk",
   ],
   experience: [
-    "The screen is easy to understand", "A non-technical admin can use it",
-    "Labels are plain-English", "The next step is obvious", "Not too many options",
-    "Help text where needed", "Dangerous actions are clear", "The workflow saves time",
+    "Easy to use", "Visually clear", "Plain-English language", "Works on mobile / tablet",
+    "Simple admin workflow", "Fast", "Prevents errors", "Accessible",
+    "Helps onboarding / training", "Builds user confidence",
   ],
   plain_english: [
     "No confusing technical wording", "Clear labels", "Clear button text",
@@ -38,6 +38,18 @@ const CHECKLISTS: Record<ReviewGateType, string[]> = {
   documentation: [
     "User guide drafted", "Admin guide drafted", "Changelog entry",
     "Plain-English notes", "Examples or screenshots",
+  ],
+  workflow: [
+    "Fewer steps than before", "No duplicate data entry", "Guided where helpful",
+    "Sensible defaults", "Nothing unnecessary on screen",
+  ],
+  accessibility: [
+    "Good colour contrast", "Keyboard navigation works", "Screen-reader labels",
+    "Readable text size", "Icons paired with text (not colour alone)",
+  ],
+  performance: [
+    "Page loads quickly", "No unnecessary database calls", "Large lists are paginated",
+    "Clear loading states", "Stays fast with lots of data",
   ],
 };
 
@@ -88,6 +100,23 @@ export function generateReviewGate(task: DevTask, gate: ReviewGateType): ReviewG
     };
   }
 
+  // Experience-layer gates carry a 1-10 score. Passing requires 8+.
+  if (SCORE_GATE_TYPES.includes(gate)) {
+    const score = scoreFor(task, gate);
+    const passed = score >= 8;
+    const checklist: ReviewChecklistItem[] = labels.map((label) => ({ label, passed }));
+    const meta = REVIEW_GATE_META[gate];
+    return {
+      gate_type: gate, agent_name,
+      status: passed ? "passed" : "needs_revision",
+      summary: passed ? `${meta.label}: ${score}/10 — good.` : `${meta.label}: ${score}/10 — needs to reach 8 before release.`,
+      checklist,
+      required_fixes: passed ? [] : [`Improve the ${meta.label.toLowerCase()} to 8/10 or higher (or waive it).`],
+      score,
+    };
+  }
+
+  // QA / documentation: a pass/fail plan-level review.
   const checklist: ReviewChecklistItem[] = labels.map((label) => ({ label, passed: true }));
   return {
     gate_type: gate, agent_name, status: "passed",
@@ -96,11 +125,19 @@ export function generateReviewGate(task: DevTask, gate: ReviewGateType): ReviewG
   };
 }
 
+/** Deterministic 1-10 score from the task's risk + flags. */
+function scoreFor(task: DevTask, gate: ReviewGateType): number {
+  const base = task.risk_level === "low" ? 9 : task.risk_level === "medium" ? 8 : task.risk_level === "high" ? 7 : 6;
+  let s = base;
+  if (gate === "performance" && meta(task).database_changes_allowed) s -= 1;
+  return Math.max(1, Math.min(10, s));
+}
+
 /** Which review gates run at each stage. */
 export const STAGE_REVIEW_GATES: Record<string, ReviewGateType[]> = {
   qa_review: ["qa"],
   security_review: ["security"],
-  experience_final_review: ["experience", "plain_english", "admin_workflow"],
+  experience_final_review: ["experience", "plain_english", "workflow", "admin_workflow", "accessibility", "performance"],
   documentation: ["documentation"],
 };
 

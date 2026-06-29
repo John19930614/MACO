@@ -253,9 +253,17 @@ export const REVIEW_GATE_META: Record<ReviewGateType, { label: string; agent: st
   security:       { label: "Security review",      agent: "Security/Permissions Agent" },
   experience:     { label: "Experience review",    agent: "Human Experience Agent" },
   plain_english:  { label: "Plain-English review", agent: "Plain-English Agent" },
-  admin_workflow: { label: "Admin workflow review", agent: "Admin Support Agent" },
+  admin_workflow: { label: "Admin support review", agent: "Admin Support Agent" },
   documentation:  { label: "Documentation review", agent: "Documentation Agent" },
+  workflow:       { label: "Workflow simplicity",  agent: "Workflow Simplification Agent" },
+  accessibility:  { label: "Accessibility review", agent: "Accessibility Agent" },
+  performance:    { label: "Performance review",   agent: "Performance Agent" },
 };
+
+/** The 6 required experience-layer scores (gate types that carry a 1-10 score). */
+export const SCORE_GATE_TYPES: ReviewGateType[] = [
+  "experience", "plain_english", "workflow", "admin_workflow", "accessibility", "performance",
+];
 
 export const REVIEW_STATUS_META: Record<ReviewGateStatus, Meta> = {
   pending:        { label: "Not reviewed yet",  tone: "neutral" },
@@ -278,6 +286,19 @@ export const FILE_PLAN_EXPERIENCE_CHECKS: string[] = [
  * Technical-phrase → plain-English translation, per the Phase 2 spec examples.
  * Used when surfacing raw error/log text to the operator.
  */
+/** Technical → plain-English replacement reference (shown as a table). */
+export const PLAIN_ENGLISH_REPLACEMENTS: { technical: string; plain: string }[] = [
+  { technical: "API Route Failure",   plain: "Page Connection Issue" },
+  { technical: "Database Latency",    plain: "Database Running Slow" },
+  { technical: "Auth Policy Error",   plain: "Login Permission Issue" },
+  { technical: "Agent Execution Failed", plain: "AI Task Failed" },
+  { technical: "RLS Conflict",        plain: "Data Access Rule Problem" },
+  { technical: "Migration Pending",   plain: "Database Change Needs Review" },
+  { technical: "Unhandled Exception", plain: "Unexpected System Error" },
+  { technical: "Permission Denied",   plain: "You Do Not Have Access" },
+  { technical: "Validation Failed",   plain: "Required Information Is Missing" },
+];
+
 const PLAIN_ENGLISH: { pattern: RegExp; friendly: string }[] = [
   { pattern: /api route failure|api failure|route handler error/i, friendly: "Page Connection Issue" },
   { pattern: /database latency|db latency|slow quer/i,             friendly: "Database Running Slow" },
@@ -285,6 +306,9 @@ const PLAIN_ENGLISH: { pattern: RegExp; friendly: string }[] = [
   { pattern: /agent execution failed|execution failed/i,           friendly: "AI Task Failed" },
   { pattern: /rls conflict|row level security|row-level security/i, friendly: "Data Access Rule Problem" },
   { pattern: /migration pending|pending migration/i,               friendly: "Database Change Needs Review" },
+  { pattern: /unhandled exception/i,                               friendly: "Unexpected System Error" },
+  { pattern: /permission denied/i,                                 friendly: "You Do Not Have Access" },
+  { pattern: /validation failed/i,                                 friendly: "Required Information Is Missing" },
 ];
 
 /** Translate a raw technical message into a friendlier one when we recognize it. */

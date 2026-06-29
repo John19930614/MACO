@@ -207,6 +207,28 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
     }
   }
 
+  // Phase 15: a task cannot be marked COMPLETE unless the experience layer and
+  // required reviews are cleared and the final human approval is in place.
+  if (next === "complete") {
+    const { data: gateRows } = await client.from("dev_review_gates").select("gate_type, status").eq("task_id", taskId);
+    const cleared = (t: string) => {
+      const g = (gateRows ?? []).find((x) => x.gate_type === t);
+      return !!g && (g.status === "passed" || g.status === "waived_by_admin");
+    };
+    const need: string[] = [];
+    if (!cleared("experience")) need.push("Experience review (8+)");
+    if (!cleared("plain_english")) need.push("Plain-English review (8+)");
+    if (!cleared("security")) need.push("Security review");
+    if (!cleared("qa")) need.push("QA review");
+    if (!cleared("documentation")) need.push("Documentation review");
+    const { data: prodAppr } = await client.from("dev_approvals")
+      .select("id").eq("task_id", taskId).eq("approval_type", "production_release").eq("status", "approved").maybeSingle();
+    if (!prodAppr) need.push("Final human approval");
+    if (need.length) {
+      return { ok: false, paused: true, message: `Can't mark complete — still needed: ${need.join(", ")}. Pass or waive them first.` };
+    }
+  }
+
   let seq = Date.now() % 1_000_000;
   const nextSeq = () => seq++;
 
