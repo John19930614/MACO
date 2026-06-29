@@ -187,31 +187,34 @@ export interface DashboardMetric {
   href: string;
 }
 
-export function dashboardMetrics(): DashboardMetric[] {
+/** Pass live counts to override sample values; omit any key to keep the sample default. */
+export function dashboardMetrics(live?: Partial<Record<string, number>>): DashboardMetric[] {
   const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
   const isToday = (iso: string) => new Date(iso) >= startOfDay;
-  const openTasks = SAMPLE_TASKS.filter((t) => !["complete", "rejected"].includes(t.status)).length;
-  const needApproval = SAMPLE_APPROVALS.filter((a) => a.status === "pending").length;
-  const runsToday = SAMPLE_RUNS.filter((r) => isToday(r.created_at)).length;
-  const failedRuns = SAMPLE_RUNS.filter((r) => r.status === "failed").length;
-  const securityWarnings = SAMPLE_SECURITY_REVIEWS.filter((s) => s.verdict === "fail" || s.verdict === "needs_changes").length;
-  const xpFailures = SAMPLE_EXPERIENCE_REVIEWS.filter((e) => e.verdict === "changes_requested" || e.verdict === "rejected").length;
-  const draftPlans = SAMPLE_FILE_PLANS.filter((p) => p.status === "planned" || p.status === "needs_approval").length;
+  const v = (key: string, fallback: number) => live?.[key] ?? fallback;
+
+  const openTasks = v("open_tasks", SAMPLE_TASKS.filter((t) => !["complete", "rejected"].includes(t.status)).length);
+  const needApproval = v("need_approval", SAMPLE_APPROVALS.filter((a) => a.status === "pending").length);
+  const runsToday = v("runs_today", SAMPLE_RUNS.filter((r) => isToday(r.created_at)).length);
+  const failedRuns = v("failed_runs", SAMPLE_RUNS.filter((r) => r.status === "failed").length);
+  const securityWarnings = v("security_warnings", SAMPLE_SECURITY_REVIEWS.filter((s) => s.verdict === "fail" || s.verdict === "needs_changes").length);
+  const xpFailures = v("xp_failures", SAMPLE_EXPERIENCE_REVIEWS.filter((e) => e.verdict === "changes_requested" || e.verdict === "rejected").length);
+  const draftPlans = v("draft_plans", SAMPLE_FILE_PLANS.filter((p) => p.status === "planned" || p.status === "needs_approval").length);
   const activePRs = SAMPLE_DEPLOYMENTS.filter((d) => d.status === "pr_open").length;
   const recentDeploys = SAMPLE_DEPLOYMENTS.length;
   const auditActivity = SAMPLE_AUDIT.filter((a) => isToday(a.created_at)).length;
 
   return [
-    { key: "open_tasks", label: "Open dev tasks", value: openTasks, hint: "Tasks that aren't finished yet", tone: "info", href: "/admin/dev-command/tasks" },
-    { key: "need_approval", label: "Tasks needing approval", value: needApproval, hint: "Waiting for your yes/no", tone: "violet", href: "/admin/dev-command/approvals" },
-    { key: "runs_today", label: "Agent runs today", value: runsToday, hint: "AI work started today", tone: "neutral", href: "/admin/dev-command/audit-log" },
-    { key: "failed_runs", label: "Failed agent runs", value: failedRuns, hint: "AI tasks that errored", tone: failedRuns ? "danger" : "neutral", href: "/admin/dev-command/audit-log" },
-    { key: "security_warnings", label: "Security warnings", value: securityWarnings, hint: "Reviews that need attention", tone: securityWarnings ? "danger" : "success", href: "/admin/dev-command/tasks" },
-    { key: "xp_failures", label: "Experience review issues", value: xpFailures, hint: "Ease-of-use problems found", tone: xpFailures ? "warn" : "success", href: "/admin/dev-command/tasks" },
-    { key: "draft_plans", label: "Draft code plans", value: draftPlans, hint: "Proposed file changes, not yet applied", tone: "info", href: "/admin/dev-command/tasks" },
-    { key: "active_prs", label: "Active pull requests", value: activePRs, hint: "Open code reviews on GitHub", tone: "info", href: "/admin/dev-command/tasks" },
-    { key: "recent_deploys", label: "Recent deployments", value: recentDeploys, hint: "Previews and releases", tone: "neutral", href: "/admin/dev-command/tasks" },
-    { key: "audit_today", label: "Audit log activity today", value: auditActivity, hint: "Actions recorded today", tone: "neutral", href: "/admin/dev-command/audit-log" },
+    { key: "open_tasks", label: "Open tasks", value: openTasks, hint: "Tasks still in progress", tone: "info", href: "/admin/dev-command/tasks" },
+    { key: "need_approval", label: "Need your approval", value: needApproval, hint: "Waiting on your yes/no", tone: needApproval ? "violet" : "neutral", href: "/admin/dev-command/approvals" },
+    { key: "runs_today", label: "Active agents", value: runsToday, hint: "AI agents currently working", tone: "neutral", href: "/admin/dev-command/audit-log" },
+    { key: "failed_runs", label: "Failed reviews", value: failedRuns, hint: "Agent runs that errored", tone: failedRuns ? "danger" : "neutral", href: "/admin/dev-command/audit-log" },
+    { key: "security_warnings", label: "Security blockers", value: securityWarnings, hint: "Critical findings blocking release", tone: securityWarnings ? "danger" : "success", href: "/admin/dev-command/tasks" },
+    { key: "xp_failures", label: "Experience issues", value: xpFailures, hint: "Ease-of-use problems found", tone: xpFailures ? "warn" : "success", href: "/admin/dev-command/tasks" },
+    { key: "draft_plans", label: "Draft artifacts", value: draftPlans, hint: "Code drafts awaiting your review", tone: draftPlans ? "info" : "neutral", href: "/admin/dev-command/tasks" },
+    { key: "active_prs", label: "Open pull requests", value: activePRs, hint: "PRs open on GitHub", tone: "info", href: "/admin/dev-command/tasks" },
+    { key: "recent_deploys", label: "Deployments", value: recentDeploys, hint: "Preview and production releases", tone: "neutral", href: "/admin/dev-command/tasks" },
+    { key: "audit_today", label: "Audit entries today", value: auditActivity, hint: "Actions logged today", tone: "neutral", href: "/admin/dev-command/audit-log" },
   ];
 }
 

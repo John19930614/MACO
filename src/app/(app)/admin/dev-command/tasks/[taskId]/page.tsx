@@ -161,62 +161,69 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
         </div>
       </Card>
 
-      {/* Phase 6 — structured planning outputs */}
+      {/* ── Section: Planning ─────────────────────────────────────────────── */}
+      <SectionLabel label="Planning" hint="What the AI team intends to do" />
       <PlanningOutputPanel artifacts={planningArtifacts} />
 
-      {/* Phase 8 — code draft artifacts */}
+      {/* ── Section: Code ─────────────────────────────────────────────────── */}
+      <SectionLabel label="Code" hint="Draft files and proposed changes — nothing is applied without your approval" />
       <ArtifactViewer artifacts={codeDraftArtifacts} actionable={isReal} />
-
-      {/* Phase 12 — applied changes (working area) */}
       <AppliedChangesPanel changes={view.appliedChanges} />
+      <FileChangePlanViewer plans={view.filePlans} actionable={isReal} />
 
-      {/* Phase 15 — experience skill layer scorecard */}
+      {/* ── Section: Review ───────────────────────────────────────────────── */}
+      <SectionLabel label="Review" hint="What the agents found — fix issues here before release" />
       <ExperienceScorecard gates={view.reviewGates} approvals={view.approvals} />
-
-      {/* Phase 9 — required review gates */}
-      <ReviewChecklistPanel gates={view.reviewGates} actionable={isReal} />
-
-      {/* Phase 15 — required fixes + plain-English reference */}
       <RequiredFixesPanel gates={view.reviewGates} />
       <PlainEnglishTable />
-
-      {/* Phase 16 — QA test plan */}
+      <ReviewChecklistPanel gates={view.reviewGates} actionable={isReal} />
       <TestPlanPanel plan={testPlan(t)} />
 
-      {/* Phase 11 — GitHub branch + pull request plan (prepared only) */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <div className="space-y-5">
+          <TestResultsPanel results={view.testResults} />
+          <ExperienceReviewPanel reviews={view.experienceReviews} />
+        </div>
+        <div className="space-y-5">
+          <SecurityReviewPanel reviews={view.securityReviews} taskId={t.id} actionable={isReal} />
+          <AgentOutputPanel artifacts={otherArtifacts} />
+        </div>
+      </div>
+
+      {/* ── Section: Approvals ────────────────────────────────────────────── */}
+      <SectionLabel label="Approvals" hint="Risky steps that need your explicit go-ahead" />
+      <ApprovalCenter approvals={view.approvals} title="Approvals for this task" subtitle="Every dangerous action is paused here until you decide" actionable={isReal} />
+
+      {/* ── Section: Release ──────────────────────────────────────────────── */}
+      <SectionLabel label="Release" hint="Branch, pull request, and production release planning" />
       <BranchPlanPanel
         settings={githubSettings} branch={branch} risk={release} approvedArtifacts={approvedForBranch}
         taskId={t.id} actionable={isReal} alreadyRequested={githubRequested}
       />
       <PullRequestPlanPanel title={prTitle(t, githubSettings.pr_title_template)} sections={prPlanSections} />
-
-      {/* Phase 13 — release planning + preview tracking */}
       <ReleasePanel deployment={latestDeployment} checklist={checklist} taskId={t.id} actionable={isReal} productionRequested={productionRequested} />
       <ChangelogPanel sections={changelogSections} />
 
-      {/* 8-15. Work panels */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <div className="space-y-5">
-          <TaskTimeline runs={view.runs} messages={view.messages} agents={agents} />
-          <AgentOutputPanel artifacts={otherArtifacts} />
-          <FileChangePlanViewer plans={view.filePlans} actionable={isReal} />
-        </div>
-        <div className="space-y-5">
-          <ApprovalCenter approvals={view.approvals} title="Approvals for this task" subtitle="Risky steps paused for your decision" actionable={isReal} />
-          <TestResultsPanel results={view.testResults} />
-          <SecurityReviewPanel reviews={view.securityReviews} taskId={t.id} actionable={isReal} />
-          <ExperienceReviewPanel reviews={view.experienceReviews} />
-        </div>
-      </div>
-
-      {/* 7. Agent team board */}
+      {/* ── Section: Timeline & Team ──────────────────────────────────────── */}
+      <SectionLabel label="Timeline &amp; team" hint="Agent activity and the full team working on this task" />
+      <TaskTimeline runs={view.runs} messages={view.messages} agents={agents} />
       <div>
-        <h3 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">The AI team on this task</h3>
+        <p className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">The AI team on this task</p>
         <AgentTeamBoard agents={agents} />
       </div>
 
-      {/* 16. Audit log */}
+      {/* ── Section: Audit log ────────────────────────────────────────────── */}
+      <SectionLabel label="Audit log" hint="Every action on this task — by agents and by you — is logged here permanently" />
       <AuditLogTable entries={view.audit} />
+    </div>
+  );
+}
+
+function SectionLabel({ label, hint }: { label: string; hint?: string }) {
+  return (
+    <div className="flex items-baseline gap-3 border-b border-slate-200 pb-2 pt-1 dark:border-slate-700">
+      <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">{label}</h3>
+      {hint && <span className="text-xs text-slate-400 dark:text-slate-500">{hint}</span>}
     </div>
   );
 }

@@ -195,6 +195,93 @@ export async function getTaskDetail(id: string): Promise<TaskDetail> {
   };
 }
 
+// ── Phase 19: live dashboard data ─────────────────────────────────────────────
+
+export interface LiveDashboardData {
+  openTasks: DevTask[];
+  pendingApprovals: DevApproval[];
+  recentAudit: DevAuditEntry[];
+  counts: {
+    openTasks: number;
+    needApproval: number;
+    failedRuns: number;
+    securityBlockers: number;
+    experienceBlockers: number;
+    draftArtifacts: number;
+    runningAgents: number;
+  };
+  securityBlockerTasks: DevTask[];
+  experienceBlockerTasks: DevTask[];
+  failedRunTasks: DevTask[];
+}
+
+const EMPTY_DASHBOARD: LiveDashboardData = {
+  openTasks: [], pendingApprovals: [], recentAudit: [],
+  counts: { openTasks: 0, needApproval: 0, failedRuns: 0, securityBlockers: 0, experienceBlockers: 0, draftArtifacts: 0, runningAgents: 0 },
+  securityBlockerTasks: [], experienceBlockerTasks: [], failedRunTasks: [],
+};
+
+export async function getLiveDashboardData(): Promise<LiveDashboardData> {
+  if (MOCK_MODE) return EMPTY_DASHBOARD;
+  const client = await createSupabaseServerClient();
+  if (!client) return EMPTY_DASHBOARD;
+
+  const TERMINAL = ["complete", "cancelled", "failed"];
+  const [tasksRes, approvalsRes, auditRes, runsRes, secRes, expGatesRes, artifactsRes] = await Promise.all([
+    client.from("dev_tasks").select("*").not("status", "in", `(${TERMINAL.map((s) => `"${s}"`).join(",")})`).order("updated_at", { ascending: false }).limit(20),
+    client.from("dev_approvals").select("*").eq("status", "pending").order("created_at", { ascending: false }).limit(20),
+    client.from("dev_audit_log").select("*").order("created_at", { ascending: false }).limit(12),
+    client.from("dev_agent_runs").select("*").eq("status", "failed").order("created_at", { ascending: false }).limit(10),
+    client.from("dev_security_reviews").select("*").eq("verdict", "fail").eq("status", "open"),
+    client.from("dev_review_gates").select("*").eq("passed", false).neq("status", "resolved"),
+    client.from("dev_artifacts").select("id, task_id", { count: "exact", head: true }).eq("status", "needs_review"),
+  ]);
+  const [runningRes] = await Promise.all([
+    client.from("dev_agent_runs").select("id", { count: "exact", head: true }).eq("status", "running"),
+  ]);
+
+  const openTasks = (tasksRes.data ?? []) as DevTask[];
+  const pendingApprovals = (approvalsRes.data ?? []) as DevApproval[];
+  const recentAudit = (auditRes.data ?? []) as DevAuditEntry[];
+  const failedRuns = (runsRes.data ?? []) as { task_id?: string }[];
+  const secBlockers = (secRes.data ?? []) as { task_id: string }[];
+  const expGates = (expGatesRes.data ?? []) as { task_id: string }[];
+
+  const secBlockerTaskIds = [...new Set(secBlockers.map((s) => s.task_id))];
+  const expBlockerTaskIds = [...new Set(expGates.filter((g) => g.task_id).map((g) => g.task_id))];
+  const failedTaskIds = [...new Set(failedRuns.filter((r) => r.task_id).map((r) => r.task_id!))];
+
+  const loadTasks = async (ids: string[]): Promise<DevTask[]> => {
+    if (!ids.length) return [];
+    const { data } = await client.from("dev_tasks").select("*").in("id", ids.slice(0, 10));
+    return (data ?? []) as DevTask[];
+  };
+
+  const [secBlockerTasks, experienceBlockerTasks, failedRunTasks] = await Promise.all([
+    loadTasks(secBlockerTaskIds),
+    loadTasks(expBlockerTaskIds),
+    loadTasks(failedTaskIds),
+  ]);
+
+  return {
+    openTasks,
+    pendingApprovals,
+    recentAudit,
+    counts: {
+      openTasks: openTasks.length,
+      needApproval: pendingApprovals.length,
+      failedRuns: failedRuns.length,
+      securityBlockers: secBlockers.length,
+      experienceBlockers: expGates.length,
+      draftArtifacts: artifactsRes.count ?? 0,
+      runningAgents: runningRes.count ?? 0,
+    },
+    securityBlockerTasks: secBlockerTasks,
+    experienceBlockerTasks,
+    failedRunTasks,
+  };
+}
+
 export async function createDevTask(input: {
   title: string;
   description?: string;
