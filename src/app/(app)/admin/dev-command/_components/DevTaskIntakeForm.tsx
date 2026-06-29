@@ -7,9 +7,31 @@ import { createDevTask, type CreateTaskState } from "@/lib/actions/devcenter";
 import { Info, ShieldCheck, Lock, AlertTriangle, Lightbulb, Target } from "lucide-react";
 
 const MODULES = [
-  "Admin Console", "AI Gateway", "Document Control", "HSE Management", "Onboarding",
-  "Contractor Management", "Audit System", "Training Matrix", "Maintenance Dashboard",
-  "Database", "User Management", "Platform Operations", "Other",
+  "Dashboard",
+  "Incidents",
+  "CAPA",
+  "OSHA Logs",
+  "Risk Intelligence",
+  "Audits & Assessments",
+  "Training & Competency",
+  "Documents & Programs",
+  "Chemical Management",
+  "Biosafety & Lab Safety",
+  "Waste Management",
+  "Ergonomics & MSD",
+  "Monitoring & Equipment",
+  "Legal Register",
+  "AI Safety Assistant",
+  "Reports & Analytics",
+  "Workspace",
+  "Team & Settings",
+  "Admin Console",
+  "AI Dev Command Center",
+  "AI Gateway",
+  "ARC Module",
+  "Database",
+  "Platform Operations",
+  "Other",
 ];
 
 // The four real opt-in permissions — all default OFF for safety.
