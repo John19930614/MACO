@@ -114,7 +114,13 @@ export const SAMPLE_TEST_RESULTS: DevTestResult[] = [
 
 // ── Security reviews ──────────────────────────────────────────────────────────
 export const SAMPLE_SECURITY_REVIEWS: DevSecurityReview[] = [
-  { id: "sr-1", task_id: "task-2", run_id: "run-4", reviewer_agent_id: "sample-agent-security-permissions", summary: "This change affects login behavior, so it needs your approval before going further.", findings: [{ category: "Login permission issue", severity: "high", note: "Redirect logic runs before the session is confirmed." }], risk_level: "high", verdict: "needs_changes", status: "open", created_at: ago(27), updated_at: ago(27) },
+  { id: "sr-1", task_id: "task-2", run_id: "run-4", reviewer_agent_id: "sample-agent-security-permissions", summary: "A critical security risk needs a person to review it before this can be released.", findings: [
+    { category: "Authentication", severity: "low", ok: true, note: "OK — protected by the platform." },
+    { category: "Authorization", severity: "high", ok: false, note: "Touches logins — verify admin-only access." },
+    { category: "Supabase RLS", severity: "low", ok: true, note: "OK." },
+    { category: "Secret exposure", severity: "low", ok: true, note: "OK — no secrets in client code." },
+    { category: "Unauthorized admin action / data-access risk", severity: "critical", ok: false, note: "This change touches logins — it must be checked by a person before release." },
+  ], risk_level: "critical", verdict: "fail", status: "open", created_at: ago(27), updated_at: ago(27) },
 ];
 
 // ── Experience reviews ────────────────────────────────────────────────────────

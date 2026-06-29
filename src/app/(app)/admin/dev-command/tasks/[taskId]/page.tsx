@@ -204,7 +204,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
         <div className="space-y-5">
           <ApprovalCenter approvals={view.approvals} title="Approvals for this task" subtitle="Risky steps paused for your decision" actionable={isReal} />
           <TestResultsPanel results={view.testResults} />
-          <SecurityReviewPanel reviews={view.securityReviews} />
+          <SecurityReviewPanel reviews={view.securityReviews} taskId={t.id} actionable={isReal} />
           <ExperienceReviewPanel reviews={view.experienceReviews} />
         </div>
       </div>

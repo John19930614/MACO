@@ -16,6 +16,7 @@ import { APPROVAL_TYPE_LABEL } from "@/lib/devcenter/labels";
 import { releaseNotesMarkdown, type ReleaseDetail } from "@/lib/devcenter/release";
 import { recordMemory } from "@/lib/devcenter/memory";
 import { generateTestResults } from "@/lib/devcenter/qa-tests";
+import { generateSecurityReview } from "@/lib/devcenter/security-review";
 import { runPlanningAgent } from "@/lib/devcenter/planning-agents";
 import { generateFilePlans } from "@/lib/devcenter/file-plans";
 import { generateCodeDrafts } from "@/lib/devcenter/code-drafts";
@@ -229,6 +230,10 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
     const { count: failedTests } = await client.from("dev_test_results")
       .select("*", { count: "exact", head: true }).eq("task_id", taskId).in("status", ["failed", "error"]);
     if ((failedTests ?? 0) > 0) need.push(`${failedTests} failing test(s)`);
+    // Phase 17: an open critical security finding blocks completion.
+    const { count: criticalSec } = await client.from("dev_security_reviews")
+      .select("*", { count: "exact", head: true }).eq("task_id", taskId).eq("verdict", "fail").eq("status", "open");
+    if ((criticalSec ?? 0) > 0) need.push("Critical security finding (resolve it first)");
     if (need.length) {
       return { ok: false, paused: true, message: `Can't mark complete — still needed: ${need.join(", ")}. Pass or waive them first.` };
     }
@@ -372,6 +377,25 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
       task_id: taskId, actor_type: "agent", actor_id: "devops-release", agent_id: idOf("devops-release"),
       action: "branch_plan_prepared", entity: "dev_deployments", entity_id: taskId,
       risk_level: task.risk_level, detail: { branch },
+    });
+  }
+
+  // 1g. Phase 17: the security_review stage records a detailed security review
+  // (10 checks + severity). A critical finding blocks completion until resolved.
+  if (next === "security_review") {
+    const sec = generateSecurityReview(task);
+    await client.from("dev_security_reviews").insert({
+      task_id: taskId, summary: sec.summary, verdict: sec.verdict, risk_level: sec.risk_level,
+      findings: sec.findings, status: sec.verdict === "pass" ? "resolved" : "open",
+    });
+    if (sec.critical_count > 0) {
+      await recordMemory(client, { kind: "security_rule", title: `Critical security risk: ${task.target_area ?? "platform"}`, content: sec.required_fixes.join(" "), taskId, createdBy: "Security/Permissions Agent" });
+    }
+    await client.from("dev_audit_log").insert({
+      task_id: taskId, actor_type: "agent", actor_id: "security-permissions", agent_id: idOf("security-permissions"),
+      action: sec.critical_count ? "security_critical_found" : "security_reviewed",
+      entity: "dev_security_reviews", entity_id: taskId, risk_level: sec.risk_level,
+      detail: { verdict: sec.verdict, critical: sec.critical_count },
     });
   }
 
@@ -708,6 +732,59 @@ export async function requestProductionApproval(taskId: string): Promise<{ ok: b
   revalidatePath(`/admin/dev-command/tasks/${taskId}`);
   revalidatePath("/admin/dev-command/approvals");
   return { ok: true, message: created ? "Requested production-release approval and generated the changelog. Decide it in the Approval Center." : "Production approval was already requested; changelog refreshed." };
+}
+
+/**
+ * Phase 17: mark a critical security review as reviewed/resolved. Clears the
+ * critical block so the task can complete. Logged.
+ */
+export async function resolveSecurityReview(reviewId: string): Promise<{ ok: boolean; error?: string }> {
+  if (MOCK_MODE) return { ok: false, error: "This needs the live database." };
+  if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
+  const client = await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired — please reload." };
+  const by = (await getServerUser())?.display_name ?? "Reliance Admin";
+  const { data: row, error } = await client.from("dev_security_reviews")
+    .update({ status: "resolved" }).eq("id", reviewId).select("task_id").single();
+  if (error || !row) return { ok: false, error: error?.message ?? "Could not update." };
+  await client.from("dev_audit_log").insert({
+    task_id: row.task_id, actor_type: "human", actor_id: by,
+    action: "security_finding_resolved", entity: "dev_security_reviews", entity_id: reviewId, detail: {},
+  });
+  revalidatePath(`/admin/dev-command/tasks/${row.task_id}`);
+  return { ok: true };
+}
+
+/**
+ * Phase 17: request a security approval (creates an auth_permission_change
+ * approval for the task). Creates the approval only — no action is taken.
+ */
+export async function requestSecurityApproval(taskId: string): Promise<{ ok: boolean; message?: string }> {
+  if (MOCK_MODE) return { ok: false, message: "This needs the live database." };
+  if (!(await isSuperadmin())) return { ok: false, message: "You don't have permission for this." };
+  const client = await createSupabaseServerClient();
+  if (!client) return { ok: false, message: "Your session expired — please reload." };
+  const { data: task } = await client.from("dev_tasks").select("title, risk_level").eq("id", taskId).maybeSingle();
+  if (!task) return { ok: false, message: "Task not found." };
+  const { data: existing } = await client.from("dev_approvals")
+    .select("id").eq("task_id", taskId).eq("approval_type", "auth_permission_change").in("status", ["pending", "approved"]).maybeSingle();
+  if (existing) return { ok: false, message: "A security approval was already requested." };
+  await client.from("dev_approvals").insert({
+    task_id: taskId, approval_type: "auth_permission_change", status: "pending", risk_level: task.risk_level,
+    summary: `Security sign-off for “${task.title}”`,
+    plain_english_summary: "Approve the security-sensitive part of this change after reviewing the findings.",
+    technical_summary: "Security review flagged items needing a human sign-off.",
+    experience_impact: "Keeps risky security changes behind a human decision.",
+    reason: "Security-flagged changes require your approval.",
+    requested_by: "Security/Permissions Agent", affected_files: [], affected_tables: [],
+  });
+  await client.from("dev_audit_log").insert({
+    task_id: taskId, actor_type: "agent", actor_id: "security-permissions",
+    action: "security_approval_requested", entity: "dev_approvals", entity_id: taskId, risk_level: task.risk_level, detail: {},
+  });
+  revalidatePath(`/admin/dev-command/tasks/${taskId}`);
+  revalidatePath("/admin/dev-command/approvals");
+  return { ok: true, message: "Requested a security approval. Decide it in the Approval Center." };
 }
 
 /**
