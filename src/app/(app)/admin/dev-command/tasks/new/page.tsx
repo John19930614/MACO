@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { DevTaskIntakeForm } from "../../_components/DevTaskIntakeForm";
 import { ArrowLeft } from "lucide-react";
-import { getSuggestionById } from "@/lib/devcenter/suggestions";
+import { getSuggestionById, getSuggestionPrefill } from "@/lib/devcenter/suggestions";
 
 export const metadata = { title: "New task · AI Dev Command Center" };
 
@@ -13,16 +13,7 @@ export default async function NewTaskPage({
   const params = await searchParams;
   const suggestion = params.s ? getSuggestionById(params.s) : undefined;
 
-  const prefill = suggestion
-    ? {
-        title: suggestion.title,
-        business_goal: suggestion.business_goal,
-        feature_description: suggestion.feature_description,
-        module_affected: suggestion.module,
-        risk_level: suggestion.risk_level,
-        success_criteria: suggestion.success_criteria,
-      }
-    : undefined;
+  const prefill = suggestion ? getSuggestionPrefill(suggestion) : undefined;
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">

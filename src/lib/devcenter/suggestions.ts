@@ -403,3 +403,69 @@ export const SUGGESTION_EFFORT_LABEL: Record<SuggestionEffort, string> = {
 export function getSuggestionById(id: string): PlatformSuggestion | undefined {
   return SUGGESTIONS.find((s) => s.id === id);
 }
+
+/** Maps effort → task priority so small suggestions get actioned sooner. */
+const EFFORT_PRIORITY: Record<SuggestionEffort, string> = {
+  small: "high",
+  medium: "medium",
+  large: "low",
+};
+
+/**
+ * Returns a complete set of pre-fill values for every field on the new task
+ * form — derived from the suggestion so nothing needs to be typed from scratch.
+ */
+export function getSuggestionPrefill(s: PlatformSuggestion): Record<string, string> {
+  const typeWord =
+    s.type === "add" ? "new feature" : s.type === "fix" ? "bug fix" : "improvement";
+
+  const whoUsesIt = WHO_USES_IT[s.module] ?? "Company Admin and EHS Coordinator";
+
+  const aiRole =
+    `Draft the ${typeWord} described above for the ${s.module} module only. ` +
+    `Do not change how existing data is stored or fetched. ` +
+    `Do not modify authentication, RLS policies, or user permissions.`;
+
+  const dataInvolved =
+    s.risk_level === "low"
+      ? `Reads from existing ${s.module} records only. No new database tables or schema changes required. No personal data beyond what is already stored.`
+      : `May need minor additions to existing ${s.module} tables. No new sensitive data. No auth or permission changes.`;
+
+  const notes = `Suggested by the daily AI team recommendation (${SUGGESTION_TYPE_LABEL[s.type]} · ${SUGGESTION_EFFORT_LABEL[s.effort]}).`;
+
+  return {
+    title: s.title,
+    business_goal: s.business_goal,
+    feature_description: s.feature_description,
+    module_affected: s.module,
+    who_uses_it: whoUsesIt,
+    priority: EFFORT_PRIORITY[s.effort],
+    risk_level: s.risk_level,
+    ai_role: aiRole,
+    data_involved: dataInvolved,
+    success_criteria: s.success_criteria,
+    notes,
+  };
+}
+
+/** Who uses each module — defaults to admin + coordinator if not listed. */
+const WHO_USES_IT: Record<string, string> = {
+  "Dashboard":               "Company Admin and EHS Coordinator",
+  "Incidents":               "EHS Coordinator, Company Admin, Field Workers",
+  "CAPA":                    "EHS Coordinator and Company Admin",
+  "OSHA Logs":               "Company Admin and EHS Coordinator",
+  "Risk Intelligence":       "EHS Coordinator and Company Admin",
+  "Audits & Assessments":    "EHS Coordinator and Auditors",
+  "Training & Competency":   "Company Admin, EHS Coordinator, and Employees",
+  "Documents & Programs":    "EHS Coordinator and Company Admin",
+  "Chemical Management":     "EHS Coordinator and Lab Safety Officers",
+  "Biosafety & Lab Safety":  "Biosafety Officer and Lab Managers",
+  "Waste Management":        "Waste Coordinator and EHS Coordinator",
+  "Ergonomics & MSD":        "EHS Coordinator and Ergonomics Assessors",
+  "Monitoring & Equipment":  "EHS Coordinator and Maintenance Staff",
+  "Legal Register":          "Company Admin and EHS Coordinator",
+  "AI Safety Assistant":     "Company Admin and EHS Coordinator",
+  "Reports & Analytics":     "Company Admin and EHS Coordinator",
+  "Workspace":               "All platform users",
+  "Team & Settings":         "Company Admin",
+};

@@ -47,8 +47,13 @@ interface Prefill {
   business_goal?: string;
   feature_description?: string;
   module_affected?: string;
+  who_uses_it?: string;
+  priority?: string;
   risk_level?: string;
+  ai_role?: string;
+  data_involved?: string;
   success_criteria?: string;
+  notes?: string;
 }
 
 export function DevTaskIntakeForm({ prefill }: { prefill?: Prefill }) {
@@ -82,10 +87,10 @@ export function DevTaskIntakeForm({ prefill }: { prefill?: Prefill }) {
             </select>
           </Field>
           <Field label="Who uses it" hint="Who is this for?">
-            <input name="who_uses_it" placeholder="e.g. Safety managers" className={inputCls} />
+            <input name="who_uses_it" defaultValue={prefill?.who_uses_it} placeholder="e.g. Safety managers" className={inputCls} />
           </Field>
           <Field label="Priority" hint="How urgent is it?">
-            <select name="priority" defaultValue="medium" className={inputCls}>
+            <select name="priority" defaultValue={prefill?.priority ?? "medium"} className={inputCls}>
               <option value="low">Low — whenever</option>
               <option value="medium">Medium — soon</option>
               <option value="high">High — this week</option>
@@ -106,10 +111,10 @@ export function DevTaskIntakeForm({ prefill }: { prefill?: Prefill }) {
       {/* ── AI Instructions ──────────────────────────────────────────── */}
       <Section icon={<Lightbulb className="h-4 w-4" />} title="AI instructions" hint="Guidance for the AI team.">
         <Field label="AI's role in the feature" hint="What should the AI do here — or not do?">
-          <textarea name="ai_role" rows={3} placeholder="e.g. Draft the button and the export logic, but don't touch how incidents are stored." className={inputCls} />
+          <textarea name="ai_role" rows={3} defaultValue={prefill?.ai_role} placeholder="e.g. Draft the button and the export logic, but don't touch how incidents are stored." className={inputCls} />
         </Field>
         <Field label="Data involved" hint="What information does this touch? Flag anything sensitive.">
-          <input name="data_involved" placeholder="e.g. Incident records (no personal data)" className={inputCls} />
+          <input name="data_involved" defaultValue={prefill?.data_involved} placeholder="e.g. Incident records (no personal data)" className={inputCls} />
         </Field>
       </Section>
 
@@ -143,7 +148,7 @@ export function DevTaskIntakeForm({ prefill }: { prefill?: Prefill }) {
           <textarea name="success_criteria" rows={3} defaultValue={prefill?.success_criteria} placeholder="e.g. A working Export button that downloads the current list as a spreadsheet." className={inputCls} />
         </Field>
         <Field label="Notes" hint="Anything else the team should know. Optional.">
-          <textarea name="notes" rows={2} placeholder="Optional notes…" className={inputCls} />
+          <textarea name="notes" rows={2} defaultValue={prefill?.notes} placeholder="Optional notes…" className={inputCls} />
         </Field>
       </Section>
 
