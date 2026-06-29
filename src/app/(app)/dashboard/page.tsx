@@ -14,6 +14,7 @@ import { PageHeader, Stat, Card, CardHeader } from "@/components/ui/primitives";
 import { ScoreGauge, DonutChart, Legend, TrendArea, type Segment, type TrendPoint } from "@/components/charts/Charts";
 import { CapaStatusBadge, ReviewStatusBadge } from "@/components/ui/badges";
 import { OnboardingWelcomeBanner } from "@/components/dashboard/OnboardingWelcomeBanner";
+import { PriorityActions, buildPriorityItems } from "@/components/dashboard/PriorityActions";
 import type { AiAnalysisOutput } from "@/lib/types";
 import { formatDate, relativeTime } from "@/lib/utils";
 import {
@@ -140,6 +141,21 @@ export default async function DashboardPage({
     return out;
   })();
 
+  // Training expiring within 7 days (tighter cut for the priority panel)
+  const expiringTrainingSoon = trainingRecords.filter((r) => {
+    if (!r.expiry_date) return false;
+    const days = (new Date(r.expiry_date).getTime() - today.getTime()) / 86400000;
+    return days >= 0 && days <= 7;
+  });
+
+  // Priority actions — aggregated from all already-fetched data
+  const priorityItems = buildPriorityItems({
+    overdueCapas,
+    overdueEquipment,
+    expiringTrainingSoon,
+    pendingFindings,
+  });
+
   // Trend icon helper
   const TrendIcon = latestRun?.forecast_data?.compliance_trend === "improving"
     ? TrendingUp : latestRun?.forecast_data?.compliance_trend === "declining"
@@ -221,6 +237,9 @@ export default async function DashboardPage({
             </Link>
           </div>
         )}
+
+        {/* ── Priority Actions ─────────────────────────────────────── */}
+        <PriorityActions items={priorityItems} />
 
         {/* ── KPI Row ─────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
