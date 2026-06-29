@@ -1,62 +1,63 @@
 import { Card, CardHeader } from "@/components/ui/primitives";
-import { TestStatusBadge } from "./badges";
+import { TestStatusBadge, Badge } from "./badges";
 import { EmptyStateCard } from "./states";
-import { TEST_STATUS_META } from "@/lib/devcenter/labels";
-import { CheckCircle2, XCircle } from "lucide-react";
-import type { DevTestResult, TestKind } from "@/lib/devcenter/types";
-
-const KIND_LABEL: Record<TestKind, string> = {
-  unit: "Unit tests",
-  integration: "Integration tests",
-  system: "Whole-app test",
-  lint: "Code style check",
-  typecheck: "Type check",
-  qa: "Quality check",
-  other: "Other check",
-};
+import { TEST_TYPE_META } from "@/lib/devcenter/labels";
+import { CheckCircle2, XCircle, FlaskConical } from "lucide-react";
+import type { DevTestResult } from "@/lib/devcenter/types";
 
 /**
- * Test, lint, typecheck and QA results for a task — in plain language so it's
- * clear what passed and what still needs work.
+ * The QA agent's test results — each with its type, expected vs actual result,
+ * pass/fail, and a recommended fix. Failed tests block completion.
  */
 export function TestResultsPanel({ results }: { results: DevTestResult[] }) {
-  const anyFailed = results.some((r) => r.status === "failed" || r.status === "error");
+  if (results.length === 0) {
+    return (
+      <Card>
+        <CardHeader title="Test results" subtitle="Automated checks the QA agent records" right={<FlaskConical className="h-4 w-4 text-slate-300" />} />
+        <div className="p-4"><EmptyStateCard title="No tests yet" description="The QA agent records the required tests at the testing stage." /></div>
+      </Card>
+    );
+  }
+  const failed = results.filter((r) => r.status === "failed" || r.status === "error").length;
+
   return (
     <Card>
       <CardHeader
         title="Test results"
-        subtitle="Automated checks that run on the draft code"
-        right={results.length > 0 ? (
-          <span className={`inline-flex items-center gap-1 text-xs font-semibold ${anyFailed ? "text-red-600" : "text-emerald-600"}`}>
-            {anyFailed ? <XCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-            {anyFailed ? "Needs attention" : "All passing"}
+        subtitle={`${results.length} tests — failed tests block completion`}
+        right={
+          <span className={`inline-flex items-center gap-1 text-xs font-semibold ${failed ? "text-red-600" : "text-emerald-600"}`}>
+            {failed ? <XCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+            {failed ? `${failed} failing` : "All passing"}
           </span>
-        ) : undefined}
+        }
       />
-      <div className="p-4">
-        {results.length === 0 ? (
-          <EmptyStateCard title="No tests run yet" description="Once the QA agent runs checks, results show up here." />
-        ) : (
-          <ul className="divide-y divide-slate-100 dark:divide-slate-700">
-            {results.map((r) => (
-              <li key={r.id} className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{KIND_LABEL[r.kind]}</p>
-                  {r.summary && <p className="text-xs text-slate-500 dark:text-slate-400">{r.summary}</p>}
-                  {(r.passed + r.failed + r.skipped) > 0 && (
-                    <p className="mt-0.5 text-[11px] text-slate-400">
-                      {r.passed} passed · {r.failed} failed · {r.skipped} skipped
-                    </p>
-                  )}
+      <div className="space-y-2 p-4">
+        {failed > 0 && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+            {failed} test{failed > 1 ? "s are" : " is"} failing. This task can&apos;t be marked complete until they pass.
+          </div>
+        )}
+        <ul className="space-y-2">
+          {results.map((r) => (
+            <li key={r.id} className="rounded-lg border border-slate-200 p-2.5 dark:border-slate-700">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  {r.test_type && <Badge label={TEST_TYPE_META[r.test_type]} tone="neutral" />}
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{r.test_name ?? r.summary ?? "Test"}</span>
                 </div>
                 <TestStatusBadge status={r.status} />
-              </li>
-            ))}
-          </ul>
-        )}
-        {results.length > 0 && (
-          <p className="mt-3 text-[11px] text-slate-400">{TEST_STATUS_META.passed.label} means the check ran cleanly.</p>
-        )}
+              </div>
+              {(r.expected_result || r.actual_result) && (
+                <div className="mt-1 grid grid-cols-1 gap-0.5 text-[11px] sm:grid-cols-2">
+                  {r.expected_result && <p className="text-slate-400"><span className="font-semibold">Expected:</span> {r.expected_result}</p>}
+                  {r.actual_result && <p className="text-slate-400"><span className="font-semibold">Actual:</span> {r.actual_result}</p>}
+                </div>
+              )}
+              {r.recommended_fix && <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300"><span className="font-semibold">Fix:</span> {r.recommended_fix}</p>}
+            </li>
+          ))}
+        </ul>
       </div>
     </Card>
   );

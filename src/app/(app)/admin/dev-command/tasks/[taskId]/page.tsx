@@ -20,7 +20,9 @@ import { ReviewChecklistPanel } from "../../_components/ReviewChecklistPanel";
 import { ExperienceScorecard } from "../../_components/ExperienceScorecard";
 import { RequiredFixesPanel } from "../../_components/RequiredFixesPanel";
 import { PlainEnglishTable } from "../../_components/PlainEnglishTable";
+import { TestPlanPanel } from "../../_components/TestPlanPanel";
 import { AppliedChangesPanel } from "../../_components/AppliedChangesPanel";
+import { testPlan } from "@/lib/devcenter/qa-tests";
 import { BranchPlanPanel } from "../../_components/BranchPlanPanel";
 import { PullRequestPlanPanel } from "../../_components/PullRequestPlanPanel";
 import { RunNextStepButton } from "../../_components/RunNextStepButton";
@@ -177,6 +179,9 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
       {/* Phase 15 — required fixes + plain-English reference */}
       <RequiredFixesPanel gates={view.reviewGates} />
       <PlainEnglishTable />
+
+      {/* Phase 16 — QA test plan */}
+      <TestPlanPanel plan={testPlan(t)} />
 
       {/* Phase 11 — GitHub branch + pull request plan (prepared only) */}
       <BranchPlanPanel

@@ -10,8 +10,21 @@ import type {
   AgentRunStatus, DeploymentStatus, TestStatus, SecurityVerdict, ReviewVerdict,
   ExperiencePerspective, AgentMemoryKind, FeedbackCategory, FeedbackType,
   FileChangeType, FileChangeStatus, ArtifactType, ArtifactStatus,
-  ReviewGateType, ReviewGateStatus,
+  ReviewGateType, ReviewGateStatus, TestType,
 } from "./types";
+
+export const TEST_TYPE_META: Record<TestType, string> = {
+  unit:              "Unit test",
+  component:         "Component test",
+  form_validation:   "Form validation",
+  route_loading:     "Route loading",
+  supabase_query:    "Database query",
+  rls_access:        "Data-access (RLS)",
+  approval_gate:     "Approval gate",
+  agent_workflow:    "Agent workflow",
+  experience_review: "Experience review",
+  audit_log:         "Audit log",
+};
 
 /** Tone of a badge — drives the shared color/shape classes. */
 export type Tone = "neutral" | "info" | "success" | "warn" | "danger" | "violet";

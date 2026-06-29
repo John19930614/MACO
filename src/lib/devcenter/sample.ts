@@ -105,10 +105,11 @@ export const SAMPLE_CODE_REVIEWS: DevCodeReview[] = [
 ];
 
 // ── Test results ──────────────────────────────────────────────────────────────
+const TR_DEFAULTS = { test_type: null as null, test_name: null as null, expected_result: null as null, actual_result: null as null, recommended_fix: null as null, created_by_agent: "QA/Test Agent" };
 export const SAMPLE_TEST_RESULTS: DevTestResult[] = [
-  { id: "tr-1", task_id: "task-1", run_id: "run-3", kind: "typecheck", status: "passed", summary: "No type errors.", passed: 1, failed: 0, skipped: 0, details: {}, log: null, created_at: ago(10), updated_at: ago(10) },
-  { id: "tr-2", task_id: "task-1", run_id: "run-3", kind: "unit", status: "failed", summary: "1 of 4 checks failed — empty list should export a header row.", passed: 3, failed: 1, skipped: 0, details: {}, log: "expected header row when there are no incidents", created_at: ago(9), updated_at: ago(9) },
-  { id: "tr-3", task_id: "task-3", run_id: "run-5", kind: "lint", status: "passed", summary: "No lint issues.", passed: 1, failed: 0, skipped: 0, details: {}, log: null, created_at: ago(96), updated_at: ago(96) },
+  { id: "tr-1", task_id: "task-1", run_id: "run-3", kind: "qa", ...TR_DEFAULTS, test_type: "agent_workflow", test_name: "Task creation works", expected_result: "A new task saves and opens its detail page.", actual_result: "A new task saves and opens its detail page.", status: "passed", summary: "Task creation works", passed: 1, failed: 0, skipped: 0, details: {}, log: null, created_at: ago(10), updated_at: ago(10) },
+  { id: "tr-2", task_id: "task-1", run_id: "run-3", kind: "qa", ...TR_DEFAULTS, test_type: "form_validation", test_name: "Export with empty list", expected_result: "A header row is exported even when the list is empty.", actual_result: "No header row exported.", recommended_fix: "Always include the header row.", status: "failed", summary: "Export with empty list", passed: 0, failed: 1, skipped: 0, details: {}, log: "expected header row when there are no incidents", created_at: ago(9), updated_at: ago(9) },
+  { id: "tr-3", task_id: "task-3", run_id: "run-5", kind: "qa", ...TR_DEFAULTS, test_type: "rls_access", test_name: "Admin-only access works", expected_result: "Only Reliance admins can reach the module.", actual_result: "Only Reliance admins can reach the module.", status: "passed", summary: "Admin-only access works", passed: 1, failed: 0, skipped: 0, details: {}, log: null, created_at: ago(96), updated_at: ago(96) },
 ];
 
 // ── Security reviews ──────────────────────────────────────────────────────────

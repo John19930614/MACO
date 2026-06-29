@@ -74,6 +74,11 @@ export type SecurityVerdict = "pass" | "fail" | "needs_changes" | "pending";
 export type TestKind = "unit" | "integration" | "system" | "lint" | "typecheck" | "qa" | "other";
 export type TestStatus = "passed" | "failed" | "error" | "skipped" | "pending";
 
+/** The 10 test types (Phase 16). */
+export type TestType =
+  | "unit" | "component" | "form_validation" | "route_loading" | "supabase_query"
+  | "rls_access" | "approval_gate" | "agent_workflow" | "experience_review" | "audit_log";
+
 export type ExperiencePerspective =
   | "ux" | "plain_english" | "accessibility" | "onboarding" | "simplification" | "other";
 
@@ -290,13 +295,19 @@ export interface DevTestResult {
   task_id: string;
   run_id: string | null;
   kind: TestKind;
+  test_type: TestType | null;
+  test_name: string | null;
+  expected_result: string | null;
+  actual_result: string | null;
+  recommended_fix: string | null;
+  created_by_agent: string | null;
   status: TestStatus;
   summary: string | null;
   passed: number;
   failed: number;
   skipped: number;
   details: Json;
-  log: string | null;
+  log: string | null;            // error_output
   created_at: string;
   updated_at: string;
 }

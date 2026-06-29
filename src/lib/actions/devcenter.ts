@@ -15,6 +15,7 @@ import { checkPath, isDestructive } from "@/lib/devcenter/path-safety";
 import { APPROVAL_TYPE_LABEL } from "@/lib/devcenter/labels";
 import { releaseNotesMarkdown, type ReleaseDetail } from "@/lib/devcenter/release";
 import { recordMemory } from "@/lib/devcenter/memory";
+import { generateTestResults } from "@/lib/devcenter/qa-tests";
 import { runPlanningAgent } from "@/lib/devcenter/planning-agents";
 import { generateFilePlans } from "@/lib/devcenter/file-plans";
 import { generateCodeDrafts } from "@/lib/devcenter/code-drafts";
@@ -224,6 +225,10 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
     const { data: prodAppr } = await client.from("dev_approvals")
       .select("id").eq("task_id", taskId).eq("approval_type", "production_release").eq("status", "approved").maybeSingle();
     if (!prodAppr) need.push("Final human approval");
+    // Phase 16: failed tests block completion.
+    const { count: failedTests } = await client.from("dev_test_results")
+      .select("*", { count: "exact", head: true }).eq("task_id", taskId).in("status", ["failed", "error"]);
+    if ((failedTests ?? 0) > 0) need.push(`${failedTests} failing test(s)`);
     if (need.length) {
       return { ok: false, paused: true, message: `Can't mark complete — still needed: ${need.join(", ")}. Pass or waive them first.` };
     }
@@ -367,6 +372,23 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
       task_id: taskId, actor_type: "agent", actor_id: "devops-release", agent_id: idOf("devops-release"),
       action: "branch_plan_prepared", entity: "dev_deployments", entity_id: taskId,
       risk_level: task.risk_level, detail: { branch },
+    });
+  }
+
+  // 1f. Phase 16: the qa_review stage records the required test results.
+  if (next === "qa_review") {
+    for (const t of generateTestResults()) {
+      await client.from("dev_test_results").insert({
+        task_id: taskId, kind: "qa", test_type: t.test_type, test_name: t.test_name,
+        expected_result: t.expected_result, actual_result: t.actual_result, status: t.status,
+        recommended_fix: t.recommended_fix, created_by_agent: "QA/Test Agent",
+        passed: t.status === "passed" ? 1 : 0, failed: t.status === "failed" ? 1 : 0,
+        summary: t.test_name,
+      });
+    }
+    await client.from("dev_audit_log").insert({
+      task_id: taskId, actor_type: "agent", actor_id: "qa-test", agent_id: idOf("qa-test"),
+      action: "tests_recorded", entity: "dev_test_results", entity_id: taskId, risk_level: task.risk_level, detail: {},
     });
   }
 
