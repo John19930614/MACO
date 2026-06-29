@@ -76,6 +76,25 @@ export async function getDevAgentByKey(key: string): Promise<DevAgent | null> {
   return (data as DevAgent) ?? null;
 }
 
+// ── GitHub settings (Phase 11) ────────────────────────────────────────────────
+
+import type { DevGithubSettings } from "./types";
+
+const DEFAULT_GITHUB_SETTINGS: DevGithubSettings = {
+  id: "", repo_owner: "John19930614", repo_name: "MACO", default_branch: "master",
+  protected_branch: "master", branch_naming_format: "ai-dev/task-{taskId-short}-{safe-task-title}",
+  pr_title_template: "AI Dev: {task_title}", pr_body_template: null,
+  created_at: "", updated_at: "",
+};
+
+export async function getGithubSettings(): Promise<DevGithubSettings> {
+  if (MOCK_MODE) return DEFAULT_GITHUB_SETTINGS;
+  const client = await createSupabaseServerClient();
+  if (!client) return DEFAULT_GITHUB_SETTINGS;
+  const { data } = await client.from("dev_github_settings").select("*").order("created_at").limit(1).maybeSingle();
+  return (data as DevGithubSettings) ?? DEFAULT_GITHUB_SETTINGS;
+}
+
 // ── Tasks ────────────────────────────────────────────────────────────────────
 
 export async function getDevTasks(opts: { status?: DevTaskStatus; limit?: number } = {}): Promise<DevTask[]> {

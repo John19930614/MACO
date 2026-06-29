@@ -109,6 +109,20 @@ export type ReviewGateStatus =
 
 export interface ReviewChecklistItem { label: string; passed: boolean; note?: string }
 
+// ── GitHub workflow settings (Phase 11) ───────────────────────────────────────
+export interface DevGithubSettings {
+  id: string;
+  repo_owner: string | null;
+  repo_name: string | null;
+  default_branch: string;
+  protected_branch: string;
+  branch_naming_format: string;
+  pr_title_template: string;
+  pr_body_template: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DevReviewGate {
   id: string;
   task_id: string;

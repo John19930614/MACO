@@ -6,10 +6,11 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isSuperadmin, getServerUser } from "@/lib/auth/session";
 import { MOCK_MODE } from "@/lib/env";
-import type { DevTask } from "@/lib/devcenter/types";
+import type { DevTask, DevFileChangePlan, DevReviewGate, DevApproval } from "@/lib/devcenter/types";
 import {
   STAGE_CONFIG, STAGE_PLANNERS, nextStage, isGate, isTerminal, isWorkflowStage, buildDevManagerUpdate,
 } from "@/lib/devcenter/workflow";
+import { branchName, prMarkdown, rollbackPlan } from "@/lib/devcenter/github-plan";
 import { runPlanningAgent } from "@/lib/devcenter/planning-agents";
 import { generateFilePlans } from "@/lib/devcenter/file-plans";
 import { generateCodeDrafts } from "@/lib/devcenter/code-drafts";
@@ -304,6 +305,39 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
     });
   }
 
+  // 1e. Phase 11: the release_plan stage prepares a GitHub branch + PR plan and a
+  // deployment placeholder. It performs NO GitHub action and touches no production.
+  if (next === "release_plan") {
+    const [fp, rg, ap] = await Promise.all([
+      client.from("dev_file_change_plans").select("*").eq("task_id", taskId),
+      client.from("dev_review_gates").select("*").eq("task_id", taskId),
+      client.from("dev_approvals").select("*").eq("task_id", taskId),
+    ]);
+    const filePlans = (fp.data ?? []) as DevFileChangePlan[];
+    const reviewGates = (rg.data ?? []) as DevReviewGate[];
+    const approvals = (ap.data ?? []) as DevApproval[];
+    const agentsInvolved = [...new Set(reviewGates.map((g) => g.agent_name).filter(Boolean) as string[])];
+    const branch = branchName(task);
+    const pr = prMarkdown({ task, filePlans, reviewGates, approvals, agentsInvolved });
+    const rollback = rollbackPlan(task);
+
+    await client.from("dev_deployments").insert({
+      task_id: taskId, branch, environment: "preview", status: "planned",
+      notes: rollback, created_by: "DevOps/Release Agent",
+    });
+    await client.from("dev_artifacts").insert({
+      task_id: taskId, kind: "doc", artifact_type: "release_notes",
+      title: "Release plan & pull request", description: "Prepared PR text + rollback plan. No GitHub action taken.",
+      content: pr, language: "md", risk_level: task.risk_level, approval_required: true,
+      status: "needs_review", created_by: "DevOps/Release Agent", structured: { branch, rollback },
+    });
+    await client.from("dev_audit_log").insert({
+      task_id: taskId, actor_type: "agent", actor_id: "devops-release", agent_id: idOf("devops-release"),
+      action: "branch_plan_prepared", entity: "dev_deployments", entity_id: taskId,
+      risk_level: task.risk_level, detail: { branch },
+    });
+  }
+
   // 2. Dev Manager decision message.
   const after = nextStage(next);
   const dm = buildDevManagerUpdate({
@@ -483,6 +517,54 @@ export async function decideArtifact(
   revalidatePath(`/admin/dev-command/tasks/${art.task_id}`);
   revalidatePath("/admin/dev-command");
   return { ok: true };
+}
+
+/**
+ * Request approval to create the GitHub branch + pull request (Phase 11).
+ * This creates approval requests only — NO branch or PR is created, and nothing
+ * is pushed or deployed. The actual GitHub action is a later, separately-gated
+ * phase. Returns a friendly message.
+ */
+export async function requestGithubApproval(taskId: string): Promise<{ ok: boolean; message?: string }> {
+  if (MOCK_MODE) return { ok: false, message: "This needs the live database." };
+  if (!(await isSuperadmin())) return { ok: false, message: "You don't have permission for this." };
+  const client = await createSupabaseServerClient();
+  if (!client) return { ok: false, message: "Your session expired — please reload." };
+
+  const { data: taskRow } = await client.from("dev_tasks").select("*").eq("id", taskId).maybeSingle();
+  if (!taskRow) return { ok: false, message: "Task not found." };
+  const task = taskRow as DevTask;
+  const branch = branchName(task);
+
+  const wanted: { type: "github_branch" | "pull_request"; plain: string; tech: string }[] = [
+    { type: "github_branch", plain: `Create a code branch named ${branch}. No code is pushed to your main branch.`, tech: `git branch ${branch}` },
+    { type: "pull_request", plain: "Open a pull request so the change can be reviewed on GitHub before anything merges.", tech: `gh pr create --base master --head ${branch}` },
+  ];
+
+  let created = 0;
+  for (const w of wanted) {
+    const { data: existing } = await client.from("dev_approvals")
+      .select("id").eq("task_id", taskId).eq("approval_type", w.type)
+      .in("status", ["pending", "approved"]).maybeSingle();
+    if (existing) continue;
+    await client.from("dev_approvals").insert({
+      task_id: taskId, approval_type: w.type, status: "pending", risk_level: task.risk_level,
+      summary: w.type === "github_branch" ? `Create branch ${branch}` : `Open a pull request for “${task.title}”`,
+      plain_english_summary: w.plain, technical_summary: w.tech,
+      experience_impact: "Lets a human review the change on GitHub before anything merges.",
+      reason: "GitHub actions require your approval before they happen.",
+      requested_by: "DevOps/Release Agent", affected_files: [], affected_tables: [],
+    });
+    await client.from("dev_audit_log").insert({
+      task_id: taskId, actor_type: "agent", actor_id: "devops-release",
+      action: "github_approval_requested", entity: "dev_approvals", entity_id: taskId,
+      risk_level: task.risk_level, detail: { approval_type: w.type, branch },
+    });
+    created++;
+  }
+  revalidatePath(`/admin/dev-command/tasks/${taskId}`);
+  revalidatePath("/admin/dev-command/approvals");
+  return { ok: true, message: created ? `Requested ${created} GitHub approval${created > 1 ? "s" : ""}. Approve them in the Approval Center.` : "GitHub approvals were already requested." };
 }
 
 /**

@@ -15,10 +15,13 @@ import { AuditLogTable } from "../../_components/AuditLogTable";
 import { PlanningOutputPanel } from "../../_components/PlanningOutputPanel";
 import { ArtifactViewer } from "../../_components/ArtifactViewer";
 import { ReviewChecklistPanel } from "../../_components/ReviewChecklistPanel";
+import { BranchPlanPanel } from "../../_components/BranchPlanPanel";
+import { PullRequestPlanPanel } from "../../_components/PullRequestPlanPanel";
 import { RunNextStepButton } from "../../_components/RunNextStepButton";
-import { getTaskDetail } from "@/lib/devcenter/repo";
+import { getTaskDetail, getGithubSettings } from "@/lib/devcenter/repo";
 import { taskBundle, SAMPLE_AUDIT, getAgentsOrSample } from "@/lib/devcenter/sample";
 import { WORKFLOW_STAGES, stageIndex, isWorkflowStage, isTerminal } from "@/lib/devcenter/workflow";
+import { branchName, prSections, prTitle, releaseRisk } from "@/lib/devcenter/github-plan";
 import { relativeTime } from "@/lib/utils";
 import { ArrowLeft, Target, Flag, ShieldCheck, Lock, Workflow } from "lucide-react";
 import type { DevTaskMeta } from "@/lib/devcenter/types";
@@ -43,8 +46,19 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
 
   // Split artifacts so each panel shows its own kind (no duplication).
   const planningArtifacts = view.artifacts.filter((a) => (a.structured as Record<string, unknown> | null)?._agent);
-  const codeDraftArtifacts = view.artifacts.filter((a) => a.artifact_type);
+  const codeDraftArtifacts = view.artifacts.filter((a) => a.artifact_type && a.artifact_type !== "release_notes");
   const otherArtifacts = view.artifacts.filter((a) => !(a.structured as Record<string, unknown> | null)?._agent && !a.artifact_type);
+
+  // Phase 11 — GitHub branch/PR plan (prepared, not executed).
+  const githubSettings = await getGithubSettings();
+  const branch = branchName(t);
+  const agentsInvolved = [...new Set(view.reviewGates.map((g) => g.agent_name).filter(Boolean) as string[])];
+  const prPlanSections = prSections({ task: t, filePlans: view.filePlans, reviewGates: view.reviewGates, approvals: view.approvals, agentsInvolved });
+  const release = releaseRisk(t, view.filePlans, view.approvals);
+  const approvedForBranch = view.artifacts
+    .filter((a) => a.status === "approved" || a.status === "ready_for_branch")
+    .map((a) => ({ id: a.id, title: a.title ?? "Draft", path: a.path }));
+  const githubRequested = view.approvals.some((a) => a.approval_type === "github_branch" || a.approval_type === "pull_request");
 
   const permissions = [
     { label: "Database changes", on: meta.database_changes_allowed },
@@ -140,6 +154,13 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
 
       {/* Phase 9 — required review gates */}
       <ReviewChecklistPanel gates={view.reviewGates} actionable={isReal} />
+
+      {/* Phase 11 — GitHub branch + pull request plan (prepared only) */}
+      <BranchPlanPanel
+        settings={githubSettings} branch={branch} risk={release} approvedArtifacts={approvedForBranch}
+        taskId={t.id} actionable={isReal} alreadyRequested={githubRequested}
+      />
+      <PullRequestPlanPanel title={prTitle(t, githubSettings.pr_title_template)} sections={prPlanSections} />
 
       {/* 8-15. Work panels */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
