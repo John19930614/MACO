@@ -9,7 +9,9 @@ import { ApprovalCenter } from "../../_components/ApprovalCenter";
 import { TestResultsPanel } from "../../_components/TestResultsPanel";
 import { SecurityReviewPanel } from "../../_components/SecurityReviewPanel";
 import { ExperienceReviewPanel } from "../../_components/ExperienceReviewPanel";
-import { DeploymentPanel } from "../../_components/DeploymentPanel";
+import { ReleasePanel } from "../../_components/ReleasePanel";
+import { ChangelogPanel } from "../../_components/ChangelogPanel";
+import { releaseChecklist, releaseNotes, type ReleaseDetail } from "@/lib/devcenter/release";
 import { AgentTeamBoard } from "../../_components/AgentTeamBoard";
 import { AuditLogTable } from "../../_components/AuditLogTable";
 import { PlanningOutputPanel } from "../../_components/PlanningOutputPanel";
@@ -60,6 +62,13 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
     .filter((a) => a.status === "approved" || a.status === "ready_for_branch")
     .map((a) => ({ id: a.id, title: a.title ?? "Draft", path: a.path }));
   const githubRequested = view.approvals.some((a) => a.approval_type === "github_branch" || a.approval_type === "pull_request");
+
+  // Phase 13 — release planning + preview tracking.
+  const releaseDetail: ReleaseDetail = { reviewGates: view.reviewGates, approvals: view.approvals, deployments: view.deployments, filePlans: view.filePlans, artifacts: view.artifacts };
+  const checklist = releaseChecklist(t, releaseDetail);
+  const changelogSections = releaseNotes(t, releaseDetail);
+  const latestDeployment = view.deployments[0] ?? null;
+  const productionRequested = view.approvals.some((a) => a.approval_type === "production_release");
 
   const permissions = [
     { label: "Database changes", on: meta.database_changes_allowed },
@@ -166,6 +175,10 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
       />
       <PullRequestPlanPanel title={prTitle(t, githubSettings.pr_title_template)} sections={prPlanSections} />
 
+      {/* Phase 13 — release planning + preview tracking */}
+      <ReleasePanel deployment={latestDeployment} checklist={checklist} taskId={t.id} actionable={isReal} productionRequested={productionRequested} />
+      <ChangelogPanel sections={changelogSections} />
+
       {/* 8-15. Work panels */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div className="space-y-5">
@@ -178,7 +191,6 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
           <TestResultsPanel results={view.testResults} />
           <SecurityReviewPanel reviews={view.securityReviews} />
           <ExperienceReviewPanel reviews={view.experienceReviews} />
-          <DeploymentPanel deployments={view.deployments} />
         </div>
       </div>
 

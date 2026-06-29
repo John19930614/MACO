@@ -89,8 +89,12 @@ export type ApprovalStatus =
 
 export type DeploymentEnvironment = "preview" | "staging" | "production";
 export type DeploymentStatus =
+  // existing (kept)
   | "planned" | "branch_created" | "pr_open" | "preview_ready"
-  | "merged" | "released" | "failed" | "rolled_back";
+  | "merged" | "released" | "failed" | "rolled_back"
+  // Phase 13 lifecycle
+  | "not_started" | "pr_created" | "preview_pending" | "preview_failed"
+  | "approved_for_production" | "production_released" | "cancelled";
 
 export type AuditActorType = "agent" | "human" | "system";
 

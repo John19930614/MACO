@@ -110,14 +110,21 @@ export const APPROVAL_STATUS_META: Record<ApprovalStatus, Meta> = {
 
 // ── Deployment ────────────────────────────────────────────────────────────────
 export const DEPLOYMENT_STATUS_META: Record<DeploymentStatus, Meta> = {
-  planned:        { label: "Planned",          tone: "neutral" },
-  branch_created: { label: "Branch created",   tone: "info" },
-  pr_open:        { label: "Pull request open", tone: "info" },
-  preview_ready:  { label: "Preview ready",    tone: "info" },
-  merged:         { label: "Merged",           tone: "success" },
-  released:       { label: "Released",         tone: "success" },
-  failed:         { label: "Failed",           tone: "danger" },
-  rolled_back:    { label: "Rolled back",      tone: "warn" },
+  planned:                 { label: "Planned",                tone: "neutral" },
+  not_started:             { label: "Not started",            tone: "neutral" },
+  branch_created:          { label: "Branch created",         tone: "info" },
+  pr_open:                 { label: "Pull request open",      tone: "info" },
+  pr_created:              { label: "Pull request created",   tone: "info" },
+  preview_pending:         { label: "Preview building",       tone: "info" },
+  preview_ready:           { label: "Preview ready",          tone: "info" },
+  preview_failed:          { label: "Preview failed",         tone: "danger" },
+  approved_for_production: { label: "Approved for production", tone: "success" },
+  production_released:     { label: "Released to production", tone: "success" },
+  merged:                  { label: "Merged",                 tone: "success" },
+  released:                { label: "Released",               tone: "success" },
+  failed:                  { label: "Failed",                 tone: "danger" },
+  rolled_back:             { label: "Rolled back",            tone: "warn" },
+  cancelled:               { label: "Cancelled",              tone: "neutral" },
 };
 
 // ── Test / review verdicts ────────────────────────────────────────────────────

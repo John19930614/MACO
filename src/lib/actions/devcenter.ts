@@ -13,6 +13,7 @@ import {
 import { branchName, prMarkdown, rollbackPlan } from "@/lib/devcenter/github-plan";
 import { checkPath, isDestructive } from "@/lib/devcenter/path-safety";
 import { APPROVAL_TYPE_LABEL } from "@/lib/devcenter/labels";
+import { releaseNotesMarkdown, type ReleaseDetail } from "@/lib/devcenter/release";
 import { runPlanningAgent } from "@/lib/devcenter/planning-agents";
 import { generateFilePlans } from "@/lib/devcenter/file-plans";
 import { generateCodeDrafts } from "@/lib/devcenter/code-drafts";
@@ -519,6 +520,134 @@ export async function decideArtifact(
   revalidatePath(`/admin/dev-command/tasks/${art.task_id}`);
   revalidatePath("/admin/dev-command");
   return { ok: true };
+}
+
+// ── Phase 13: release planning + preview tracking ─────────────────────────────
+
+const DEPLOY_STATUSES = new Set([
+  "planned", "not_started", "branch_created", "pr_open", "pr_created",
+  "preview_pending", "preview_ready", "preview_failed",
+  "approved_for_production", "production_released", "merged", "released", "rolled_back", "cancelled",
+]);
+
+/**
+ * Update a deployment's preview URL, status, and notes (manual preview tracking).
+ * SAFETY: this performs NO deploy. It only records status. Marking a deployment
+ * 'production_released' requires an APPROVED production_release approval — the
+ * app never releases to production on its own.
+ */
+export async function updateDeployment(
+  _prev: { ok: boolean; error?: string },
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  if (MOCK_MODE) return { ok: false, error: "This needs the live database." };
+  if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
+  const client = await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired — please reload." };
+
+  const id = String(formData.get("deployment_id") ?? "");
+  const status = String(formData.get("status") ?? "");
+  const previewUrl = (String(formData.get("preview_url") ?? "").trim() || null) as string | null;
+  const notes = (String(formData.get("notes") ?? "").trim() || null) as string | null;
+  if (!id || !DEPLOY_STATUSES.has(status)) return { ok: false, error: "Something went wrong — please try again." };
+  if (previewUrl && !/^https?:\/\//.test(previewUrl)) return { ok: false, error: "Preview URL must start with http(s)://." };
+
+  const { data: dep } = await client.from("dev_deployments").select("task_id").eq("id", id).maybeSingle();
+  if (!dep) return { ok: false, error: "Deployment not found." };
+
+  // Production release requires an approved production_release approval.
+  if (status === "production_released") {
+    const { data: appr } = await client.from("dev_approvals")
+      .select("id").eq("task_id", dep.task_id).eq("approval_type", "production_release").eq("status", "approved").maybeSingle();
+    if (!appr) return { ok: false, error: "Production release needs an approved production-release request first." };
+  }
+
+  const decidedBy = (await getServerUser())?.display_name ?? "Reliance Admin";
+  const patch: Record<string, unknown> = { status };
+  if (previewUrl !== null) patch.preview_url = previewUrl;
+  if (notes !== null) patch.notes = notes;
+  const { error } = await client.from("dev_deployments").update(patch).eq("id", id);
+  if (error) return { ok: false, error: error.message };
+
+  await client.from("dev_audit_log").insert({
+    task_id: dep.task_id, actor_type: "human", actor_id: decidedBy,
+    action: "deployment_updated", entity: "dev_deployments", entity_id: id, detail: { status, preview_url: previewUrl },
+  });
+  revalidatePath(`/admin/dev-command/tasks/${dep.task_id}`);
+  revalidatePath("/admin/dev-command");
+  return { ok: true };
+}
+
+/**
+ * Request approval to release to production (Phase 13) + generate the changelog.
+ * Creates a production_release approval only (idempotent) and stores a release-
+ * notes artifact. NO production deploy happens — that stays manual/approved.
+ */
+export async function requestProductionApproval(taskId: string): Promise<{ ok: boolean; message?: string }> {
+  if (MOCK_MODE) return { ok: false, message: "This needs the live database." };
+  if (!(await isSuperadmin())) return { ok: false, message: "You don't have permission for this." };
+  const client = await createSupabaseServerClient();
+  if (!client) return { ok: false, message: "Your session expired — please reload." };
+
+  const { data: taskRow } = await client.from("dev_tasks").select("*").eq("id", taskId).maybeSingle();
+  if (!taskRow) return { ok: false, message: "Task not found." };
+  const task = taskRow as DevTask;
+
+  // Build the changelog from the task's real records.
+  const [fp, rg, ap, art, dep] = await Promise.all([
+    client.from("dev_file_change_plans").select("*").eq("task_id", taskId),
+    client.from("dev_review_gates").select("*").eq("task_id", taskId),
+    client.from("dev_approvals").select("*").eq("task_id", taskId),
+    client.from("dev_artifacts").select("*").eq("task_id", taskId),
+    client.from("dev_deployments").select("*").eq("task_id", taskId),
+  ]);
+  const detail: ReleaseDetail = {
+    filePlans: (fp.data ?? []) as ReleaseDetail["filePlans"],
+    reviewGates: (rg.data ?? []) as ReleaseDetail["reviewGates"],
+    approvals: (ap.data ?? []) as ReleaseDetail["approvals"],
+    artifacts: (art.data ?? []) as ReleaseDetail["artifacts"],
+    deployments: (dep.data ?? []) as ReleaseDetail["deployments"],
+  };
+  const changelog = releaseNotesMarkdown(task, detail);
+
+  // production_release approval (idempotent).
+  let created = false;
+  const { data: existing } = await client.from("dev_approvals")
+    .select("id").eq("task_id", taskId).eq("approval_type", "production_release")
+    .in("status", ["pending", "approved"]).maybeSingle();
+  if (!existing) {
+    await client.from("dev_approvals").insert({
+      task_id: taskId, approval_type: "production_release", status: "pending", risk_level: task.risk_level,
+      summary: `Release “${task.title}” to production`,
+      plain_english_summary: "Approve releasing this change to production. Production is never deployed automatically — this is your explicit go-ahead.",
+      technical_summary: "Promote the reviewed change to production (still a manual, gated step).",
+      experience_impact: "The change reaches real users only after your approval.",
+      reason: "Production releases require your explicit approval.",
+      requested_by: "DevOps/Release Agent", affected_files: [], affected_tables: [],
+    });
+    created = true;
+  }
+
+  // Store/refresh the changelog as a release-notes artifact (no duplicate).
+  const { data: existingChangelog } = await client.from("dev_artifacts")
+    .select("id").eq("task_id", taskId).eq("artifact_type", "release_notes").eq("title", "Changelog / release notes").maybeSingle();
+  if (existingChangelog) {
+    await client.from("dev_artifacts").update({ content: changelog }).eq("id", existingChangelog.id);
+  } else {
+    await client.from("dev_artifacts").insert({
+      task_id: taskId, kind: "doc", artifact_type: "release_notes", title: "Changelog / release notes",
+      description: "Generated release notes (9 sections).", content: changelog, language: "md",
+      risk_level: task.risk_level, approval_required: false, status: "needs_review", created_by: "Documentation Agent",
+    });
+  }
+
+  await client.from("dev_audit_log").insert({
+    task_id: taskId, actor_type: "human", actor_id: (await getServerUser())?.display_name ?? "Reliance Admin",
+    action: "production_approval_requested", entity: "dev_approvals", entity_id: taskId, risk_level: task.risk_level, detail: {},
+  });
+  revalidatePath(`/admin/dev-command/tasks/${taskId}`);
+  revalidatePath("/admin/dev-command/approvals");
+  return { ok: true, message: created ? "Requested production-release approval and generated the changelog. Decide it in the Approval Center." : "Production approval was already requested; changelog refreshed." };
 }
 
 /**
