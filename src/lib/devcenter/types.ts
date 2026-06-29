@@ -99,6 +99,30 @@ export type FeedbackCategory =
   | "confusing_screen" | "wrong_recommendation" | "improvement" | "bug" | "other";
 export type FeedbackStatus = "open" | "triaged" | "in_progress" | "resolved" | "wontfix";
 
+// ── Review gates (Phase 9) ────────────────────────────────────────────────────
+export type ReviewGateType =
+  | "qa" | "security" | "experience" | "plain_english" | "admin_workflow" | "documentation";
+export type ReviewGateStatus =
+  | "pending" | "passed" | "failed" | "needs_revision" | "waived_by_admin";
+
+export interface ReviewChecklistItem { label: string; passed: boolean; note?: string }
+
+export interface DevReviewGate {
+  id: string;
+  task_id: string;
+  gate_type: ReviewGateType;
+  agent_name: string | null;
+  status: ReviewGateStatus;
+  summary: string | null;
+  checklist: ReviewChecklistItem[];
+  required_fixes: string[];
+  score: number | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 type Json = Record<string, unknown>;
 
 // ── Row types ────────────────────────────────────────────────────────────────

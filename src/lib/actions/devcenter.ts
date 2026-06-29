@@ -13,6 +13,8 @@ import {
 import { runPlanningAgent } from "@/lib/devcenter/planning-agents";
 import { generateFilePlans } from "@/lib/devcenter/file-plans";
 import { generateCodeDrafts } from "@/lib/devcenter/code-drafts";
+import { generateReviewGate, STAGE_REVIEW_GATES, REQUIRED_FOR_RELEASE, gateCleared } from "@/lib/devcenter/review-gates";
+import type { ReviewGateStatus } from "@/lib/devcenter/types";
 
 const nowIso = () => new Date().toISOString();
 
@@ -180,6 +182,22 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
   const workerName = nameOf(cfg.agentKey);
   const entersGate = !!cfg.gate;
 
+  // Phase 9: block the move toward release until the required reviews are cleared
+  // (passed or waived) and there are no approvals still waiting.
+  if (next === "release_plan") {
+    const { data: gateRows } = await client.from("dev_review_gates").select("gate_type, status").eq("task_id", taskId);
+    const byType = new Map((gateRows ?? []).map((g) => [g.gate_type as string, g.status as ReviewGateStatus]));
+    const missing = REQUIRED_FOR_RELEASE.filter((g) => !gateCleared(byType.get(g) ?? "pending"));
+    const { count: pendingAppr } = await client.from("dev_approvals")
+      .select("*", { count: "exact", head: true }).eq("task_id", taskId).eq("status", "pending");
+    if (missing.length || (pendingAppr ?? 0) > 0) {
+      const parts: string[] = [];
+      if (missing.length) parts.push(`${missing.length} review(s) not passed yet`);
+      if ((pendingAppr ?? 0) > 0) parts.push(`${pendingAppr} approval(s) still waiting`);
+      return { ok: false, paused: true, message: `Can't move to release — ${parts.join(" and ")}. Pass, waive, or approve them below, then try again.` };
+    }
+  }
+
   let seq = Date.now() % 1_000_000;
   const nextSeq = () => seq++;
 
@@ -266,6 +284,20 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
         risk_level: d.risk_level, detail: { artifact_type: d.artifact_type, file: d.file_path_suggestion },
       });
     }
+  }
+
+  // 1d. Phase 9: review stages run their required review gates.
+  for (const gateType of STAGE_REVIEW_GATES[next] ?? []) {
+    const r = generateReviewGate(task, gateType);
+    await client.from("dev_review_gates").upsert({
+      task_id: taskId, gate_type: r.gate_type, agent_name: r.agent_name, status: r.status,
+      summary: r.summary, checklist: r.checklist, required_fixes: r.required_fixes, score: r.score,
+    }, { onConflict: "task_id,gate_type" });
+    await client.from("dev_audit_log").insert({
+      task_id: taskId, actor_type: "agent", actor_id: r.agent_name, agent_id: null,
+      action: `review_${r.status}`, entity: "dev_review_gates", entity_id: taskId,
+      risk_level: task.risk_level, detail: { gate: r.gate_type, status: r.status },
+    });
   }
 
   // 2. Dev Manager decision message.
@@ -429,6 +461,40 @@ export async function decideArtifact(
     action: `artifact_${next}`, entity: "dev_artifacts", entity_id: id, detail: { title: art.title },
   });
   revalidatePath(`/admin/dev-command/tasks/${art.task_id}`);
+  revalidatePath("/admin/dev-command");
+  return { ok: true };
+}
+
+/**
+ * Waive a failed review or send it back for a revision (Phase 9). Waiving lets
+ * the task move toward release; requesting a revision keeps it blocked.
+ */
+export async function decideReviewGate(
+  _prev: { ok: boolean; error?: string },
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  if (MOCK_MODE) return { ok: false, error: "Reviews need the live database." };
+  if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
+  const client = await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired — please reload." };
+
+  const id = String(formData.get("gate_id") ?? "");
+  const decision = String(formData.get("decision") ?? "");
+  const next = decision === "waive" ? "waived_by_admin" : decision === "revise" ? "needs_revision" : null;
+  if (!id || !next) return { ok: false, error: "Something went wrong — please try again." };
+  const decidedBy = (await getServerUser())?.display_name ?? "Reliance Admin";
+
+  const { data: gate, error } = await client.from("dev_review_gates")
+    .update({ status: next, decided_by: decidedBy, decided_at: nowIso() })
+    .eq("id", id).select("task_id, gate_type").single();
+  if (error || !gate) return { ok: false, error: error?.message ?? "Could not update the review." };
+
+  await client.from("dev_audit_log").insert({
+    task_id: gate.task_id, actor_type: "human", actor_id: decidedBy,
+    action: next === "waived_by_admin" ? "review_waived" : "review_revision_requested",
+    entity: "dev_review_gates", entity_id: id, detail: { gate: gate.gate_type },
+  });
+  revalidatePath(`/admin/dev-command/tasks/${gate.task_id}`);
   revalidatePath("/admin/dev-command");
   return { ok: true };
 }

@@ -21,6 +21,7 @@ import type {
   DevAgent, DevApproval, DevAuditEntry,
   DevAgentRun, DevAgentMessage, DevArtifact, DevFileChangePlan,
   DevCodeReview, DevTestResult, DevSecurityReview, DevExperienceReview, DevDeployment,
+  DevReviewGate,
 } from "./types";
 
 /** Everything the task detail page needs, read from the live dev_* tables. */
@@ -34,6 +35,7 @@ export interface TaskDetail {
   testResults: DevTestResult[];
   securityReviews: DevSecurityReview[];
   experienceReviews: DevExperienceReview[];
+  reviewGates: DevReviewGate[];
   approvals: DevApproval[];
   deployments: DevDeployment[];
   audit: DevAuditEntry[];
@@ -104,7 +106,7 @@ export async function getTaskDetail(id: string): Promise<TaskDetail> {
   const empty: TaskDetail = {
     task: null, runs: [], messages: [], artifacts: [], filePlans: [],
     codeReviews: [], testResults: [], securityReviews: [], experienceReviews: [],
-    approvals: [], deployments: [], audit: [],
+    reviewGates: [], approvals: [], deployments: [], audit: [],
   };
   if (MOCK_MODE) return empty;
   const client = await createSupabaseServerClient();
@@ -118,7 +120,7 @@ export async function getTaskDetail(id: string): Promise<TaskDetail> {
 
   const [
     runs, messages, artifacts, filePlans, codeReviews,
-    testResults, securityReviews, experienceReviews, approvals, deployments, audit,
+    testResults, securityReviews, experienceReviews, reviewGates, approvals, deployments, audit,
   ] = await Promise.all([
     byTask("dev_agent_runs", "created_at", false),
     byTask("dev_agent_messages", "seq", true),
@@ -128,6 +130,7 @@ export async function getTaskDetail(id: string): Promise<TaskDetail> {
     byTask("dev_test_results", "created_at", false),
     byTask("dev_security_reviews", "created_at", false),
     byTask("dev_experience_reviews", "created_at", false),
+    byTask("dev_review_gates", "created_at", true),
     byTask("dev_approvals", "created_at", false),
     byTask("dev_deployments", "created_at", false),
     byTask("dev_audit_log", "created_at", false),
@@ -143,6 +146,7 @@ export async function getTaskDetail(id: string): Promise<TaskDetail> {
     testResults: (testResults.data ?? []) as DevTestResult[],
     securityReviews: (securityReviews.data ?? []) as DevSecurityReview[],
     experienceReviews: (experienceReviews.data ?? []) as DevExperienceReview[],
+    reviewGates: (reviewGates.data ?? []) as DevReviewGate[],
     approvals: (approvals.data ?? []) as DevApproval[],
     deployments: (deployments.data ?? []) as DevDeployment[],
     audit: (audit.data ?? []) as DevAuditEntry[],

@@ -11,7 +11,7 @@
 import { getDevAgents } from "./repo";
 import type {
   DevAgent, DevTask, DevAgentRun, DevAgentMessage, DevArtifact, DevFileChangePlan,
-  DevCodeReview, DevTestResult, DevSecurityReview, DevExperienceReview,
+  DevCodeReview, DevTestResult, DevSecurityReview, DevExperienceReview, DevReviewGate,
   DevApproval, DevDeployment, DevAuditEntry, DevAgentMemory, DevFeedback,
 } from "./types";
 
@@ -156,6 +156,14 @@ export const SAMPLE_FEEDBACK: DevFeedback[] = [
   { id: "fb-1", task_id: null, screen: "/admin/dev-command/approvals", category: "improvement", risk_level: "low", message: "Add a one-line summary of what each approval will change.", status: "open", created_by: "you", resolved_by: null, resolved_at: null, created_at: ago(200), updated_at: ago(200) },
 ];
 
+// ── Review gates (Phase 9) ────────────────────────────────────────────────────
+const qaItems = ["Acceptance criteria met", "Form validation works", "Empty states", "Loading states", "Error states", "Mobile / tablet layout"].map((label) => ({ label, passed: true }));
+export const SAMPLE_REVIEW_GATES: DevReviewGate[] = [
+  { id: "rg-1", task_id: "task-1", gate_type: "qa", agent_name: "QA/Test Agent", status: "passed", summary: "QA review looks good.", checklist: qaItems, required_fixes: [], score: 100, decided_by: null, decided_at: null, created_at: ago(40), updated_at: ago(40) },
+  { id: "rg-2", task_id: "task-1", gate_type: "experience", agent_name: "Human Experience Agent", status: "passed", summary: "Easy to understand and use.", checklist: ["The screen is easy to understand", "Labels are plain-English", "The next step is obvious"].map((label) => ({ label, passed: true })), required_fixes: [], score: 100, decided_by: null, decided_at: null, created_at: ago(38), updated_at: ago(38) },
+  { id: "rg-3", task_id: "task-2", gate_type: "security", agent_name: "Security/Permissions Agent", status: "needs_revision", summary: "A few security items need attention before release.", checklist: [{ label: "Admin-only access", passed: true }, { label: "Authentication", passed: true }, { label: "Data-access (RLS) risk", passed: false, note: "Needs a closer look before release." }, { label: "No unexpected permission changes", passed: false, note: "Needs a closer look before release." }], required_fixes: ["This touches logins/permissions — verify admin-only access.", "The risk level is high — double-check access and data exposure."], score: 50, decided_by: null, decided_at: null, created_at: ago(25), updated_at: ago(25) },
+];
+
 // ── Lookups + dashboard metrics ───────────────────────────────────────────────
 export function agentNameById(id: string | null, agents: DevAgent[] = SAMPLE_AGENTS): string {
   if (!id) return "—";
@@ -212,6 +220,7 @@ export function taskBundle(taskId: string) {
     testResults: SAMPLE_TEST_RESULTS.filter((t) => t.task_id === taskId),
     securityReviews: SAMPLE_SECURITY_REVIEWS.filter((s) => s.task_id === taskId),
     experienceReviews: SAMPLE_EXPERIENCE_REVIEWS.filter((e) => e.task_id === taskId),
+    reviewGates: SAMPLE_REVIEW_GATES.filter((g) => g.task_id === taskId),
     approvals: SAMPLE_APPROVALS.filter((a) => a.task_id === taskId),
     deployments: SAMPLE_DEPLOYMENTS.filter((d) => d.task_id === taskId),
   };

@@ -10,6 +10,7 @@ import type {
   AgentRunStatus, DeploymentStatus, TestStatus, SecurityVerdict, ReviewVerdict,
   ExperiencePerspective, AgentMemoryKind, FeedbackCategory,
   FileChangeType, FileChangeStatus, ArtifactType, ArtifactStatus,
+  ReviewGateType, ReviewGateStatus,
 } from "./types";
 
 /** Tone of a badge — drives the shared color/shape classes. */
@@ -207,6 +208,24 @@ export const ARTIFACT_STATUS_META: Record<ArtifactStatus, Meta> = {
   needs_review:     { label: "Needs your review", tone: "violet" },
   revised:          { label: "Revision requested", tone: "warn" },
   ready_for_branch: { label: "Ready for a branch", tone: "info" },
+};
+
+// ── Review gates (Phase 9) ────────────────────────────────────────────────────
+export const REVIEW_GATE_META: Record<ReviewGateType, { label: string; agent: string }> = {
+  qa:             { label: "QA review",            agent: "QA/Test Agent" },
+  security:       { label: "Security review",      agent: "Security/Permissions Agent" },
+  experience:     { label: "Experience review",    agent: "Human Experience Agent" },
+  plain_english:  { label: "Plain-English review", agent: "Plain-English Agent" },
+  admin_workflow: { label: "Admin workflow review", agent: "Admin Support Agent" },
+  documentation:  { label: "Documentation review", agent: "Documentation Agent" },
+};
+
+export const REVIEW_STATUS_META: Record<ReviewGateStatus, Meta> = {
+  pending:        { label: "Not reviewed yet",  tone: "neutral" },
+  passed:         { label: "Passed",            tone: "success" },
+  failed:         { label: "Failed",            tone: "danger" },
+  needs_revision: { label: "Needs changes",     tone: "warn" },
+  waived_by_admin:{ label: "Waived by you",     tone: "info" },
 };
 
 /** The 5 experience checks an admin reads before approving a file plan. */
