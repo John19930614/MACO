@@ -85,23 +85,27 @@ export const RUN_STATUS_META: Record<AgentRunStatus, Meta> = {
 
 // ── Approval ──────────────────────────────────────────────────────────────────
 export const APPROVAL_TYPE_LABEL: Record<ApprovalType, string> = {
-  database_change:           "Database change",
-  auth_permission_change:    "Login permission change",
-  file_write:                "Save code to a file",
-  github_branch:             "Create a code branch",
-  pull_request:              "Open a pull request",
-  deployment:                "Deploy a preview",
-  production_release:        "Release to production",
-  delete_action:             "Delete something",
-  ai_tool_permission_change: "Change an AI agent's permissions",
+  database_change:             "Database change",
+  auth_permission_change:      "Login permission change",
+  rls_policy_change:           "Data-access rule change",
+  file_write:                  "Save code to a file",
+  file_delete:                 "Delete a file",
+  github_branch:               "Create a code branch",
+  pull_request:                "Open a pull request",
+  deployment:                  "Deploy a preview",
+  production_release:          "Release to production",
+  environment_variable_change: "Change a setting or secret",
+  ai_tool_permission_change:   "Change an AI agent's permissions",
+  delete_action:               "Delete something",
 };
 
 export const APPROVAL_STATUS_META: Record<ApprovalStatus, Meta> = {
-  pending:   { label: "Waiting for you", tone: "violet" },
-  approved:  { label: "Approved",        tone: "success" },
-  rejected:  { label: "Rejected",        tone: "neutral" },
-  expired:   { label: "Expired",         tone: "neutral" },
-  cancelled: { label: "Cancelled",       tone: "neutral" },
+  pending:        { label: "Waiting for you", tone: "violet" },
+  approved:       { label: "Approved",        tone: "success" },
+  rejected:       { label: "Rejected",        tone: "neutral" },
+  needs_revision: { label: "Needs changes",   tone: "warn" },
+  expired:        { label: "Expired",         tone: "neutral" },
+  cancelled:      { label: "Cancelled",       tone: "neutral" },
 };
 
 // ── Deployment ────────────────────────────────────────────────────────────────

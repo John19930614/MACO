@@ -195,6 +195,19 @@ export async function updateDevTaskStatus(
 
 // ── Approvals (the human gate — read + request; deciding comes in a later phase) ─
 
+/** Every approval across all tasks — the Approval Center queue (newest first). */
+export async function getAllApprovals(limit = 100): Promise<DevApproval[]> {
+  if (MOCK_MODE) return [];
+  const client = await createSupabaseServerClient();
+  if (!client) return [];
+  const { data } = await client
+    .from("dev_approvals")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  return (data ?? []) as DevApproval[];
+}
+
 export async function getPendingApprovals(limit = 50): Promise<DevApproval[]> {
   if (MOCK_MODE) return [];
   const client = await createSupabaseServerClient();

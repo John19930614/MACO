@@ -163,16 +163,20 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
   const nameOf = (key: string) => (byKey.get(key)?.name as string) ?? key;
   const idOf = (key: string) => (byKey.get(key)?.id as string) ?? null;
 
-  // Gate: if we're sitting on a gate stage, its approval must be granted to move on.
+  // Gate: if we're sitting on a gate stage, its approval must be GRANTED to move on.
   if (isGate(status)) {
     const { data: appr } = await client.from("dev_approvals")
       .select("status").eq("task_id", taskId)
       .eq("approval_type", STAGE_CONFIG[status].gate!.approvalType)
       .order("created_at", { ascending: false }).limit(1).maybeSingle();
-    if (!appr || appr.status === "pending")
-      return { ok: false, paused: true, message: "Waiting for your approval before continuing." };
-    if (appr.status === "rejected")
-      return { ok: false, paused: true, message: "This step was rejected — the task is paused." };
+    if (!appr || appr.status !== "approved") {
+      const message = appr?.status === "rejected"
+        ? "This step was rejected — the task is paused."
+        : appr?.status === "needs_revision"
+          ? "This step needs changes before it can continue."
+          : "Waiting for your approval before continuing.";
+      return { ok: false, paused: true, message };
+    }
   }
 
   const next = nextStage(status);
@@ -319,12 +323,24 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
     risk_level: task.risk_level, detail: { from: status, to: next, agent: workerName },
   });
 
-  // 4. Gate stage → create the approval request and pause.
+  // 4. Gate stage → create the (enriched) approval request and pause.
   if (entersGate) {
+    const { data: planRows } = await client.from("dev_file_change_plans")
+      .select("file_path, change_type").eq("task_id", taskId).neq("status", "rejected");
+    const affectedFiles = (planRows ?? []).map((r) => r.file_path as string);
+    const affectedTables = (planRows ?? []).some((r) => r.change_type === "migration")
+      ? ["A database change is drafted — see the migration draft."] : [];
+    const isRelease = cfg.gate!.approvalType === "production_release";
     await client.from("dev_approvals").insert({
       task_id: taskId, approval_type: cfg.gate!.approvalType, risk_level: task.risk_level,
       summary: cfg.gate!.summary, requested_by: "Dev Manager Agent", status: "pending",
       target_type: "dev_tasks", target_id: taskId,
+      reason: isRelease ? "The task is ready and needs your final go-ahead to complete." : "The team is ready to start building and needs your go-ahead first.",
+      plain_english_summary: cfg.gate!.summary,
+      technical_summary: `Approval type: ${cfg.gate!.approvalType}. Stage: ${next.replace(/_/g, " ")}. Nothing is applied until you approve.`,
+      experience_impact: "Keeps you in control — nothing risky happens without your yes.",
+      affected_files: affectedFiles,
+      affected_tables: affectedTables,
     });
     await client.from("dev_audit_log").insert({
       task_id: taskId, actor_type: "agent", actor_id: "dev-manager", agent_id: idOf("dev-manager"),
@@ -363,8 +379,12 @@ export async function decideApproval(
   const id = String(formData.get("approval_id") ?? "");
   const decision = String(formData.get("decision") ?? "");
   const note = (String(formData.get("note") ?? "").trim() || null) as string | null;
-  if (!id || (decision !== "approved" && decision !== "rejected")) {
+  if (!id || (decision !== "approved" && decision !== "rejected" && decision !== "needs_revision")) {
     return { ok: false, error: "Something went wrong — please try again." };
+  }
+  // Rejections must explain why.
+  if (decision === "rejected" && !note) {
+    return { ok: false, error: "Please add a note explaining why you're rejecting this." };
   }
   const decidedBy = (await getServerUser())?.display_name ?? "Reliance Admin";
 
@@ -376,13 +396,13 @@ export async function decideApproval(
 
   await client.from("dev_audit_log").insert({
     task_id: appr.task_id, actor_type: "human", actor_id: decidedBy,
-    action: decision === "approved" ? "approval_granted" : "approval_rejected",
-    entity: "dev_approvals", entity_id: id, detail: { approval_type: appr.approval_type },
+    action: decision === "approved" ? "approval_granted" : decision === "rejected" ? "approval_rejected" : "approval_revision_requested",
+    entity: "dev_approvals", entity_id: id, detail: { approval_type: appr.approval_type, note },
   });
   if (appr.task_id) {
     await client.from("dev_agent_messages").insert({
       task_id: appr.task_id, role: "user",
-      content: decision === "approved" ? "You approved this step." : "You rejected this step.",
+      content: decision === "approved" ? "You approved this step." : decision === "rejected" ? `You rejected this step.${note ? ` (${note})` : ""}` : "You sent this back for changes.",
       seq: Date.now() % 1_000_000,
     });
     if (decision === "rejected") {

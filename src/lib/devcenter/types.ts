@@ -79,11 +79,13 @@ export type ExperiencePerspective =
 
 /** The full dangerous-action set the human approval gate covers. */
 export type ApprovalType =
-  | "database_change" | "auth_permission_change" | "file_write"
-  | "github_branch" | "pull_request" | "deployment"
-  | "production_release" | "delete_action" | "ai_tool_permission_change";
+  | "database_change" | "auth_permission_change" | "rls_policy_change"
+  | "file_write" | "file_delete" | "github_branch" | "pull_request"
+  | "deployment" | "production_release" | "environment_variable_change"
+  | "ai_tool_permission_change" | "delete_action";
 
-export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired" | "cancelled";
+export type ApprovalStatus =
+  | "pending" | "approved" | "rejected" | "needs_revision" | "expired" | "cancelled";
 
 export type DeploymentEnvironment = "preview" | "staging" | "production";
 export type DeploymentStatus =
@@ -294,12 +296,18 @@ export interface DevApproval {
   risk_level: RiskLevel;
   summary: string;
   proposed_change: string | null;
+  reason: string | null;
+  plain_english_summary: string | null;
+  technical_summary: string | null;
+  experience_impact: string | null;
+  affected_files: string[];
+  affected_tables: string[];
   details: Json;
   status: ApprovalStatus;
-  requested_by: string | null;
-  decided_by: string | null;
+  requested_by: string | null;      // requested_by_agent
+  decided_by: string | null;        // approved_by
   decided_at: string | null;
-  decision_note: string | null;
+  decision_note: string | null;     // decision_notes
   created_at: string;
   updated_at: string;
 }
