@@ -42,7 +42,16 @@ const DANGEROUS = [
   { name: "deployment_allowed", label: "Allow deploying a preview", hint: "The team may prepare a preview deployment to look at." },
 ];
 
-export function DevTaskIntakeForm() {
+interface Prefill {
+  title?: string;
+  business_goal?: string;
+  feature_description?: string;
+  module_affected?: string;
+  risk_level?: string;
+  success_criteria?: string;
+}
+
+export function DevTaskIntakeForm({ prefill }: { prefill?: Prefill }) {
   const [state, formAction, pending] = useActionState<CreateTaskState, FormData>(createDevTask, {});
 
   return (
@@ -57,17 +66,17 @@ export function DevTaskIntakeForm() {
       {/* ── Basic Info ───────────────────────────────────────────────── */}
       <Section icon={<Info className="h-4 w-4" />} title="Basic info" hint="The essentials. Plain language is perfect.">
         <Field label="Task title" hint="One clear sentence." required>
-          <input name="title" required placeholder="e.g. Add a CSV export button to the Incidents page" className={inputCls} />
+          <input name="title" required defaultValue={prefill?.title} placeholder="e.g. Add a CSV export button to the Incidents page" className={inputCls} />
         </Field>
         <Field label="Business goal" hint="Why does this matter? What's the point?">
-          <input name="business_goal" placeholder="e.g. Save safety managers time pulling reports" className={inputCls} />
+          <input name="business_goal" defaultValue={prefill?.business_goal} placeholder="e.g. Save safety managers time pulling reports" className={inputCls} />
         </Field>
         <Field label="Feature description" hint="What should it do?">
-          <textarea name="feature_description" rows={3} placeholder="Describe the feature in your own words…" className={inputCls} />
+          <textarea name="feature_description" rows={3} defaultValue={prefill?.feature_description} placeholder="Describe the feature in your own words…" className={inputCls} />
         </Field>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Module affected" hint="Which part of the platform?">
-            <select name="module_affected" defaultValue="" className={inputCls}>
+            <select name="module_affected" defaultValue={prefill?.module_affected ?? ""} className={inputCls}>
               <option value="" disabled>Choose a module…</option>
               {MODULES.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
@@ -84,7 +93,7 @@ export function DevTaskIntakeForm() {
             </select>
           </Field>
           <Field label="Risk level estimate" hint="Your best guess at how risky this is.">
-            <select name="risk_level" defaultValue="low" className={inputCls}>
+            <select name="risk_level" defaultValue={prefill?.risk_level ?? "low"} className={inputCls}>
               <option value="low">Low — small, safe change</option>
               <option value="medium">Medium — touches important areas</option>
               <option value="high">High — logins, data, or money</option>
@@ -131,7 +140,7 @@ export function DevTaskIntakeForm() {
       {/* ── Success Criteria ─────────────────────────────────────────── */}
       <Section icon={<Target className="h-4 w-4" />} title="Success criteria" hint="How will we know it's done and done right?">
         <Field label="What does 'done' look like?" hint="List what must be true for this to be finished.">
-          <textarea name="success_criteria" rows={3} placeholder="e.g. A working Export button that downloads the current list as a spreadsheet." className={inputCls} />
+          <textarea name="success_criteria" rows={3} defaultValue={prefill?.success_criteria} placeholder="e.g. A working Export button that downloads the current list as a spreadsheet." className={inputCls} />
         </Field>
         <Field label="Notes" hint="Anything else the team should know. Optional.">
           <textarea name="notes" rows={2} placeholder="Optional notes…" className={inputCls} />
