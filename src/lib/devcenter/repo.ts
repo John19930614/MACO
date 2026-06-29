@@ -21,7 +21,7 @@ import type {
   DevAgent, DevApproval, DevAuditEntry,
   DevAgentRun, DevAgentMessage, DevArtifact, DevFileChangePlan,
   DevCodeReview, DevTestResult, DevSecurityReview, DevExperienceReview, DevDeployment,
-  DevReviewGate,
+  DevReviewGate, DevAppliedChange,
 } from "./types";
 
 /** Everything the task detail page needs, read from the live dev_* tables. */
@@ -38,6 +38,7 @@ export interface TaskDetail {
   reviewGates: DevReviewGate[];
   approvals: DevApproval[];
   deployments: DevDeployment[];
+  appliedChanges: DevAppliedChange[];
   audit: DevAuditEntry[];
 }
 
@@ -125,7 +126,7 @@ export async function getTaskDetail(id: string): Promise<TaskDetail> {
   const empty: TaskDetail = {
     task: null, runs: [], messages: [], artifacts: [], filePlans: [],
     codeReviews: [], testResults: [], securityReviews: [], experienceReviews: [],
-    reviewGates: [], approvals: [], deployments: [], audit: [],
+    reviewGates: [], approvals: [], deployments: [], appliedChanges: [], audit: [],
   };
   if (MOCK_MODE) return empty;
   const client = await createSupabaseServerClient();
@@ -154,6 +155,7 @@ export async function getTaskDetail(id: string): Promise<TaskDetail> {
     byTask("dev_deployments", "created_at", false),
     byTask("dev_audit_log", "created_at", false),
   ]);
+  const appliedChanges = await byTask("dev_applied_changes", "applied_at", false);
 
   return {
     task: task as DevTask,
@@ -168,6 +170,7 @@ export async function getTaskDetail(id: string): Promise<TaskDetail> {
     reviewGates: (reviewGates.data ?? []) as DevReviewGate[],
     approvals: (approvals.data ?? []) as DevApproval[],
     deployments: (deployments.data ?? []) as DevDeployment[],
+    appliedChanges: (appliedChanges.data ?? []) as DevAppliedChange[],
     audit: (audit.data ?? []) as DevAuditEntry[],
   };
 }

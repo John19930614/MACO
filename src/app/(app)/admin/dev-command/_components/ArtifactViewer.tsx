@@ -4,9 +4,10 @@ import { useState, useTransition } from "react";
 import { Card, CardHeader } from "@/components/ui/primitives";
 import { Badge, RiskLevelBadge } from "./badges";
 import { EmptyStateCard } from "./states";
-import { decideArtifact } from "@/lib/actions/devcenter";
+import { decideArtifact, applyApprovedArtifact } from "@/lib/actions/devcenter";
 import { ARTIFACT_TYPE_META, ARTIFACT_STATUS_META } from "@/lib/devcenter/labels";
-import { Code2, Copy, Check, AlertTriangle, Smile, Loader2 } from "lucide-react";
+import { checkPath } from "@/lib/devcenter/path-safety";
+import { Code2, Copy, Check, AlertTriangle, Smile, Loader2, ShieldCheck, Lock, FileCheck2, Ban } from "lucide-react";
 import type { DevArtifact } from "@/lib/devcenter/types";
 
 /**
@@ -41,6 +42,15 @@ function DraftRow({ artifact: a, actionable }: { artifact: DevArtifact; actionab
   const status = ARTIFACT_STATUS_META[a.status];
   const pendingReview = a.status === "draft" || a.status === "needs_review" || a.status === "revised";
   const dangerous = a.risk_level === "high" || a.risk_level === "critical";
+  const [applyMsg, setApplyMsg] = useState<string | null>(null);
+  const pathSafety = checkPath(a.path);
+
+  const apply = () =>
+    start(async () => {
+      setApplyMsg(null);
+      const r = await applyApprovedArtifact(a.id);
+      setApplyMsg(r.message ?? null);
+    });
 
   const copy = async () => {
     try { await navigator.clipboard.writeText(a.content ?? ""); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* ignore */ }
@@ -126,6 +136,39 @@ function DraftRow({ artifact: a, actionable }: { artifact: DevArtifact; actionab
           <button type="button" disabled={pending} onClick={() => decide("approve")}
             className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50">Approve</button>
         </div>
+      )}
+
+      {/* Phase 12 — apply an approved draft to the working area */}
+      {a.status === "approved" && (
+        <div className="mt-2 rounded-md border border-slate-200 p-2.5 dark:border-slate-700">
+          {/* Path safety indicator */}
+          {pathSafety.allowed ? (
+            <p className="flex items-center gap-1.5 text-[11px] text-emerald-600"><ShieldCheck className="h-3.5 w-3.5" /> Allowed area — safe to apply ({a.path})</p>
+          ) : pathSafety.dangerous ? (
+            <p className="flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-300"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Dangerous path — {pathSafety.reason}</p>
+          ) : (
+            <p className="flex items-start gap-1.5 text-[11px] text-slate-500"><Ban className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {pathSafety.reason}</p>
+          )}
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] text-slate-400">Applies to a safe staging area — never your real codebase.</span>
+            {actionable ? (
+              <div className="flex items-center gap-2">
+                {applyMsg && <span className="text-[11px] text-slate-500">{applyMsg}</span>}
+                {pending && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+                <button type="button" disabled={pending || (!pathSafety.allowed && !pathSafety.dangerous)} onClick={apply}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50">
+                  <FileCheck2 className="h-3.5 w-3.5" /> Apply to working area
+                </button>
+              </div>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><Lock className="h-3 w-3" /> Open a live task to apply</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {a.status === "applied" && (
+        <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-600"><FileCheck2 className="h-3.5 w-3.5" /> Applied to the working area (no real file changed).</p>
       )}
     </div>
   );

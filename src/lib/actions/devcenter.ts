@@ -11,6 +11,8 @@ import {
   STAGE_CONFIG, STAGE_PLANNERS, nextStage, isGate, isTerminal, isWorkflowStage, buildDevManagerUpdate,
 } from "@/lib/devcenter/workflow";
 import { branchName, prMarkdown, rollbackPlan } from "@/lib/devcenter/github-plan";
+import { checkPath, isDestructive } from "@/lib/devcenter/path-safety";
+import { APPROVAL_TYPE_LABEL } from "@/lib/devcenter/labels";
 import { runPlanningAgent } from "@/lib/devcenter/planning-agents";
 import { generateFilePlans } from "@/lib/devcenter/file-plans";
 import { generateCodeDrafts } from "@/lib/devcenter/code-drafts";
@@ -517,6 +519,76 @@ export async function decideArtifact(
   revalidatePath(`/admin/dev-command/tasks/${art.task_id}`);
   revalidatePath("/admin/dev-command");
   return { ok: true };
+}
+
+/**
+ * Phase 12: apply an APPROVED artifact to the staging working area (NOT the real
+ * codebase). Runs every safety check first; on any failure it applies nothing and
+ * returns a plain-English reason. Never writes real files, never deploys, never
+ * pushes. The actual real-file write is a separate, later, gated step.
+ */
+export async function applyApprovedArtifact(artifactId: string): Promise<{ ok: boolean; message?: string }> {
+  if (MOCK_MODE) return { ok: false, message: "Applying needs the live database." };
+  if (!(await isSuperadmin())) return { ok: false, message: "You don't have permission for this." };
+  const client = await createSupabaseServerClient();
+  if (!client) return { ok: false, message: "Your session expired — please reload." };
+
+  // 1–2. Artifact + task exist.
+  const { data: artRow } = await client.from("dev_artifacts").select("*").eq("id", artifactId).maybeSingle();
+  if (!artRow) return { ok: false, message: "Draft not found." };
+  const a = artRow as { id: string; task_id: string; title: string | null; path: string | null; content: string | null; status: string; risk_level: string | null; artifact_type: string | null };
+  const { data: task } = await client.from("dev_tasks").select("id, risk_level").eq("id", a.task_id).maybeSingle();
+  if (!task) return { ok: false, message: "Task not found." };
+
+  // 3. Artifact is approved (and not already applied).
+  if (a.status === "applied") return { ok: false, message: "This draft is already applied." };
+  if (a.status !== "approved") return { ok: false, message: "Blocked: this draft must be approved before it can be applied." };
+
+  // 7–8. Path safety + destructive check.
+  const pc = checkPath(a.path);
+  if (!pc.allowed && !pc.dangerous) return { ok: false, message: `Blocked: ${pc.reason}` };
+
+  // 4. Required approvals (file_write always; SQL ⇒ database_change; dangerous ⇒ its type).
+  const { data: apprRows } = await client.from("dev_approvals").select("approval_type, status").eq("task_id", a.task_id);
+  const approved = (t: string) => (apprRows ?? []).some((x) => x.approval_type === t && x.status === "approved");
+  if (!approved("file_write")) return { ok: false, message: "Blocked: a file-write approval must be approved first." };
+  if ((a.artifact_type === "supabase_sql" || a.artifact_type === "rls_policy") && !approved("database_change")) {
+    return { ok: false, message: "Blocked: a database-change approval is required before applying SQL." };
+  }
+  if (isDestructive(a.artifact_type) && !approved("file_delete")) {
+    return { ok: false, message: "Blocked: deleting needs a file-delete approval." };
+  }
+  if (pc.dangerous) {
+    if (!pc.requiredApproval || !approved(pc.requiredApproval)) {
+      return { ok: false, message: `Blocked: this path needs an approved “${pc.requiredApproval ? APPROVAL_TYPE_LABEL[pc.requiredApproval] : "extra"}” first.` };
+    }
+  }
+
+  // 5–6. Security + experience reviews: passed or waived, or not required yet.
+  const { data: gateRows } = await client.from("dev_review_gates").select("gate_type, status").eq("task_id", a.task_id);
+  const gateBlocks = (t: string) => {
+    const g = (gateRows ?? []).find((x) => x.gate_type === t);
+    return g ? !(g.status === "passed" || g.status === "waived_by_admin") : false; // none yet = not required yet
+  };
+  if (gateBlocks("security")) return { ok: false, message: "Blocked: the security review must pass (or be waived) first." };
+  if (gateBlocks("experience")) return { ok: false, message: "Blocked: the experience review must pass (or be waived) first." };
+
+  // All checks pass → apply to the staging working area (never the real codebase).
+  const appliedBy = (await getServerUser())?.display_name ?? "Reliance Admin";
+  const rollback = "Applied to the staging working area only — no real file or production was changed. To undo, roll back this staged change; nothing reached your codebase.";
+  await client.from("dev_applied_changes").insert({
+    task_id: a.task_id, artifact_id: a.id, file_path: a.path, change_type: "modify",
+    content: a.content, rollback_note: rollback, dangerous: pc.dangerous, status: "applied", applied_by: appliedBy,
+  });
+  await client.from("dev_artifacts").update({ status: "applied" }).eq("id", a.id);
+  await client.from("dev_audit_log").insert({
+    task_id: a.task_id, actor_type: "human", actor_id: appliedBy,
+    action: "artifact_applied", entity: "dev_artifacts", entity_id: a.id,
+    risk_level: a.risk_level ?? task.risk_level, detail: { path: a.path, dangerous: pc.dangerous, working_area: true },
+  });
+  revalidatePath(`/admin/dev-command/tasks/${a.task_id}`);
+  revalidatePath("/admin/dev-command");
+  return { ok: true, message: `Applied “${a.title ?? "draft"}” to the working area (no real file changed).` };
 }
 
 /**

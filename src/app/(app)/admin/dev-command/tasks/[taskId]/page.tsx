@@ -15,6 +15,7 @@ import { AuditLogTable } from "../../_components/AuditLogTable";
 import { PlanningOutputPanel } from "../../_components/PlanningOutputPanel";
 import { ArtifactViewer } from "../../_components/ArtifactViewer";
 import { ReviewChecklistPanel } from "../../_components/ReviewChecklistPanel";
+import { AppliedChangesPanel } from "../../_components/AppliedChangesPanel";
 import { BranchPlanPanel } from "../../_components/BranchPlanPanel";
 import { PullRequestPlanPanel } from "../../_components/PullRequestPlanPanel";
 import { RunNextStepButton } from "../../_components/RunNextStepButton";
@@ -151,6 +152,9 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
 
       {/* Phase 8 — code draft artifacts */}
       <ArtifactViewer artifacts={codeDraftArtifacts} actionable={isReal} />
+
+      {/* Phase 12 — applied changes (working area) */}
+      <AppliedChangesPanel changes={view.appliedChanges} />
 
       {/* Phase 9 — required review gates */}
       <ReviewChecklistPanel gates={view.reviewGates} actionable={isReal} />

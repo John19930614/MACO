@@ -109,6 +109,23 @@ export type ReviewGateStatus =
 
 export interface ReviewChecklistItem { label: string; passed: boolean; note?: string }
 
+// ── Applied changes / working area (Phase 12) ─────────────────────────────────
+export interface DevAppliedChange {
+  id: string;
+  task_id: string;
+  artifact_id: string | null;
+  file_path: string;
+  change_type: string | null;
+  content: string | null;
+  rollback_note: string | null;
+  dangerous: boolean;
+  status: "applied" | "rolled_back";
+  applied_by: string | null;
+  applied_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── GitHub workflow settings (Phase 11) ───────────────────────────────────────
 export interface DevGithubSettings {
   id: string;

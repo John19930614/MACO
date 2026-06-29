@@ -224,6 +224,7 @@ export function taskBundle(taskId: string) {
     reviewGates: SAMPLE_REVIEW_GATES.filter((g) => g.task_id === taskId),
     approvals: SAMPLE_APPROVALS.filter((a) => a.task_id === taskId),
     deployments: SAMPLE_DEPLOYMENTS.filter((d) => d.task_id === taskId),
+    appliedChanges: [],
   };
 }
 
