@@ -154,7 +154,7 @@ export const SAMPLE_MEMORY: DevAgentMemory[] = [
 ];
 
 export const SAMPLE_FEEDBACK: DevFeedback[] = [
-  { id: "fb-1", task_id: null, screen: "/admin/dev-command/approvals", category: "improvement", risk_level: "low", message: "Add a one-line summary of what each approval will change.", status: "open", created_by: "you", resolved_by: null, resolved_at: null, created_at: ago(200), updated_at: ago(200) },
+  { id: "fb-1", task_id: null, screen: "/admin/dev-command/approvals", category: "improvement", feedback_type: "feature_request", risk_level: "low", message: "Add a one-line summary of what each approval will change.", status: "open", assigned_to: null, reviewed_by_agent: null, created_by: "you", resolved_by: null, resolved_at: null, created_at: ago(200), updated_at: ago(200) },
 ];
 
 // ── Review gates (Phase 9) ────────────────────────────────────────────────────

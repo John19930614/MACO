@@ -14,6 +14,7 @@ import { branchName, prMarkdown, rollbackPlan } from "@/lib/devcenter/github-pla
 import { checkPath, isDestructive } from "@/lib/devcenter/path-safety";
 import { APPROVAL_TYPE_LABEL } from "@/lib/devcenter/labels";
 import { releaseNotesMarkdown, type ReleaseDetail } from "@/lib/devcenter/release";
+import { recordMemory } from "@/lib/devcenter/memory";
 import { runPlanningAgent } from "@/lib/devcenter/planning-agents";
 import { generateFilePlans } from "@/lib/devcenter/file-plans";
 import { generateCodeDrafts } from "@/lib/devcenter/code-drafts";
@@ -306,6 +307,12 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
       action: `review_${r.status}`, entity: "dev_review_gates", entity_id: taskId,
       risk_level: task.risk_level, detail: { gate: r.gate_type, status: r.status },
     });
+    // Phase 14: record a reusable lesson from the review.
+    if (gateType === "security" && r.status === "needs_revision" && r.required_fixes.length) {
+      await recordMemory(client, { kind: "security_rule", title: `Security watch: ${task.target_area ?? "platform"}`, content: r.required_fixes.join(" "), taskId, createdBy: r.agent_name });
+    } else if (gateType === "experience") {
+      await recordMemory(client, { kind: "ux_rule", title: `Experience lesson: ${task.target_area ?? "platform"}`, content: r.summary, taskId, createdBy: r.agent_name });
+    }
   }
 
   // 1e. Phase 11: the release_plan stage prepares a GitHub branch + PR plan and a
@@ -517,6 +524,15 @@ export async function decideArtifact(
     task_id: art.task_id, actor_type: "human", actor_id: decidedBy,
     action: `artifact_${next}`, entity: "dev_artifacts", entity_id: id, detail: { title: art.title },
   });
+  // Phase 14: the team learns from your decision (approved/rejected pattern).
+  if (next === "approved" || next === "rejected") {
+    await recordMemory(client, {
+      kind: next === "approved" ? "approved_pattern" : "rejected_pattern",
+      title: `${next === "approved" ? "Approved" : "Rejected"}: ${art.title ?? "code draft"}`,
+      content: `A code draft was ${next} by the operator — ${next === "approved" ? "reuse this approach" : "avoid this approach"}.`,
+      taskId: art.task_id, createdBy: decidedBy,
+    });
+  }
   revalidatePath(`/admin/dev-command/tasks/${art.task_id}`);
   revalidatePath("/admin/dev-command");
   return { ok: true };

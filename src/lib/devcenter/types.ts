@@ -99,11 +99,18 @@ export type DeploymentStatus =
 export type AuditActorType = "agent" | "human" | "system";
 
 export type AgentMemoryKind =
-  | "approved_pattern" | "rejected_pattern" | "user_preference" | "lesson_learned";
+  | "approved_pattern" | "rejected_pattern" | "user_preference" | "lesson_learned"
+  | "preferred_label" | "workflow_rule" | "security_rule" | "ux_rule"
+  | "performance_rule" | "admin_support_rule" | "platform_standard";
 
 export type FeedbackCategory =
   | "confusing_screen" | "wrong_recommendation" | "improvement" | "bug" | "other";
 export type FeedbackStatus = "open" | "triaged" | "in_progress" | "resolved" | "wontfix";
+
+/** The 8 quick feedback types (Phase 14). */
+export type FeedbackType =
+  | "helpful" | "confusing" | "wrong_recommendation" | "feature_request"
+  | "broken_workflow" | "bad_wording" | "too_technical" | "too_many_steps";
 
 // ── Review gates (Phase 9) ────────────────────────────────────────────────────
 export type ReviewGateType =
@@ -409,12 +416,15 @@ export interface DevToolPermission {
 export interface DevFeedback {
   id: string;
   task_id: string | null;
-  screen: string | null;
+  screen: string | null;            // page_route
   category: FeedbackCategory;
+  feedback_type: FeedbackType | null;
   risk_level: RiskLevel;
   message: string;
   status: FeedbackStatus;
-  created_by: string | null;
+  assigned_to: string | null;
+  reviewed_by_agent: string | null;
+  created_by: string | null;        // submitted_by
   resolved_by: string | null;
   resolved_at: string | null;
   created_at: string;

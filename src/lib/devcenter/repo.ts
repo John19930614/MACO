@@ -77,6 +77,26 @@ export async function getDevAgentByKey(key: string): Promise<DevAgent | null> {
   return (data as DevAgent) ?? null;
 }
 
+// ── Learning loop: feedback + memory (Phase 14) ───────────────────────────────
+
+import type { DevFeedback, DevAgentMemory } from "./types";
+
+export async function getAllFeedback(limit = 100): Promise<DevFeedback[]> {
+  if (MOCK_MODE) return [];
+  const client = await createSupabaseServerClient();
+  if (!client) return [];
+  const { data } = await client.from("dev_feedback").select("*").order("created_at", { ascending: false }).limit(limit);
+  return (data ?? []) as DevFeedback[];
+}
+
+export async function getAllMemory(limit = 200): Promise<DevAgentMemory[]> {
+  if (MOCK_MODE) return [];
+  const client = await createSupabaseServerClient();
+  if (!client) return [];
+  const { data } = await client.from("dev_agent_memory").select("*").order("created_at", { ascending: false }).limit(limit);
+  return (data ?? []) as DevAgentMemory[];
+}
+
 // ── GitHub settings (Phase 11) ────────────────────────────────────────────────
 
 import type { DevGithubSettings } from "./types";

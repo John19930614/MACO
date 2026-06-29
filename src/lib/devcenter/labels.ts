@@ -8,7 +8,7 @@
 import type {
   DevTaskStatus, DevTaskPriority, RiskLevel, ApprovalType, ApprovalStatus,
   AgentRunStatus, DeploymentStatus, TestStatus, SecurityVerdict, ReviewVerdict,
-  ExperiencePerspective, AgentMemoryKind, FeedbackCategory,
+  ExperiencePerspective, AgentMemoryKind, FeedbackCategory, FeedbackType,
   FileChangeType, FileChangeStatus, ArtifactType, ArtifactStatus,
   ReviewGateType, ReviewGateStatus,
 } from "./types";
@@ -160,10 +160,36 @@ export const PERSPECTIVE_LABEL: Record<ExperiencePerspective, string> = {
 };
 
 export const MEMORY_KIND_LABEL: Record<AgentMemoryKind, string> = {
-  approved_pattern: "Approved pattern",
-  rejected_pattern: "Rejected pattern",
-  user_preference:  "Your preference",
-  lesson_learned:   "Lesson learned",
+  approved_pattern:   "Approved pattern",
+  rejected_pattern:   "Rejected pattern",
+  user_preference:    "Your preference",
+  lesson_learned:     "Lesson learned",
+  preferred_label:    "Preferred label",
+  workflow_rule:      "Workflow rule",
+  security_rule:      "Security rule",
+  ux_rule:            "Experience rule",
+  performance_rule:   "Performance rule",
+  admin_support_rule: "Admin support rule",
+  platform_standard:  "Platform standard",
+};
+
+/** Tone for a memory kind — rejected patterns warn. */
+export const MEMORY_KIND_TONE: Record<AgentMemoryKind, Tone> = {
+  approved_pattern: "success", rejected_pattern: "danger", user_preference: "info",
+  lesson_learned: "info", preferred_label: "info", workflow_rule: "info",
+  security_rule: "warn", ux_rule: "violet", performance_rule: "warn",
+  admin_support_rule: "neutral", platform_standard: "info",
+};
+
+export const FEEDBACK_TYPE_META: Record<FeedbackType, { label: string; tone: Tone }> = {
+  helpful:              { label: "Was helpful",           tone: "success" },
+  confusing:            { label: "This is confusing",     tone: "warn" },
+  wrong_recommendation: { label: "AI recommendation was wrong", tone: "danger" },
+  feature_request:      { label: "Feature improvement",   tone: "info" },
+  broken_workflow:      { label: "Broken workflow",       tone: "danger" },
+  bad_wording:          { label: "Bad label / wording",   tone: "warn" },
+  too_technical:        { label: "Too technical",         tone: "warn" },
+  too_many_steps:       { label: "Too many steps",        tone: "warn" },
 };
 
 export const FEEDBACK_CATEGORY_LABEL: Record<FeedbackCategory, string> = {
