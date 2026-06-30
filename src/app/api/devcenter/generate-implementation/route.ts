@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { MOCK_MODE, serverSecrets } from "@/lib/env";
 import { createClient } from "@supabase/supabase-js";
 
-// Direct per-request timeout config — applied by Vercel to this function's lambda.
-export const maxDuration = 60;
+// Set to Vercel Pro max. Also set in vercel.json for belt-and-suspenders.
+export const maxDuration = 300;
 
 // Inline types so we don't import from a "use server" module
 interface GeneratedFile {
