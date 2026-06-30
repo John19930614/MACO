@@ -1,6 +1,5 @@
 "use server";
 
-import Anthropic from "@anthropic-ai/sdk";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getServerTenantId } from "@/lib/auth/session";
 import { MOCK_MODE, serverSecrets } from "@/lib/env";
@@ -116,6 +115,8 @@ Generate the complete implementation brief now.`;
     const { anthropicKey, anthropicModel } = serverSecrets();
     if (!anthropicKey) return { ok: false, error: "AI API key not configured." };
 
+    // Lazy import to avoid module evaluation during static page generation
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
     const client = new Anthropic({ apiKey: anthropicKey });
     const response = await client.messages.create({
       model: anthropicModel || "claude-sonnet-4-6",
@@ -146,14 +147,16 @@ Generate the complete implementation brief now.`;
       approval_required: false,
     }).select("id").single();
 
-    // Audit log
+    // Audit log (best-effort)
     if (tenantId) {
-      await db.from("dev_audit_log").insert({
-        task_id: taskId,
-        actor: "system",
-        action: "implementation_brief_generated",
-        details: { files_count: brief.files.length, has_migration: !!brief.dbMigration },
-      }).catch(() => {});
+      try {
+        await db.from("dev_audit_log").insert({
+          task_id: taskId,
+          actor: "system",
+          action: "implementation_brief_generated",
+          details: { files_count: brief.files.length, has_migration: !!brief.dbMigration },
+        });
+      } catch { /* non-fatal */ }
     }
 
     return { ok: true, brief, artifactId: artifact?.id };

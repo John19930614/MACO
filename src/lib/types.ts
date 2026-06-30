@@ -196,6 +196,7 @@ export interface Chemical {
   owner_id: string | null;
   created_by: string;
   created_at: string;
+  label_code?: string | null;
   updated_at: string;
 }
 

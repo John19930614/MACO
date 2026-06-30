@@ -6,7 +6,7 @@ import type { Chemical } from "@/lib/types";
 import { Pill } from "@/components/ui/primitives";
 import { getStorageClassName } from "@/lib/chemicalRefData";
 import { updateSdsUrl } from "@/lib/actions/ehs";
-import { X, ExternalLink, ChevronDown, ChevronRight } from "lucide-react";
+import { X, ExternalLink, ChevronDown, ChevronRight, Printer } from "lucide-react";
 import { GhsLabelButton } from "./GhsLabelButton";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -90,7 +90,47 @@ const HAZARD_COLOR: Record<string, string> = {
 const SDS_STYLE = { on_file: "bg-emerald-100 text-emerald-700", expiring: "bg-amber-100 text-amber-700", expired: "bg-red-100 text-red-700", missing: "bg-slate-100 text-slate-500" };
 const SDS_LABEL = { on_file: "On File", expiring: "Expiring", expired: "Expired", missing: "Missing" };
 
+// ── Quick print (no modal — opens print window directly) ──────────────────────
+
+function quickPrintLabel(c: Chemical) {
+  const esc = (s: string | null | undefined) =>
+    (s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>${esc(c.name)}</title>
+<style>
+  @page { size: 4in 2.5in; margin: 0.12in; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; margin: 0; padding: 6px; background: white; }
+  .wrap { border: 2px solid #334155; border-radius: 4px; padding: 8px 10px; }
+  .name { font-size: 16pt; font-weight: 900; color: #0f172a; line-height: 1.1; }
+  .code { font-family: monospace; font-size: 14pt; font-weight: bold; letter-spacing: 3px; color: #1d4ed8; margin: 4px 0; }
+  .meta { font-size: 8pt; color: #475569; margin-top: 4px; line-height: 1.6; }
+  .loc  { font-size: 8pt; color: #64748b; border-top: 1px solid #e2e8f0; margin-top: 6px; padding-top: 4px; }
+</style></head>
+<body>
+<div class="wrap">
+  <div class="name">${esc(c.name)}</div>
+  ${c.label_code ? `<div class="code">${esc(c.label_code)}</div>` : ""}
+  <div class="meta">
+    ${c.cas_number ? `CAS: <strong>${esc(c.cas_number)}</strong>&nbsp;&nbsp;` : ""}
+    Qty: <strong>${c.quantity} ${esc(c.unit)}</strong>
+  </div>
+  <div class="loc">${esc(c.storage_location)}</div>
+</div>
+<script>setTimeout(function(){window.print();},250);</script>
+</body></html>`;
+
+  const w = window.open("", "_blank", "width=500,height=380");
+  if (w) { w.document.write(html); w.document.close(); w.focus(); }
+}
+
 // ── Group type ─────────────────────────────────────────────────────────────────
+
+interface QuantitySummary {
+  total: number;
+  unit: string;
+}
 
 interface ChemGroup {
   key: string;
@@ -101,6 +141,7 @@ interface ChemGroup {
   category: CategoryKey;
   hazard: string;
   isHighHazard: boolean;
+  quantities: QuantitySummary[]; // totals per unit (e.g. [{total:750, unit:'mL'}, {total:1, unit:'L'}])
 }
 
 // ── SDS Modal ──────────────────────────────────────────────────────────────────
@@ -185,9 +226,16 @@ function ContainerRow({ c, onSdsClick }: { c: Chemical; onSdsClick: (c: Chemical
   return (
     <tr className="bg-slate-50/70 border-slate-100">
       <td className="pl-10 pr-4 py-2 text-xs text-slate-600">
-        <Link href={`/chemicals/${c.id}`} className="text-blue-600 hover:underline font-medium">
-          View record
-        </Link>
+        <div className="flex flex-col gap-0.5">
+          <Link href={`/chemicals/${c.id}`} className="text-blue-600 hover:underline font-medium">
+            View record
+          </Link>
+          {c.label_code && (
+            <span className="font-mono text-[10px] tracking-wider text-slate-400 select-all">
+              {c.label_code}
+            </span>
+          )}
+        </div>
       </td>
       <td className="px-4 py-2 text-xs text-slate-400 tabular-nums">{c.cas_number ?? "—"}</td>
       <td className="px-4 py-2 text-xs text-slate-700 tabular-nums font-medium whitespace-nowrap">
@@ -221,7 +269,17 @@ function ContainerRow({ c, onSdsClick }: { c: Chemical; onSdsClick: (c: Chemical
         {c.is_scheduled && <Pill className="bg-orange-100 text-orange-700">Scheduled</Pill>}
       </td>
       <td className="px-4 py-2">
-        <GhsLabelButton chemical={c} />
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => quickPrintLabel(c)}
+            title="Print container label"
+            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            <Printer className="h-3 w-3" />
+            Print
+          </button>
+          <GhsLabelButton chemical={c} />
+        </div>
       </td>
     </tr>
   );
@@ -274,11 +332,18 @@ function GroupRow({
         {/* CAS */}
         <td className="px-4 py-3 text-xs text-slate-500 tabular-nums">{group.cas_number ?? "—"}</td>
 
-        {/* Container count */}
+        {/* Container count + quantity rollup */}
         <td className="px-4 py-3">
-          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
-            {group.items.length} container{group.items.length !== 1 ? "s" : ""}
-          </span>
+          <div className="flex flex-col gap-0.5">
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700 w-fit">
+              {group.items.length} container{group.items.length !== 1 ? "s" : ""}
+            </span>
+            {group.quantities.slice(0, 2).map((q) => (
+              <span key={q.unit} className="text-[10px] text-slate-400 tabular-nums">
+                {q.total} {q.unit} total
+              </span>
+            ))}
+          </div>
         </td>
 
         {/* Location summary */}
@@ -374,6 +439,17 @@ export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
     return Array.from(map.values()).map((items) => {
       const rep = items[0];
       const hazard = primaryHazard(rep);
+
+      // Quantity rollup: sum per normalized unit
+      const unitMap = new Map<string, number>();
+      for (const c of items) {
+        const u = (c.unit ?? "").trim().toLowerCase();
+        if (u && c.quantity > 0) unitMap.set(u, (unitMap.get(u) ?? 0) + c.quantity);
+      }
+      const quantities: QuantitySummary[] = Array.from(unitMap.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([unit, total]) => ({ total: Math.round(total * 10) / 10, unit }));
+
       return {
         key: `${rep.name.trim().toLowerCase()}||${rep.cas_number ?? ""}`,
         name: rep.name,
@@ -385,6 +461,7 @@ export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
         isHighHazard: items.some((c) =>
           c.hazard_statements.some((h) => HIGH_HAZARD_H.some((hh) => h.startsWith(hh)))
         ),
+        quantities,
       };
     });
   }, [chemicals]);

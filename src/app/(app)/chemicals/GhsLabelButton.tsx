@@ -171,14 +171,18 @@ function buildPrintHtml(chemical: Chemical): string {
     ? `<div style="font-size:24pt;font-weight:900;color:${signalWord === "Danger" ? "#cc0000" : "#d97706"};margin-bottom:6px;letter-spacing:-0.5px;">${signalWord.toUpperCase()}</div>`
     : "";
 
+  const labelCodeHtml = chemical.label_code
+    ? `<div style="font-family:monospace;font-size:11pt;font-weight:bold;letter-spacing:2px;color:#334155;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:3px 8px;display:inline-block;margin-top:4px;">${esc(chemical.label_code)}</div>`
+    : "";
+
   return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>GHS Label — ${esc(chemical.name)}</title>
+<html><head><meta charset="UTF-8"><title>Label — ${esc(chemical.name)}</title>
 <style>
   @page { size: 4in 4in; margin: 0.15in; }
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 8px; background: white; }
-  .label { border: 3px solid #cc0000; padding: 10px; }
-  .hdr { border-bottom: 2px solid #cc0000; padding-bottom: 6px; margin-bottom: 8px; }
+  .label { border: 3px solid ${h.length > 0 ? "#cc0000" : "#334155"}; padding: 10px; }
+  .hdr { border-bottom: 2px solid ${h.length > 0 ? "#cc0000" : "#334155"}; padding-bottom: 6px; margin-bottom: 8px; }
   .name { font-size: 15pt; font-weight: bold; line-height: 1.2; color: #111; }
   .sub { font-size: 8.5pt; color: #555; margin-top: 3px; }
   .body { display: flex; gap: 10px; }
@@ -197,12 +201,13 @@ function buildPrintHtml(chemical: Chemical): string {
       ${chemical.cas_number && chemical.supplier ? " &nbsp;&middot;&nbsp; " : ""}
       ${chemical.supplier ? `Supplier: ${esc(chemical.supplier)}` : ""}
     </div>
+    ${labelCodeHtml}
   </div>
   <div class="body">
     <div class="pics">${picsHtml}</div>
     <div class="content">
       ${signalHtml}
-      ${h.length > 0 ? `<div class="sec-title">Hazard Statements</div>${hLines}` : ""}
+      ${h.length > 0 ? `<div class="sec-title">Hazard Statements</div>${hLines}` : '<p style="font-size:9pt;color:#64748b;margin:4px 0;">No GHS hazard classification — refer to SDS for hazard information.</p>'}
       ${p.length > 0 ? `<div class="sec-title">Precautionary Statements</div>${pLines}` : ""}
     </div>
   </div>
@@ -210,7 +215,7 @@ function buildPrintHtml(chemical: Chemical): string {
     ${chemical.storage_location ? `<strong>Storage:</strong> ${esc(chemical.storage_location)}<br>` : ""}
     <strong>Emergency:</strong> Call 911 &nbsp;&middot;&nbsp; Poison Control: 1-800-222-1222<br>
     Refer to Safety Data Sheet for complete health, safety and environmental information.
-    <div class="reg">GHS workplace label &mdash; OSHA 29 CFR 1910.1200 (HazCom 2012) / GHS Rev. 9 / WHMIS 2015</div>
+    <div class="reg">${h.length > 0 ? "GHS workplace label &mdash; OSHA 29 CFR 1910.1200 (HazCom 2012) / GHS Rev. 9 / WHMIS 2015" : "Container identification label &mdash; SafetyIQ"}</div>
   </div>
 </div>
 <script>setTimeout(function(){window.print();},350);</script>
@@ -227,8 +232,6 @@ export function GhsLabelButton({ chemical }: { chemical: Chemical }) {
   const p = chemical.precautionary_statements ?? [];
   const signalWord  = deriveSignalWord(h);
   const picCodes    = derivePictograms(h);
-
-  if (h.length === 0) return null;
 
   function recordPrint() {
     const snapshot: LabelSnapshot = {
@@ -277,11 +280,15 @@ export function GhsLabelButton({ chemical }: { chemical: Chemical }) {
     <>
       <button
         onClick={() => setOpen(true)}
-        title="Generate GHS Workplace Label"
-        className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700 hover:bg-violet-100 transition-colors"
+        title={h.length > 0 ? "Generate GHS Workplace Label" : "Generate Container ID Label"}
+        className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+          h.length > 0
+            ? "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
+            : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+        }`}
       >
         <Tag className="h-3 w-3"/>
-        GHS Label
+        {h.length > 0 ? "GHS Label" : "Label"}
       </button>
 
       {open && (
@@ -305,7 +312,7 @@ export function GhsLabelButton({ chemical }: { chemical: Chemical }) {
               <div className="rounded-lg border-2 border-red-600 bg-white p-4 shadow-sm">
 
                 {/* Product identifier header */}
-                <div className="mb-3 border-b-2 border-red-600 pb-2">
+                <div className={`mb-3 border-b-2 pb-2 ${h.length > 0 ? "border-red-600" : "border-slate-400"}`}>
                   <div className="text-base font-bold leading-tight text-slate-900">{chemical.name}</div>
                   <div className="mt-0.5 text-[11px] text-slate-500">
                     {chemical.cas_number && (
@@ -316,6 +323,12 @@ export function GhsLabelButton({ chemical }: { chemical: Chemical }) {
                       <span>Supplier: <span className="font-medium text-slate-700">{chemical.supplier}</span></span>
                     )}
                   </div>
+                  {chemical.label_code && (
+                    <div className="mt-1.5 inline-flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-2 py-0.5">
+                      <span className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Container ID</span>
+                      <span className="font-mono text-xs font-bold tracking-widest text-slate-700">{chemical.label_code}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Pictograms + hazard info */}
@@ -343,7 +356,7 @@ export function GhsLabelButton({ chemical }: { chemical: Chemical }) {
                     )}
 
                     {/* H-statements */}
-                    {h.length > 0 && (
+                    {h.length > 0 ? (
                       <div className="mb-3">
                         <div className="mb-1 border-b border-slate-100 pb-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-400">
                           Hazard Statements
@@ -360,6 +373,10 @@ export function GhsLabelButton({ chemical }: { chemical: Chemical }) {
                           })}
                         </div>
                       </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-400 italic mt-1">
+                        No GHS hazard classification on record — refer to SDS.
+                      </p>
                     )}
 
                     {/* P-statements */}
