@@ -118,20 +118,53 @@ Generate the complete implementation brief now.`;
     // Lazy import to avoid module evaluation during static page generation
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
     const client = new Anthropic({ apiKey: anthropicKey });
+
+    // Use tool use (structured output) so Claude is forced to return complete,
+    // properly-escaped JSON — avoids truncated strings from raw JSON generation.
     const response = await client.messages.create({
       model: anthropicModel || "claude-sonnet-4-6",
-      max_tokens: 8192,
+      max_tokens: 16000,
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
+      tools: [
+        {
+          name: "submit_implementation_brief",
+          description: "Submit the complete implementation brief for this task.",
+          input_schema: {
+            type: "object" as const,
+            required: ["summary", "files", "testingNotes", "deployCommand"],
+            properties: {
+              summary: { type: "string", description: "2-3 sentence plain-English summary" },
+              files: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["path", "operation", "description", "content"],
+                  properties: {
+                    path:        { type: "string" },
+                    operation:   { type: "string", enum: ["create", "edit", "delete"] },
+                    description: { type: "string" },
+                    content:     { type: "string" },
+                  },
+                },
+              },
+              dbMigration:  { type: ["string", "null"], description: "SQL migration or null" },
+              testingNotes: { type: "string" },
+              deployCommand: { type: "string" },
+            },
+          },
+        },
+      ],
+      tool_choice: { type: "any" as const },
     });
 
-    const raw = response.content.find((b) => b.type === "text")?.text ?? "";
+    // Extract the tool call input — always complete and properly encoded
+    const toolUse = response.content.find((b) => b.type === "tool_use");
+    if (!toolUse || toolUse.type !== "tool_use") {
+      return { ok: false, error: "AI did not return structured output. Try again." };
+    }
 
-    // Extract JSON from the response
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { ok: false, error: "AI did not return valid JSON. Try again." };
-
-    const brief = JSON.parse(jsonMatch[0]) as ImplementationBrief;
+    const brief = toolUse.input as ImplementationBrief;
 
     // Save as an artifact so it persists
     const { data: artifact } = await db.from("dev_artifacts").insert({
