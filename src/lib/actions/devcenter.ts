@@ -81,6 +81,7 @@ export async function createDevTask(
     ai_role: v.ai_role,
     success_criteria: v.success_criteria,
     notes: v.notes,
+    visual_reference: (formData.get("visual_reference") as string | null) || undefined,
     // Human approval is always required — it's the core safety guarantee and is
     // not user-disablable. The four below default OFF and are explicit opt-ins.
     human_approval_required: true,

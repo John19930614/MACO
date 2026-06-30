@@ -1,10 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useRef, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/primitives";
 import { createDevTask, type CreateTaskState } from "@/lib/actions/devcenter";
-import { Info, ShieldCheck, Lock, AlertTriangle, Lightbulb, Target } from "lucide-react";
+import { Info, ShieldCheck, Lock, AlertTriangle, Lightbulb, Target, ImagePlus, X } from "lucide-react";
 
 const MODULES = [
   "Dashboard",
@@ -58,6 +58,31 @@ interface Prefill {
 
 export function DevTaskIntakeForm({ prefill }: { prefill?: Prefill }) {
   const [state, formAction, pending] = useActionState<CreateTaskState, FormData>(createDevTask, {});
+  const [preview, setPreview] = useState<string | null>(null);
+  const hiddenRef = useRef<HTMLTextAreaElement>(null);
+
+  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image must be under 5 MB.");
+      e.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setPreview(dataUrl);
+      if (hiddenRef.current) hiddenRef.current.value = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearImage(e: React.MouseEvent) {
+    e.preventDefault();
+    setPreview(null);
+    if (hiddenRef.current) hiddenRef.current.value = "";
+  }
 
   return (
     <form action={formAction} className="space-y-5">
@@ -116,6 +141,32 @@ export function DevTaskIntakeForm({ prefill }: { prefill?: Prefill }) {
         <Field label="Data involved" hint="What information does this touch? Flag anything sensitive.">
           <input name="data_involved" defaultValue={prefill?.data_involved} placeholder="e.g. Incident records (no personal data)" className={inputCls} />
         </Field>
+      </Section>
+
+      {/* ── Visual Reference ─────────────────────────────────────────── */}
+      <Section icon={<ImagePlus className="h-4 w-4" />} title="Visual reference" hint="Optional — upload a screenshot or mockup to show how you want something to look.">
+        {/* hidden textarea carries the base64 value into FormData */}
+        <textarea ref={hiddenRef} name="visual_reference" className="hidden" readOnly />
+
+        {preview ? (
+          <div className="relative inline-block">
+            <img src={preview} alt="Visual reference preview" className="max-h-64 rounded-lg border border-slate-200 object-contain shadow-sm" />
+            <button
+              onClick={clearImage}
+              className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-slate-700 text-white shadow hover:bg-red-600 transition"
+              title="Remove image"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 px-6 py-8 text-center transition hover:border-blue-300 hover:bg-blue-50/40 dark:border-slate-700 dark:bg-slate-800/50">
+            <ImagePlus className="h-8 w-8 text-slate-300" />
+            <span className="text-sm font-medium text-slate-500">Click to upload a screenshot or mockup</span>
+            <span className="text-xs text-slate-400">PNG, JPG, WebP — max 5 MB</span>
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleImageChange} className="hidden" />
+          </label>
+        )}
       </Section>
 
       {/* ── Safety Controls ──────────────────────────────────────────── */}

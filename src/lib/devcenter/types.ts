@@ -34,6 +34,7 @@ export interface DevTaskMeta {
   ai_role?: string;
   success_criteria?: string;
   notes?: string;
+  visual_reference?: string;  // base64 data URL of an uploaded reference image
   human_approval_required?: boolean;
   database_changes_allowed?: boolean;
   file_changes_allowed?: boolean;

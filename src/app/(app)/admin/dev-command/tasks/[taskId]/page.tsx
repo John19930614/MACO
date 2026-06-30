@@ -144,6 +144,16 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
           <Detail label="AI's role" value={meta.ai_role} />
           <Detail label="Notes" value={meta.notes} />
         </div>
+        {meta.visual_reference && (
+          <div className="border-t border-slate-100 px-4 py-4 dark:border-slate-700">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Visual reference</p>
+            <img
+              src={meta.visual_reference}
+              alt="Visual reference uploaded by task creator"
+              className="max-h-96 rounded-lg border border-slate-200 object-contain shadow-sm dark:border-slate-700"
+            />
+          </div>
+        )}
         <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-700">
           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
             <ShieldCheck className="h-3.5 w-3.5" /> Safety controls
