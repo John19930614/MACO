@@ -787,8 +787,9 @@ function FindingRemediationPanel({ finding, onDone }: { finding: AiFinding; onDo
   const gaps    = output?.gaps ?? [];
 
   const [selected, setSelected] = useState<Set<number>>(() => new Set(actions.map((_, i) => i)));
-  const [phase, setPhase]       = useState<"idle" | "done" | "error">("idle");
+  const [phase, setPhase]       = useState<"idle" | "dismiss" | "done" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [dismissReason, setDismissReason] = useState("");
   const [isPending, startTransition] = useTransition();
 
   function toggle(i: number) {
@@ -812,9 +813,10 @@ function FindingRemediationPanel({ finding, onDone }: { finding: AiFinding; onDo
     });
   }
 
-  function handleDismiss() {
+  function handleDismissConfirm() {
+    if (!dismissReason.trim()) return;
     startTransition(async () => {
-      const result = await dismissFinding(finding.id);
+      const result = await dismissFinding(finding.id, dismissReason.trim());
       if (!result.ok) { setErrorMsg(result.error ?? "Failed."); setPhase("error"); return; }
       onDone();
     });
@@ -825,6 +827,48 @@ function FindingRemediationPanel({ finding, onDone }: { finding: AiFinding; onDo
       <div className="flex items-center gap-2 px-5 py-4 bg-emerald-50 border-t border-emerald-100 text-sm text-emerald-700 font-medium">
         <CheckCircle2 className="h-4 w-4 shrink-0" />
         {selected.size} CAPA{selected.size !== 1 ? "s" : ""} created and finding accepted. Refreshing…
+      </div>
+    );
+  }
+
+  if (phase === "dismiss") {
+    return (
+      <div className="border-t border-slate-200 bg-slate-50 px-5 py-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <XCircle className="h-4 w-4 text-slate-500 shrink-0" />
+          <span className="text-sm font-semibold text-slate-800">Dismiss finding — reason required</span>
+        </div>
+        <p className="text-xs text-slate-500">
+          Provide a reason for dismissing this finding. This will be saved to the audit log and displayed on the finding record.
+        </p>
+        <textarea
+          autoFocus
+          value={dismissReason}
+          onChange={(e) => setDismissReason(e.target.value)}
+          placeholder="e.g. Already addressed in last quarter's CAPA #42, risk accepted by management…"
+          rows={3}
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none resize-none"
+        />
+        {errorMsg && (
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{errorMsg}</p>
+        )}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleDismissConfirm}
+            disabled={!dismissReason.trim() || isPending}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-700 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+          >
+            <XCircle className="h-3.5 w-3.5" />
+            {isPending ? "Dismissing…" : "Confirm dismiss"}
+          </button>
+          <button
+            onClick={() => { setPhase("idle"); setDismissReason(""); }}
+            disabled={isPending}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     );
   }
@@ -907,7 +951,7 @@ function FindingRemediationPanel({ finding, onDone }: { finding: AiFinding; onDo
           {isPending ? "Creating…" : `Create ${selected.size} CAPA${selected.size !== 1 ? "s" : ""} & Accept`}
         </button>
         <button
-          onClick={handleDismiss}
+          onClick={() => setPhase("dismiss")}
           disabled={isPending}
           className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
         >
@@ -1063,7 +1107,14 @@ function FindingsPanel({ findings, runs, latestRun }: {
                             <ChevronDown className={`h-3 w-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                           </button>
                         ) : (
-                          <ReviewStatusBadge status={f.review_status} />
+                          <div className="space-y-1">
+                            <ReviewStatusBadge status={f.review_status} />
+                            {f.review_status === "rejected" && f.rejection_reason && (
+                              <p className="text-[10px] text-slate-400 max-w-48 leading-snug" title={f.rejection_reason}>
+                                {f.rejection_reason.length > 60 ? f.rejection_reason.slice(0, 60) + "…" : f.rejection_reason}
+                              </p>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>

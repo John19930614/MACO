@@ -788,6 +788,7 @@ export interface AiFinding {
   output: AiAnalysisOutput | CausalityOutput | Record<string, unknown>;
   confidence: number;               // 0-1
   review_status: ReviewStatus;
+  rejection_reason?: string | null;
   human_review_required: boolean;
   created_at: string;
 }

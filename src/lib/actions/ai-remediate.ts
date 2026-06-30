@@ -108,20 +108,34 @@ export async function remediateFinding(
 /** Mark a finding as rejected (dismissed) without creating any CAPAs. */
 export async function dismissFinding(
   findingId: string,
+  reason: string,
 ): Promise<{ ok: boolean; error?: string }> {
   if (!MOCK_MODE) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     const { error } = await ctx.client
       .from("ai_findings")
-      .update({ review_status: "rejected" })
+      .update({ review_status: "rejected", rejection_reason: reason })
       .eq("id", findingId)
       .eq("tenant_id", ctx.tenantId);
     if (error) return { ok: false, error: error.message };
+    // Best-effort audit log entry
+    try {
+      await ctx.client.from("audit_log").insert({
+        tenant_id: ctx.tenantId,
+        actor_id: ctx.profileId,
+        action: "ai_finding_dismissed",
+        entity_type: "ai_finding",
+        entity_id: findingId,
+        details: { reason },
+      });
+    } catch (e) {
+      console.error("audit write failed (non-fatal):", e);
+    }
   } else {
     const store = getStore();
     const idx = store.findings.findIndex((f) => f.id === findingId);
-    if (idx !== -1) store.findings[idx] = { ...store.findings[idx], review_status: "rejected" };
+    if (idx !== -1) store.findings[idx] = { ...store.findings[idx], review_status: "rejected", rejection_reason: reason };
   }
 
   revalidatePath("/ai");
