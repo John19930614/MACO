@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getStore, nextId } from "@/lib/data/store";
 import { MOCK_TENANT_ID, MOCK_SITE_ID } from "@/lib/data/mock";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getServerTenantId, getServerProfileId } from "@/lib/auth/session";
 import { MOCK_MODE } from "@/lib/env";
 import type { CapaSourceType } from "@/lib/types";
@@ -16,7 +16,7 @@ interface RemediationAction {
 }
 
 async function getCtx() {
-  const client = await createSupabaseServerClient();
+  const client = createServiceRoleClient();
   if (!client) return null;
   const tenantId = await getServerTenantId();
   if (!tenantId) return null;

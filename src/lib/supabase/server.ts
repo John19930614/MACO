@@ -2,7 +2,17 @@ import { cache } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, MOCK_MODE } from "@/lib/env";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, MOCK_MODE, serverSecrets } from "@/lib/env";
+
+/** Service-role client — bypasses RLS. Use ONLY in server actions/route handlers, never in client components. */
+export function createServiceRoleClient() {
+  if (MOCK_MODE || !SUPABASE_URL) return null;
+  const { serviceRoleKey } = serverSecrets();
+  if (!serviceRoleKey) return null;
+  return createClient(SUPABASE_URL, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
 
 // ── Legacy anon client (no cookie session — used by ehsRepo data functions) ───
 export function createServerSupabase() {
