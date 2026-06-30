@@ -33,12 +33,14 @@ export async function triggerVercelDeploy(taskId?: string): Promise<DeployResult
     if (taskId) {
       const db = createServiceRoleClient();
       if (db) {
-        await db.from("dev_audit_log").insert({
-          task_id: taskId,
-          actor: "system",
-          action: "production_deploy_triggered",
-          details: { job_id: jobId, hook_url_prefix: hookUrl.slice(0, 60) },
-        }).catch(() => {});
+        try {
+          await db.from("dev_audit_log").insert({
+            task_id: taskId,
+            actor: "system",
+            action: "production_deploy_triggered",
+            details: { job_id: jobId, hook_url_prefix: hookUrl.slice(0, 60) },
+          });
+        } catch { /* non-fatal */ }
       }
     }
 
