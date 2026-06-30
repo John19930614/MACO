@@ -1,9 +1,9 @@
-"use server";
+﻿"use server";
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServerClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { isSuperadmin, getServerUser } from "@/lib/auth/session";
 import { MOCK_MODE } from "@/lib/env";
 import type { DevTask, DevFileChangePlan, DevReviewGate, DevApproval } from "@/lib/devcenter/types";
@@ -46,7 +46,7 @@ const schema = z.object({
 const bool = (fd: FormData, k: string) => fd.get(k) === "on" || fd.get(k) === "true";
 
 /**
- * Create a new dev task (Phase 3 — real Supabase write).
+ * Create a new dev task (Phase 3 â€” real Supabase write).
  * Inserts the task (status 'intake'), an audit entry (task_created), and the
  * initial timeline message, then redirects to the task detail page.
  *
@@ -58,13 +58,15 @@ export async function createDevTask(
   formData: FormData,
 ): Promise<CreateTaskState> {
   if (MOCK_MODE) {
-    return { error: "Saving tasks needs the live database — this preview is in demo mode." };
+    return { error: "Saving tasks needs the live database â€” this preview is in demo mode." };
   }
   if (!(await isSuperadmin())) {
     return { error: "You don't have permission to create tasks." };
   }
-  const client = await createSupabaseServerClient();
-  if (!client) return { error: "Your session expired — please reload and try again." };
+  // Use service role to bypass RLS â€” superadmin tenant_id is null which breaks
+  // the dev_* RLS policies that check private.auth_tenant_id().
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { error: "Your session expired â€” please reload and try again." };
 
   const parsed = schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
@@ -72,7 +74,7 @@ export async function createDevTask(
   }
   const v = parsed.data;
 
-  // Safety controls — dangerous options default OFF; human approval defaults ON.
+  // Safety controls â€” dangerous options default OFF; human approval defaults ON.
   const metadata = {
     business_goal: v.business_goal,
     feature_description: v.feature_description,
@@ -82,7 +84,7 @@ export async function createDevTask(
     success_criteria: v.success_criteria,
     notes: v.notes,
     visual_reference: (formData.get("visual_reference") as string | null) || undefined,
-    // Human approval is always required — it's the core safety guarantee and is
+    // Human approval is always required â€” it's the core safety guarantee and is
     // not user-disablable. The four below default OFF and are explicit opt-ins.
     human_approval_required: true,
     database_changes_allowed: bool(formData, "database_changes_allowed"),
@@ -113,7 +115,7 @@ export async function createDevTask(
   }
   const taskId = data.id as string;
 
-  // Best-effort audit + initial timeline message — never block task creation on these.
+  // Best-effort audit + initial timeline message â€” never block task creation on these.
   await client.from("dev_audit_log").insert({
     task_id: taskId,
     actor_type: "human",
@@ -136,7 +138,7 @@ export async function createDevTask(
   redirect(`/admin/dev-command/tasks/${taskId}`);
 }
 
-// ── Phase 5: workflow engine (Dev Manager) ────────────────────────────────────
+// â”€â”€ Phase 5: workflow engine (Dev Manager) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface RunStepState {
   ok: boolean;
@@ -146,15 +148,15 @@ export interface RunStepState {
 
 /**
  * Run the next workflow step for a task (the "Run Next Agent Step" button).
- * Deterministic and manual — one click = one stage. The Dev Manager records an
+ * Deterministic and manual â€” one click = one stage. The Dev Manager records an
  * agent run, two timeline messages, and an audit entry; gate stages create an
  * approval request and pause until you approve. No real AI/file/deploy actions.
  */
 export async function runNextStep(taskId: string): Promise<RunStepState> {
   if (MOCK_MODE) return { ok: false, message: "Running steps needs the live database." };
   if (!(await isSuperadmin())) return { ok: false, message: "You don't have permission for this." };
-  const client = await createSupabaseServerClient();
-  if (!client) return { ok: false, message: "Your session expired — please reload." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, message: "Your session expired â€” please reload." };
 
   const { data: taskRow } = await client.from("dev_tasks").select("*").eq("id", taskId).maybeSingle();
   if (!taskRow) return { ok: false, message: "Task not found." };
@@ -165,7 +167,7 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
   if (status === "blocked") return { ok: false, message: "This task is paused. Reopen it to continue." };
   if (!isWorkflowStage(status)) return { ok: false, message: "This task isn't in the workflow." };
 
-  // Agent lookup (key → id/name).
+  // Agent lookup (key â†’ id/name).
   const { data: agentRows } = await client.from("dev_agents").select("id, key, name");
   const byKey = new Map((agentRows ?? []).map((a) => [a.key as string, a]));
   const nameOf = (key: string) => (byKey.get(key)?.name as string) ?? key;
@@ -179,7 +181,7 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
       .order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (!appr || appr.status !== "approved") {
       const message = appr?.status === "rejected"
-        ? "This step was rejected — the task is paused."
+        ? "This step was rejected â€” the task is paused."
         : appr?.status === "needs_revision"
           ? "This step needs changes before it can continue."
           : "Waiting for your approval before continuing.";
@@ -206,7 +208,7 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
       const parts: string[] = [];
       if (missing.length) parts.push(`${missing.length} review(s) not passed yet`);
       if ((pendingAppr ?? 0) > 0) parts.push(`${pendingAppr} approval(s) still waiting`);
-      return { ok: false, paused: true, message: `Can't move to release — ${parts.join(" and ")}. Pass, waive, or approve them below, then try again.` };
+      return { ok: false, paused: true, message: `Can't move to release â€” ${parts.join(" and ")}. Pass, waive, or approve them below, then try again.` };
     }
   }
 
@@ -236,14 +238,14 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
       .select("*", { count: "exact", head: true }).eq("task_id", taskId).eq("verdict", "fail").eq("status", "open");
     if ((criticalSec ?? 0) > 0) need.push("Critical security finding (resolve it first)");
     if (need.length) {
-      return { ok: false, paused: true, message: `Can't mark complete — still needed: ${need.join(", ")}. Pass or waive them first.` };
+      return { ok: false, paused: true, message: `Can't mark complete â€” still needed: ${need.join(", ")}. Pass or waive them first.` };
     }
   }
 
   let seq = Date.now() % 1_000_000;
   const nextSeq = () => seq++;
 
-  // 1. Run the stage. Planning stages (Phase 6) run real planning agents — one
+  // 1. Run the stage. Planning stages (Phase 6) run real planning agents â€” one
   // run + artifact + message + audit per agent. Other stages get one stage run.
   const planners = STAGE_PLANNERS[next] ?? [];
   if (planners.length) {
@@ -258,7 +260,7 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
       if (!result) continue;
       await client.from("dev_artifacts").insert({
         task_id: taskId, run_id: prun?.id ?? null, kind: result.kind,
-        title: `${result.label} — plan`, content: result.content, structured: result.structured,
+        title: `${result.label} â€” plan`, content: result.content, structured: result.structured,
         status: "proposed", created_by: `${result.label} Agent`,
       });
       await client.from("dev_agent_messages").insert({
@@ -284,7 +286,7 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
   }
 
   // 1b. Phase 7: the file_change_plan stage produces proposed file changes
-  // (plans only — nothing is written to disk or the database).
+  // (plans only â€” nothing is written to disk or the database).
   if (next === "file_change_plan") {
     const plans = generateFilePlans(task);
     for (const p of plans) {
@@ -303,7 +305,7 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
   }
 
   // 1c. Phase 8: the code_draft stage produces code/SQL/test/doc DRAFTS
-  // (artifacts only — nothing is written to the codebase or database).
+  // (artifacts only â€” nothing is written to the codebase or database).
   if (next === "code_draft") {
     const { data: planRows } = await client.from("dev_file_change_plans")
       .select("file_path, change_type, risk_level, proposed_summary, status")
@@ -425,7 +427,7 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
   });
   await client.from("dev_agent_messages").insert({
     task_id: taskId, agent_id: idOf("dev-manager"), role: "assistant",
-    content: `Dev Manager: ${workerName} finished “${next.replace(/_/g, " ")}”. ${dm.next_action}`,
+    content: `Dev Manager: ${workerName} finished â€œ${next.replace(/_/g, " ")}â€. ${dm.next_action}`,
     structured: dm, seq: nextSeq(),
   });
 
@@ -436,13 +438,13 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
     risk_level: task.risk_level, detail: { from: status, to: next, agent: workerName },
   });
 
-  // 4. Gate stage → create the (enriched) approval request and pause.
+  // 4. Gate stage â†’ create the (enriched) approval request and pause.
   if (entersGate) {
     const { data: planRows } = await client.from("dev_file_change_plans")
       .select("file_path, change_type").eq("task_id", taskId).neq("status", "rejected");
     const affectedFiles = (planRows ?? []).map((r) => r.file_path as string);
     const affectedTables = (planRows ?? []).some((r) => r.change_type === "migration")
-      ? ["A database change is drafted — see the migration draft."] : [];
+      ? ["A database change is drafted â€” see the migration draft."] : [];
     const isRelease = cfg.gate!.approvalType === "production_release";
     await client.from("dev_approvals").insert({
       task_id: taskId, approval_type: cfg.gate!.approvalType, risk_level: task.risk_level,
@@ -451,7 +453,7 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
       reason: isRelease ? "The task is ready and needs your final go-ahead to complete." : "The team is ready to start building and needs your go-ahead first.",
       plain_english_summary: cfg.gate!.summary,
       technical_summary: `Approval type: ${cfg.gate!.approvalType}. Stage: ${next.replace(/_/g, " ")}. Nothing is applied until you approve.`,
-      experience_impact: "Keeps you in control — nothing risky happens without your yes.",
+      experience_impact: "Keeps you in control â€” nothing risky happens without your yes.",
       affected_files: affectedFiles,
       affected_tables: affectedTables,
     });
@@ -471,8 +473,8 @@ export async function runNextStep(taskId: string): Promise<RunStepState> {
   return {
     ok: true, paused: entersGate,
     message: entersGate
-      ? "Reached an approval step — your approval is needed to continue."
-      : `Moved to “${next.replace(/_/g, " ")}”.`,
+      ? "Reached an approval step â€” your approval is needed to continue."
+      : `Moved to â€œ${next.replace(/_/g, " ")}â€.`,
   };
 }
 
@@ -486,14 +488,14 @@ export async function decideApproval(
 ): Promise<{ ok: boolean; error?: string }> {
   if (MOCK_MODE) return { ok: false, error: "Approvals need the live database." };
   if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
-  const client = await createSupabaseServerClient();
-  if (!client) return { ok: false, error: "Your session expired — please reload." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired â€” please reload." };
 
   const id = String(formData.get("approval_id") ?? "");
   const decision = String(formData.get("decision") ?? "");
   const note = (String(formData.get("note") ?? "").trim() || null) as string | null;
   if (!id || (decision !== "approved" && decision !== "rejected" && decision !== "needs_revision")) {
-    return { ok: false, error: "Something went wrong — please try again." };
+    return { ok: false, error: "Something went wrong â€” please try again." };
   }
   // Rejections must explain why.
   if (decision === "rejected" && !note) {
@@ -529,7 +531,7 @@ export async function decideApproval(
 }
 
 /**
- * Approve or reject a proposed file change plan (Phase 7). No file is touched —
+ * Approve or reject a proposed file change plan (Phase 7). No file is touched â€”
  * this records your decision. Applying real changes comes in a later phase.
  */
 export async function decideFilePlan(
@@ -538,13 +540,13 @@ export async function decideFilePlan(
 ): Promise<{ ok: boolean; error?: string }> {
   if (MOCK_MODE) return { ok: false, error: "Approvals need the live database." };
   if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
-  const client = await createSupabaseServerClient();
-  if (!client) return { ok: false, error: "Your session expired — please reload." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired â€” please reload." };
 
   const id = String(formData.get("plan_id") ?? "");
   const decision = String(formData.get("decision") ?? "");
   if (!id || (decision !== "approved" && decision !== "rejected")) {
-    return { ok: false, error: "Something went wrong — please try again." };
+    return { ok: false, error: "Something went wrong â€” please try again." };
   }
   const decidedBy = (await getServerUser())?.display_name ?? "Reliance Admin";
 
@@ -566,7 +568,7 @@ export async function decideFilePlan(
 
 /**
  * Approve, reject, or request a revision on a code draft artifact (Phase 8).
- * Records your decision — no code is applied to the project.
+ * Records your decision â€” no code is applied to the project.
  */
 export async function decideArtifact(
   _prev: { ok: boolean; error?: string },
@@ -574,13 +576,13 @@ export async function decideArtifact(
 ): Promise<{ ok: boolean; error?: string }> {
   if (MOCK_MODE) return { ok: false, error: "Reviews need the live database." };
   if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
-  const client = await createSupabaseServerClient();
-  if (!client) return { ok: false, error: "Your session expired — please reload." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired â€” please reload." };
 
   const id = String(formData.get("artifact_id") ?? "");
   const decision = String(formData.get("decision") ?? "");
   const next = decision === "approve" ? "approved" : decision === "reject" ? "rejected" : decision === "revise" ? "revised" : null;
-  if (!id || !next) return { ok: false, error: "Something went wrong — please try again." };
+  if (!id || !next) return { ok: false, error: "Something went wrong â€” please try again." };
   const decidedBy = (await getServerUser())?.display_name ?? "Reliance Admin";
 
   const { data: art, error } = await client.from("dev_artifacts")
@@ -598,7 +600,7 @@ export async function decideArtifact(
     await recordMemory(client, {
       kind: next === "approved" ? "approved_pattern" : "rejected_pattern",
       title: `${next === "approved" ? "Approved" : "Rejected"}: ${art.title ?? "code draft"}`,
-      content: `A code draft was ${next} by the operator — ${next === "approved" ? "reuse this approach" : "avoid this approach"}.`,
+      content: `A code draft was ${next} by the operator â€” ${next === "approved" ? "reuse this approach" : "avoid this approach"}.`,
       taskId: art.task_id, createdBy: decidedBy,
     });
   }
@@ -607,7 +609,7 @@ export async function decideArtifact(
   return { ok: true };
 }
 
-// ── Phase 13: release planning + preview tracking ─────────────────────────────
+// â”€â”€ Phase 13: release planning + preview tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const DEPLOY_STATUSES = new Set([
   "planned", "not_started", "branch_created", "pr_open", "pr_created",
@@ -618,7 +620,7 @@ const DEPLOY_STATUSES = new Set([
 /**
  * Update a deployment's preview URL, status, and notes (manual preview tracking).
  * SAFETY: this performs NO deploy. It only records status. Marking a deployment
- * 'production_released' requires an APPROVED production_release approval — the
+ * 'production_released' requires an APPROVED production_release approval â€” the
  * app never releases to production on its own.
  */
 export async function updateDeployment(
@@ -627,14 +629,14 @@ export async function updateDeployment(
 ): Promise<{ ok: boolean; error?: string }> {
   if (MOCK_MODE) return { ok: false, error: "This needs the live database." };
   if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
-  const client = await createSupabaseServerClient();
-  if (!client) return { ok: false, error: "Your session expired — please reload." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired â€” please reload." };
 
   const id = String(formData.get("deployment_id") ?? "");
   const status = String(formData.get("status") ?? "");
   const previewUrl = (String(formData.get("preview_url") ?? "").trim() || null) as string | null;
   const notes = (String(formData.get("notes") ?? "").trim() || null) as string | null;
-  if (!id || !DEPLOY_STATUSES.has(status)) return { ok: false, error: "Something went wrong — please try again." };
+  if (!id || !DEPLOY_STATUSES.has(status)) return { ok: false, error: "Something went wrong â€” please try again." };
   if (previewUrl && !/^https?:\/\//.test(previewUrl)) return { ok: false, error: "Preview URL must start with http(s)://." };
 
   const { data: dep } = await client.from("dev_deployments").select("task_id").eq("id", id).maybeSingle();
@@ -666,13 +668,13 @@ export async function updateDeployment(
 /**
  * Request approval to release to production (Phase 13) + generate the changelog.
  * Creates a production_release approval only (idempotent) and stores a release-
- * notes artifact. NO production deploy happens — that stays manual/approved.
+ * notes artifact. NO production deploy happens â€” that stays manual/approved.
  */
 export async function requestProductionApproval(taskId: string): Promise<{ ok: boolean; message?: string }> {
   if (MOCK_MODE) return { ok: false, message: "This needs the live database." };
   if (!(await isSuperadmin())) return { ok: false, message: "You don't have permission for this." };
-  const client = await createSupabaseServerClient();
-  if (!client) return { ok: false, message: "Your session expired — please reload." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, message: "Your session expired â€” please reload." };
 
   const { data: taskRow } = await client.from("dev_tasks").select("*").eq("id", taskId).maybeSingle();
   if (!taskRow) return { ok: false, message: "Task not found." };
@@ -703,8 +705,8 @@ export async function requestProductionApproval(taskId: string): Promise<{ ok: b
   if (!existing) {
     await client.from("dev_approvals").insert({
       task_id: taskId, approval_type: "production_release", status: "pending", risk_level: task.risk_level,
-      summary: `Release “${task.title}” to production`,
-      plain_english_summary: "Approve releasing this change to production. Production is never deployed automatically — this is your explicit go-ahead.",
+      summary: `Release â€œ${task.title}â€ to production`,
+      plain_english_summary: "Approve releasing this change to production. Production is never deployed automatically â€” this is your explicit go-ahead.",
       technical_summary: "Promote the reviewed change to production (still a manual, gated step).",
       experience_impact: "The change reaches real users only after your approval.",
       reason: "Production releases require your explicit approval.",
@@ -742,8 +744,8 @@ export async function requestProductionApproval(taskId: string): Promise<{ ok: b
 export async function resolveSecurityReview(reviewId: string): Promise<{ ok: boolean; error?: string }> {
   if (MOCK_MODE) return { ok: false, error: "This needs the live database." };
   if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
-  const client = await createSupabaseServerClient();
-  if (!client) return { ok: false, error: "Your session expired — please reload." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired â€” please reload." };
   const by = (await getServerUser())?.display_name ?? "Reliance Admin";
   const { data: row, error } = await client.from("dev_security_reviews")
     .update({ status: "resolved" }).eq("id", reviewId).select("task_id").single();
@@ -758,13 +760,13 @@ export async function resolveSecurityReview(reviewId: string): Promise<{ ok: boo
 
 /**
  * Phase 17: request a security approval (creates an auth_permission_change
- * approval for the task). Creates the approval only — no action is taken.
+ * approval for the task). Creates the approval only â€” no action is taken.
  */
 export async function requestSecurityApproval(taskId: string): Promise<{ ok: boolean; message?: string }> {
   if (MOCK_MODE) return { ok: false, message: "This needs the live database." };
   if (!(await isSuperadmin())) return { ok: false, message: "You don't have permission for this." };
-  const client = await createSupabaseServerClient();
-  if (!client) return { ok: false, message: "Your session expired — please reload." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, message: "Your session expired â€” please reload." };
   const { data: task } = await client.from("dev_tasks").select("title, risk_level").eq("id", taskId).maybeSingle();
   if (!task) return { ok: false, message: "Task not found." };
   const { data: existing } = await client.from("dev_approvals")
@@ -772,7 +774,7 @@ export async function requestSecurityApproval(taskId: string): Promise<{ ok: boo
   if (existing) return { ok: false, message: "A security approval was already requested." };
   await client.from("dev_approvals").insert({
     task_id: taskId, approval_type: "auth_permission_change", status: "pending", risk_level: task.risk_level,
-    summary: `Security sign-off for “${task.title}”`,
+    summary: `Security sign-off for â€œ${task.title}â€`,
     plain_english_summary: "Approve the security-sensitive part of this change after reviewing the findings.",
     technical_summary: "Security review flagged items needing a human sign-off.",
     experience_impact: "Keeps risky security changes behind a human decision.",
@@ -797,10 +799,10 @@ export async function requestSecurityApproval(taskId: string): Promise<{ ok: boo
 export async function applyApprovedArtifact(artifactId: string): Promise<{ ok: boolean; message?: string }> {
   if (MOCK_MODE) return { ok: false, message: "Applying needs the live database." };
   if (!(await isSuperadmin())) return { ok: false, message: "You don't have permission for this." };
-  const client = await createSupabaseServerClient();
-  if (!client) return { ok: false, message: "Your session expired — please reload." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, message: "Your session expired â€” please reload." };
 
-  // 1–2. Artifact + task exist.
+  // 1â€“2. Artifact + task exist.
   const { data: artRow } = await client.from("dev_artifacts").select("*").eq("id", artifactId).maybeSingle();
   if (!artRow) return { ok: false, message: "Draft not found." };
   const a = artRow as { id: string; task_id: string; title: string | null; path: string | null; content: string | null; status: string; risk_level: string | null; artifact_type: string | null };
@@ -811,11 +813,11 @@ export async function applyApprovedArtifact(artifactId: string): Promise<{ ok: b
   if (a.status === "applied") return { ok: false, message: "This draft is already applied." };
   if (a.status !== "approved") return { ok: false, message: "Blocked: this draft must be approved before it can be applied." };
 
-  // 7–8. Path safety + destructive check.
+  // 7â€“8. Path safety + destructive check.
   const pc = checkPath(a.path);
   if (!pc.allowed && !pc.dangerous) return { ok: false, message: `Blocked: ${pc.reason}` };
 
-  // 4. Required approvals (file_write always; SQL ⇒ database_change; dangerous ⇒ its type).
+  // 4. Required approvals (file_write always; SQL â‡’ database_change; dangerous â‡’ its type).
   const { data: apprRows } = await client.from("dev_approvals").select("approval_type, status").eq("task_id", a.task_id);
   const approved = (t: string) => (apprRows ?? []).some((x) => x.approval_type === t && x.status === "approved");
   if (!approved("file_write")) return { ok: false, message: "Blocked: a file-write approval must be approved first." };
@@ -827,11 +829,11 @@ export async function applyApprovedArtifact(artifactId: string): Promise<{ ok: b
   }
   if (pc.dangerous) {
     if (!pc.requiredApproval || !approved(pc.requiredApproval)) {
-      return { ok: false, message: `Blocked: this path needs an approved “${pc.requiredApproval ? APPROVAL_TYPE_LABEL[pc.requiredApproval] : "extra"}” first.` };
+      return { ok: false, message: `Blocked: this path needs an approved â€œ${pc.requiredApproval ? APPROVAL_TYPE_LABEL[pc.requiredApproval] : "extra"}â€ first.` };
     }
   }
 
-  // 5–6. Security + experience reviews: passed or waived, or not required yet.
+  // 5â€“6. Security + experience reviews: passed or waived, or not required yet.
   const { data: gateRows } = await client.from("dev_review_gates").select("gate_type, status").eq("task_id", a.task_id);
   const gateBlocks = (t: string) => {
     const g = (gateRows ?? []).find((x) => x.gate_type === t);
@@ -840,9 +842,9 @@ export async function applyApprovedArtifact(artifactId: string): Promise<{ ok: b
   if (gateBlocks("security")) return { ok: false, message: "Blocked: the security review must pass (or be waived) first." };
   if (gateBlocks("experience")) return { ok: false, message: "Blocked: the experience review must pass (or be waived) first." };
 
-  // All checks pass → apply to the staging working area (never the real codebase).
+  // All checks pass â†’ apply to the staging working area (never the real codebase).
   const appliedBy = (await getServerUser())?.display_name ?? "Reliance Admin";
-  const rollback = "Applied to the staging working area only — no real file or production was changed. To undo, roll back this staged change; nothing reached your codebase.";
+  const rollback = "Applied to the staging working area only â€” no real file or production was changed. To undo, roll back this staged change; nothing reached your codebase.";
   await client.from("dev_applied_changes").insert({
     task_id: a.task_id, artifact_id: a.id, file_path: a.path, change_type: "modify",
     content: a.content, rollback_note: rollback, dangerous: pc.dangerous, status: "applied", applied_by: appliedBy,
@@ -855,20 +857,20 @@ export async function applyApprovedArtifact(artifactId: string): Promise<{ ok: b
   });
   revalidatePath(`/admin/dev-command/tasks/${a.task_id}`);
   revalidatePath("/admin/dev-command");
-  return { ok: true, message: `Applied “${a.title ?? "draft"}” to the working area (no real file changed).` };
+  return { ok: true, message: `Applied â€œ${a.title ?? "draft"}â€ to the working area (no real file changed).` };
 }
 
 /**
  * Request approval to create the GitHub branch + pull request (Phase 11).
- * This creates approval requests only — NO branch or PR is created, and nothing
+ * This creates approval requests only â€” NO branch or PR is created, and nothing
  * is pushed or deployed. The actual GitHub action is a later, separately-gated
  * phase. Returns a friendly message.
  */
 export async function requestGithubApproval(taskId: string): Promise<{ ok: boolean; message?: string }> {
   if (MOCK_MODE) return { ok: false, message: "This needs the live database." };
   if (!(await isSuperadmin())) return { ok: false, message: "You don't have permission for this." };
-  const client = await createSupabaseServerClient();
-  if (!client) return { ok: false, message: "Your session expired — please reload." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, message: "Your session expired â€” please reload." };
 
   const { data: taskRow } = await client.from("dev_tasks").select("*").eq("id", taskId).maybeSingle();
   if (!taskRow) return { ok: false, message: "Task not found." };
@@ -888,7 +890,7 @@ export async function requestGithubApproval(taskId: string): Promise<{ ok: boole
     if (existing) continue;
     await client.from("dev_approvals").insert({
       task_id: taskId, approval_type: w.type, status: "pending", risk_level: task.risk_level,
-      summary: w.type === "github_branch" ? `Create branch ${branch}` : `Open a pull request for “${task.title}”`,
+      summary: w.type === "github_branch" ? `Create branch ${branch}` : `Open a pull request for â€œ${task.title}â€`,
       plain_english_summary: w.plain, technical_summary: w.tech,
       experience_impact: "Lets a human review the change on GitHub before anything merges.",
       reason: "GitHub actions require your approval before they happen.",
@@ -916,13 +918,13 @@ export async function decideReviewGate(
 ): Promise<{ ok: boolean; error?: string }> {
   if (MOCK_MODE) return { ok: false, error: "Reviews need the live database." };
   if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
-  const client = await createSupabaseServerClient();
-  if (!client) return { ok: false, error: "Your session expired — please reload." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired â€” please reload." };
 
   const id = String(formData.get("gate_id") ?? "");
   const decision = String(formData.get("decision") ?? "");
   const next = decision === "waive" ? "waived_by_admin" : decision === "revise" ? "needs_revision" : null;
-  if (!id || !next) return { ok: false, error: "Something went wrong — please try again." };
+  if (!id || !next) return { ok: false, error: "Something went wrong â€” please try again." };
   const decidedBy = (await getServerUser())?.display_name ?? "Reliance Admin";
 
   const { data: gate, error } = await client.from("dev_review_gates")
@@ -941,14 +943,14 @@ export async function decideReviewGate(
 }
 
 /**
- * Permanently delete a task and all its related records. No recovery — shown
+ * Permanently delete a task and all its related records. No recovery â€” shown
  * to the user as a destructive action requiring confirmation in the UI.
  */
 export async function deleteDevTask(taskId: string): Promise<{ ok: boolean; error?: string }> {
   if (MOCK_MODE) return { ok: false, error: "Delete needs the live database." };
   if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
-  const client = await createSupabaseServerClient();
-  if (!client) return { ok: false, error: "Your session expired — please reload." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired â€” please reload." };
 
   // Delete child tables first in case FKs don't cascade.
   const childTables = [
@@ -967,3 +969,4 @@ export async function deleteDevTask(taskId: string): Promise<{ ok: boolean; erro
   revalidatePath("/admin/dev-command");
   return { ok: true };
 }
+
