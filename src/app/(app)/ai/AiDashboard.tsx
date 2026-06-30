@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect, useCallback, useTransition } from "react";
 import React from "react";
-import { useRouter } from "next/navigation";
 import {
   Send, RotateCcw, FlaskConical, GraduationCap, Shield, AlertTriangle,
   ChevronRight, Sparkles, Bot, BarChart3, Clock, CheckCircle2, XCircle,
@@ -837,7 +836,27 @@ function FindingRemediationPanel({ finding, onDone }: { finding: AiFinding; onDo
     return (
       <div className="flex items-center gap-2 px-5 py-4 bg-emerald-50 border-t border-emerald-100 text-sm text-emerald-700 font-medium">
         <CheckCircle2 className="h-4 w-4 shrink-0" />
-        {selected.size} CAPA{selected.size !== 1 ? "s" : ""} created and finding accepted. Refreshing…
+        {selected.size} CAPA{selected.size !== 1 ? "s" : ""} created and finding accepted.
+      </div>
+    );
+  }
+
+  if (phase === "error") {
+    return (
+      <div className="border-t border-red-100 bg-red-50 px-5 py-4 space-y-3">
+        <div className="flex items-start gap-2">
+          <XCircle className="h-4 w-4 shrink-0 text-red-500 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-red-800">Something went wrong</p>
+            <p className="text-xs text-red-600 mt-0.5">{errorMsg ?? "An unexpected error occurred. Please try again."}</p>
+          </div>
+        </div>
+        <button
+          onClick={() => { setPhase("idle"); setErrorMsg(null); }}
+          className="rounded-lg bg-white border border-red-200 px-4 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 transition"
+        >
+          Try again
+        </button>
       </div>
     );
   }
@@ -1004,10 +1023,11 @@ function FindingsPanel({ findings, runs, latestRun }: {
   runs: PredictabilityRun[];
   latestRun: PredictabilityRun | null;
 }) {
-  const router = useRouter();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Optimistic: hide rows the user has just accepted or dismissed without waiting for a server re-fetch
+  const [actedOn, setActedOn] = useState<Set<string>>(new Set());
 
-  const pending  = findings.filter((f) => f.review_status === "pending").length;
+  const pending  = findings.filter((f) => f.review_status === "pending" && !actedOn.has(f.id)).length;
   const accepted = findings.filter((f) => f.review_status === "accepted").length;
   const rejected = findings.filter((f) => f.review_status === "rejected").length;
   const sortedRuns = [...runs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -1077,7 +1097,7 @@ function FindingsPanel({ findings, runs, latestRun }: {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {findings.map((f) => {
+              {findings.filter((f) => !actedOn.has(f.id)).map((f) => {
                 const output   = f.output as AiAnalysisOutput | null;
                 const isPending = f.review_status === "pending";
                 const isExpanded = expandedId === f.id;
@@ -1135,7 +1155,7 @@ function FindingsPanel({ findings, runs, latestRun }: {
                         <td colSpan={7} className="p-0">
                           <FindingRemediationPanel
                             finding={f}
-                            onDone={() => { setExpandedId(null); router.refresh(); }}
+                            onDone={() => { setExpandedId(null); setActedOn((prev) => new Set([...prev, f.id])); }}
                           />
                         </td>
                       </tr>
