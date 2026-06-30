@@ -6,7 +6,7 @@ import { ShieldCheck, Info } from "lucide-react";
 export const metadata = { title: "Approvals · AI Dev Command Center" };
 
 export default async function ApprovalsPage() {
-  const real = await getAllApprovals();
+  const real = await getAllApprovals().catch(() => []);
   const usingSample = real.length === 0;
   const approvals = usingSample ? SAMPLE_APPROVALS : real;
   const pending = approvals.filter((a) => a.status === "pending").length;

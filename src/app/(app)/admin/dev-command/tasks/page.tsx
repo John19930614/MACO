@@ -18,7 +18,7 @@ export default async function TasksPage({
   const { tab } = await searchParams;
   const activeTab = tab === "closed" ? "closed" : "open";
 
-  const real = await getDevTasks();
+  const real = await getDevTasks().catch(() => []);
   const usingSample = real.length === 0;
   const allTasks = (usingSample ? SAMPLE_TASKS : real)
     .slice()

@@ -5,7 +5,7 @@ import { SAMPLE_AUDIT } from "@/lib/devcenter/sample";
 export const metadata = { title: "Activity Log · AI Dev Command Center" };
 
 export default async function AuditLogPage() {
-  const real = await getDevAuditLog({ limit: 200 });
+  const real = await getDevAuditLog({ limit: 200 }).catch(() => []);
   const usingSample = real.length === 0;
   const entries = usingSample ? SAMPLE_AUDIT : real;
 

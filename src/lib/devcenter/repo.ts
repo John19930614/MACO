@@ -1,9 +1,9 @@
-/**
- * AI Software Development Command Center — query helpers (Phase 1).
+﻿/**
+ * AI Software Development Command Center â€” query helpers (Phase 1).
  *
  * Server-only read/write helpers over the dev_* tables. They use the SSR cookie
  * client (createSupabaseServerClient), so every call runs UNDER RLS as the
- * signed-in operator — the dev_*_superadmin policies mean a non-superadmin sees
+ * signed-in operator â€” the dev_*_superadmin policies mean a non-superadmin sees
  * and writes nothing, even if these helpers are reached.
  *
  * MOCK_MODE-aware: with no Supabase configured the reads return safe empties and
@@ -54,12 +54,12 @@ type ApprovalInsert = {
   requested_by?: string | null;
 };
 
-// ── Agents ───────────────────────────────────────────────────────────────────
+// â”€â”€ Agents â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** The active agent roster, in display order. */
 export async function getDevAgents(): Promise<DevAgent[]> {
   if (MOCK_MODE) return [];
-  const client = await createSupabaseServerClient();
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return [];
   const { data } = await client
     .from("dev_agents")
@@ -71,19 +71,19 @@ export async function getDevAgents(): Promise<DevAgent[]> {
 
 export async function getDevAgentByKey(key: string): Promise<DevAgent | null> {
   if (MOCK_MODE) return null;
-  const client = await createSupabaseServerClient();
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return null;
   const { data } = await client.from("dev_agents").select("*").eq("key", key).maybeSingle();
   return (data as DevAgent) ?? null;
 }
 
-// ── Learning loop: feedback + memory (Phase 14) ───────────────────────────────
+// â”€â”€ Learning loop: feedback + memory (Phase 14) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import type { DevFeedback, DevAgentMemory } from "./types";
 
 export async function getAllFeedback(limit = 100): Promise<DevFeedback[]> {
   if (MOCK_MODE) return [];
-  const client = await createSupabaseServerClient();
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return [];
   const { data } = await client.from("dev_feedback").select("*").order("created_at", { ascending: false }).limit(limit);
   return (data ?? []) as DevFeedback[];
@@ -91,13 +91,13 @@ export async function getAllFeedback(limit = 100): Promise<DevFeedback[]> {
 
 export async function getAllMemory(limit = 200): Promise<DevAgentMemory[]> {
   if (MOCK_MODE) return [];
-  const client = await createSupabaseServerClient();
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return [];
   const { data } = await client.from("dev_agent_memory").select("*").order("created_at", { ascending: false }).limit(limit);
   return (data ?? []) as DevAgentMemory[];
 }
 
-// ── GitHub settings (Phase 11) ────────────────────────────────────────────────
+// â”€â”€ GitHub settings (Phase 11) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import type { DevGithubSettings } from "./types";
 
@@ -110,17 +110,17 @@ const DEFAULT_GITHUB_SETTINGS: DevGithubSettings = {
 
 export async function getGithubSettings(): Promise<DevGithubSettings> {
   if (MOCK_MODE) return DEFAULT_GITHUB_SETTINGS;
-  const client = await createSupabaseServerClient();
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return DEFAULT_GITHUB_SETTINGS;
   const { data } = await client.from("dev_github_settings").select("*").order("created_at").limit(1).maybeSingle();
   return (data as DevGithubSettings) ?? DEFAULT_GITHUB_SETTINGS;
 }
 
-// ── Tasks ────────────────────────────────────────────────────────────────────
+// â”€â”€ Tasks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function getDevTasks(opts: { status?: DevTaskStatus; limit?: number } = {}): Promise<DevTask[]> {
   if (MOCK_MODE) return [];
-  const client = await createSupabaseServerClient();
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return [];
   let q = client.from("dev_tasks").select("*").order("created_at", { ascending: false });
   if (opts.status) q = q.eq("status", opts.status);
@@ -131,7 +131,7 @@ export async function getDevTasks(opts: { status?: DevTaskStatus; limit?: number
 
 export async function getDevTask(id: string): Promise<DevTask | null> {
   if (MOCK_MODE) return null;
-  const client = await createSupabaseServerClient();
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return null;
   const { data } = await client.from("dev_tasks").select("*").eq("id", id).maybeSingle();
   return (data as DevTask) ?? null;
@@ -149,7 +149,7 @@ export async function getTaskDetail(id: string): Promise<TaskDetail> {
     reviewGates: [], approvals: [], deployments: [], appliedChanges: [], audit: [],
   };
   if (MOCK_MODE) return empty;
-  const client = await createSupabaseServerClient();
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return empty;
 
   const { data: task } = await client.from("dev_tasks").select("*").eq("id", id).maybeSingle();
@@ -195,7 +195,7 @@ export async function getTaskDetail(id: string): Promise<TaskDetail> {
   };
 }
 
-// ── Phase 19: live dashboard data ─────────────────────────────────────────────
+// â”€â”€ Phase 19: live dashboard data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface LiveDashboardData {
   openTasks: DevTask[];
@@ -224,7 +224,7 @@ const EMPTY_DASHBOARD: LiveDashboardData = {
 export async function getLiveDashboardData(): Promise<LiveDashboardData> {
   if (MOCK_MODE) return EMPTY_DASHBOARD;
   try {
-  // Service role client — dev_* tables have superadmin RLS; the cookie client
+  // Service role client â€” dev_* tables have superadmin RLS; the cookie client
   // fails for superadmin sessions (tenant_id = null breaks private.auth_tenant_id()).
   const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return EMPTY_DASHBOARD;
@@ -297,9 +297,9 @@ export async function createDevTask(input: {
   created_by?: string;
   metadata?: Record<string, unknown>;
 }): Promise<{ ok: boolean; id?: string; error?: string }> {
-  if (MOCK_MODE) return { ok: false, error: "Mock mode — no database." };
-  const client = await createSupabaseServerClient();
-  if (!client) return { ok: false, error: "Session expired — please reload." };
+  if (MOCK_MODE) return { ok: false, error: "Mock mode â€” no database." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Session expired â€” please reload." };
   const { data, error } = await client
     .from("dev_tasks")
     .insert({
@@ -321,19 +321,19 @@ export async function updateDevTaskStatus(
   id: string,
   status: DevTaskStatus,
 ): Promise<{ ok: boolean; error?: string }> {
-  if (MOCK_MODE) return { ok: false, error: "Mock mode — no database." };
-  const client = await createSupabaseServerClient();
-  if (!client) return { ok: false, error: "Session expired — please reload." };
+  if (MOCK_MODE) return { ok: false, error: "Mock mode â€” no database." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Session expired â€” please reload." };
   const { error } = await client.from("dev_tasks").update({ status }).eq("id", id);
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
-// ── Approvals (the human gate — read + request; deciding comes in a later phase) ─
+// â”€â”€ Approvals (the human gate â€” read + request; deciding comes in a later phase) â”€
 
-/** Every approval across all tasks — the Approval Center queue (newest first). */
+/** Every approval across all tasks â€” the Approval Center queue (newest first). */
 export async function getAllApprovals(limit = 100): Promise<DevApproval[]> {
   if (MOCK_MODE) return [];
-  const client = await createSupabaseServerClient();
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return [];
   const { data } = await client
     .from("dev_approvals")
@@ -345,7 +345,7 @@ export async function getAllApprovals(limit = 100): Promise<DevApproval[]> {
 
 export async function getPendingApprovals(limit = 50): Promise<DevApproval[]> {
   if (MOCK_MODE) return [];
-  const client = await createSupabaseServerClient();
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return [];
   const { data } = await client
     .from("dev_approvals")
@@ -358,7 +358,7 @@ export async function getPendingApprovals(limit = 50): Promise<DevApproval[]> {
 
 export async function getApprovalsForTask(taskId: string): Promise<DevApproval[]> {
   if (MOCK_MODE) return [];
-  const client = await createSupabaseServerClient();
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return [];
   const { data } = await client
     .from("dev_approvals")
@@ -370,9 +370,9 @@ export async function getApprovalsForTask(taskId: string): Promise<DevApproval[]
 
 /** Create a pending approval request (an agent asks the human to decide). */
 export async function requestApproval(input: ApprovalInsert): Promise<{ ok: boolean; id?: string; error?: string }> {
-  if (MOCK_MODE) return { ok: false, error: "Mock mode — no database." };
-  const client = await createSupabaseServerClient();
-  if (!client) return { ok: false, error: "Session expired — please reload." };
+  if (MOCK_MODE) return { ok: false, error: "Mock mode â€” no database." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Session expired â€” please reload." };
   const { data, error } = await client
     .from("dev_approvals")
     .insert({
@@ -393,7 +393,7 @@ export async function requestApproval(input: ApprovalInsert): Promise<{ ok: bool
   return { ok: true, id: data.id as string };
 }
 
-// ── Audit log (append-only) ───────────────────────────────────────────────────
+// â”€â”€ Audit log (append-only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function logDevAudit(entry: {
   task_id?: string | null;
@@ -407,7 +407,7 @@ export async function logDevAudit(entry: {
   detail?: Record<string, unknown>;
 }): Promise<void> {
   if (MOCK_MODE) return;
-  const client = await createSupabaseServerClient();
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return;
   await client.from("dev_audit_log").insert({
     task_id: entry.task_id ?? null,
@@ -424,7 +424,7 @@ export async function logDevAudit(entry: {
 
 export async function getDevAuditLog(opts: { taskId?: string; limit?: number } = {}): Promise<DevAuditEntry[]> {
   if (MOCK_MODE) return [];
-  const client = await createSupabaseServerClient();
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return [];
   let q = client.from("dev_audit_log").select("*").order("created_at", { ascending: false });
   if (opts.taskId) q = q.eq("task_id", opts.taskId);
@@ -432,3 +432,4 @@ export async function getDevAuditLog(opts: { taskId?: string; limit?: number } =
   const { data } = await q;
   return (data ?? []) as DevAuditEntry[];
 }
+

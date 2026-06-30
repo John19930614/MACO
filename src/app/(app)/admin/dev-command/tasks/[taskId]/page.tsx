@@ -45,7 +45,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
   const { taskId } = await params;
 
   // Real task from Supabase; fall back to the Phase 2 sample tasks by id.
-  const real = await getTaskDetail(taskId);
+  const real = await getTaskDetail(taskId).catch(() => ({ task: null, artifacts: [], filePlans: [], reviewGates: [], approvals: [] }));
   const view = real.task
     ? real
     : { ...taskBundle(taskId), audit: SAMPLE_AUDIT.filter((a) => a.task_id === taskId) };
@@ -54,7 +54,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
   const t = view.task;
   const isReal = !!real.task;
   const meta = (t.metadata ?? {}) as DevTaskMeta;
-  const { agents } = await getAgentsOrSample();
+  const { agents } = await getAgentsOrSample().catch(() => ({ agents: [] }));
   const onStage = isWorkflowStage(t.status);
   const stageNum = isWorkflowStage(t.status) ? stageIndex(t.status) + 1 : 0;
   const canRun = isReal && onStage && !isTerminal(t.status) && t.status !== "blocked";
@@ -72,7 +72,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
   const otherArtifacts = view.artifacts.filter((a) => !(a.structured as Record<string, unknown> | null)?._agent && !a.artifact_type);
 
   // Phase 11 — GitHub branch/PR plan (prepared, not executed).
-  const githubSettings = await getGithubSettings();
+  const githubSettings = await getGithubSettings().catch(() => ({ id: "", repo_owner: "John19930614", repo_name: "MACO", default_branch: "master", protected_branch: "master", branch_naming_format: "ai-dev/task-{taskId-short}-{safe-task-title}", pr_title_template: "AI Dev: {task_title}", pr_body_template: null, created_at: "", updated_at: "" }));
   const branch = branchName(t);
   const agentsInvolved = [...new Set(view.reviewGates.map((g) => g.agent_name).filter(Boolean) as string[])];
   const prPlanSections = prSections({ task: t, filePlans: view.filePlans, reviewGates: view.reviewGates, approvals: view.approvals, agentsInvolved });

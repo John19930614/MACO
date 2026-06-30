@@ -19,7 +19,10 @@ const SAFETY_RULES = [
 ];
 
 export default async function SettingsPage() {
-  const [feedback, memory] = await Promise.all([getAllFeedback(), getAllMemory()]);
+  const [feedback, memory] = await Promise.all([
+    getAllFeedback().catch(() => []),
+    getAllMemory().catch(() => []),
+  ]);
 
   return (
     <div className="space-y-6">
