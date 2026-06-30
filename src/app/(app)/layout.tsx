@@ -96,7 +96,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <AuthGuard>
         <GusStatusBriefing />
         <GusMaintenancePanel capas={capas} incidents={incidents} />
-        <AssistantDrawer />
+        {serverUser?.tenant_id !== null && <AssistantDrawer />}
         <MobileNavDrawer />
         <div className="flex h-screen flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
           <TopBar notifCount={notifCount} notifItems={notifItems} serverUser={serverUser} />
