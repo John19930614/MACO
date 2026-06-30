@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
 
     const response = await client.messages.create({
       model: anthropicModel || "claude-sonnet-4-6",
-      max_tokens: 6000,
+      max_tokens: 16000,
       system: `You are a senior full-stack TypeScript/Next.js engineer on the SafetyIQ platform (Next.js 15 App Router, Supabase, Tailwind CSS, Vercel deployment). Synthesize the task plan into a precise implementation brief another developer can execute directly.`,
       messages: [
         {

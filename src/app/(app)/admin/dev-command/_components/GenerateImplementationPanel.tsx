@@ -92,8 +92,25 @@ interface Props {
   initialBrief?: ImplementationBrief | null;
 }
 
+/**
+ * Normalize an AI-generated brief so the UI can never crash on a missing field.
+ * The Anthropic tool-use JSON can be truncated when the response hits the
+ * max_tokens cap, leaving `files` (or other fields) undefined — which would
+ * throw `Cannot read properties of undefined (reading 'length')` during render.
+ */
+function normalizeBrief(b: Partial<ImplementationBrief> | null | undefined): ImplementationBrief | null {
+  if (!b) return null;
+  return {
+    summary: typeof b.summary === "string" ? b.summary : "",
+    files: Array.isArray(b.files) ? b.files.filter((f): f is GeneratedFile => !!f && typeof f.path === "string") : [],
+    dbMigration: typeof b.dbMigration === "string" ? b.dbMigration : null,
+    testingNotes: typeof b.testingNotes === "string" ? b.testingNotes : "",
+    deployCommand: typeof b.deployCommand === "string" ? b.deployCommand : "vercel --prod --yes",
+  };
+}
+
 export function GenerateImplementationPanel({ taskId, taskTitle, initialBrief }: Props) {
-  const [brief, setBrief] = useState<ImplementationBrief | null>(initialBrief ?? null);
+  const [brief, setBrief] = useState<ImplementationBrief | null>(normalizeBrief(initialBrief));
   const [phase, setPhase] = useState<"idle" | "generating" | "done" | "error">(initialBrief ? "done" : "idle");
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -121,7 +138,7 @@ export function GenerateImplementationPanel({ taskId, taskTitle, initialBrief }:
         return;
       }
       if (result.ok && result.brief) {
-        setBrief(result.brief);
+        setBrief(normalizeBrief(result.brief));
         setPhase("done");
       } else {
         setError(result.error ?? "Generation failed. Try again.");
