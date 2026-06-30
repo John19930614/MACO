@@ -177,6 +177,15 @@ export interface Chemical {
   recommended_ppe?: string[];        // PPE codes (see PPE_TYPES)
   sds_url: string | null;            // Safety Data Sheet link
   sds_expiry: string | null;         // SDS review date
+  // Concentration-based hazard fields
+  concentration_pct?: number | null;
+  physical_state?: "liquid" | "gas" | "solid" | "unknown" | null;
+  flash_point_c?: number | null;
+  expiration_date?: string | null;
+  hazard_band?: "none" | "low" | "medium" | "high" | "critical" | null;
+  hazard_band_confidence?: number | null;
+  hazard_band_reviewed_at?: string | null;
+  hazard_band_reason?: string | null;
   hazard_statements: string[];       // H-statements (H200-H420)
   precautionary_statements: string[]; // P-statements (P200-P501)
   is_scheduled: boolean;             // listed on a regulatory controlled substance list

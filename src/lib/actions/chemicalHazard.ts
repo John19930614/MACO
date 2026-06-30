@@ -85,6 +85,7 @@ export async function saveHazardReview(
     if (!tenantId) return { ok: false, error: "Session expired — please reload." };
     const profileId = await getServerProfileId();
 
+    // Write to audit log
     const { error } = await client.from("audit_log").insert({
       tenant_id: tenantId,
       actor_id: profileId ?? null,
@@ -94,6 +95,20 @@ export async function saveHazardReview(
       details: payload,
     });
     if (error) return { ok: false, error: error.message };
+
+    // Persist the hazard band back onto the chemical record so it shows in the list
+    await client
+      .from("chemical_inventory")
+      .update({
+        hazard_band: result.band,
+        hazard_band_confidence: result.confidence,
+        hazard_band_reviewed_at: new Date().toISOString(),
+        hazard_band_reason: reviewReason,
+        concentration_pct: concentrationPct,
+        physical_state: physicalState,
+      })
+      .eq("id", chemicalId)
+      .eq("tenant_id", tenantId);
   } else {
     // Mock mode — log to console only
     console.info("[MOCK] saveHazardReview:", payload);

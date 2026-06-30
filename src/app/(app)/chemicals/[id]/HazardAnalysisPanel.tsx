@@ -58,8 +58,8 @@ function HazardBadge({ band }: { band: keyof typeof BAND_CONFIG }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function HazardAnalysisPanel({ chemical }: { chemical: Chemical }) {
-  const [concentrationPct, setConcentrationPct] = useState<number>(100);
-  const [physicalState, setPhysicalState] = useState<PhysicalState>("liquid");
+  const [concentrationPct, setConcentrationPct] = useState<number>(chemical.concentration_pct ?? 100);
+  const [physicalState, setPhysicalState] = useState<PhysicalState>((chemical.physical_state as PhysicalState) ?? "liquid");
   const [dilutionNotes, setDilutionNotes] = useState("");
   const [result, setResult] = useState<HazardAnalysisResult | null>(null);
   const [phase, setPhase] = useState<"idle" | "result" | "review" | "done" | "error">("idle");
@@ -195,6 +195,22 @@ export function HazardAnalysisPanel({ chemical }: { chemical: Chemical }) {
 
   return (
     <div className="space-y-4">
+
+      {/* Last saved classification summary */}
+      {chemical.hazard_band && phase === "idle" && (
+        <div className={`rounded-xl border px-4 py-3 flex flex-wrap items-center gap-3 ${BAND_CONFIG[chemical.hazard_band as keyof typeof BAND_CONFIG]?.border ?? "border-slate-200"} ${BAND_CONFIG[chemical.hazard_band as keyof typeof BAND_CONFIG]?.bg ?? "bg-slate-50"}`}>
+          <span className="text-xs text-slate-500">Last saved classification:</span>
+          <HazardBadge band={chemical.hazard_band as keyof typeof BAND_CONFIG} />
+          {chemical.concentration_pct != null && (
+            <span className="text-xs text-slate-500">at {chemical.concentration_pct}%</span>
+          )}
+          {chemical.hazard_band_reviewed_at && (
+            <span className="ml-auto text-[10px] text-slate-400">
+              {new Date(chemical.hazard_band_reviewed_at).toLocaleDateString()}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Input form */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">

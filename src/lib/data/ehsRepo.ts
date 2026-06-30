@@ -191,6 +191,17 @@ export const getChemicals = cache(async (tenantId = MOCK_TENANT_ID): Promise<Che
     created_by: r.created_by ?? "",
     created_at: r.created_at,
     updated_at: r.updated_at,
+    storage_class: r.storage_class ?? null,
+    recommended_ppe: r.recommended_ppe ?? [],
+    // Concentration hazard fields
+    concentration_pct: r.concentration_pct ?? null,
+    physical_state: (r.physical_state ?? null) as Chemical["physical_state"],
+    flash_point_c: r.flash_point_c ?? null,
+    expiration_date: r.expiration_date ?? null,
+    hazard_band: (r.hazard_band ?? null) as Chemical["hazard_band"],
+    hazard_band_confidence: r.hazard_band_confidence ?? null,
+    hazard_band_reviewed_at: r.hazard_band_reviewed_at ?? null,
+    hazard_band_reason: r.hazard_band_reason ?? null,
   }));
 });
 
