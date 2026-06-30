@@ -16,6 +16,14 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
         <p className="mt-1 max-w-md text-sm text-slate-500 dark:text-slate-400">
           This screen hit an unexpected error. Your data is safe — try again, or head back to the dashboard.
         </p>
+        {/* Surface the real error so we can diagnose (digest correlates with
+            server logs; message is present for client-thrown errors). */}
+        {(error?.message || error?.digest) && (
+          <pre className="mx-auto mt-3 max-w-xl overflow-x-auto whitespace-pre-wrap rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+            {error?.message ? `${error.message}\n` : ""}
+            {error?.digest ? `digest: ${error.digest}` : ""}
+          </pre>
+        )}
       </div>
       <div className="flex gap-2">
         <button onClick={reset} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Try again</button>

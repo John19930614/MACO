@@ -17,5 +17,14 @@ import { isSuperadmin } from "@/lib/auth/session";
  */
 export async function requireDevCommandAccess(): Promise<void> {
   if (MOCK_MODE) return;
-  if (!(await isSuperadmin())) redirect("/dashboard");
+  // A transient profile-fetch failure must NOT throw to the error boundary
+  // (that nukes the whole page). Treat any failure as "not authorized" and
+  // bounce to the dashboard — the edge middleware is the primary gate anyway.
+  let ok = false;
+  try {
+    ok = await isSuperadmin();
+  } catch {
+    redirect("/dashboard");
+  }
+  if (!ok) redirect("/dashboard");
 }
