@@ -129,10 +129,10 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
               </div>
               <ol className="space-y-2">
                 {[
-                  { step: "1", text: "Scroll down to "Proposed changes" below — you'll see the exact code the team wrote." },
+                  { step: "1", text: "Scroll down to 'Proposed changes' below — you'll see the exact code the team wrote." },
                   { step: "2", text: "Share this page with your developer, or paste this page's URL into a message to Claude Code and ask it to apply the changes shown." },
-                  { step: "3", text: "Once the changes are applied and tested, come back here and click "Run next step" to continue through the review and release stages." },
-                  { step: "4", text: "When you reach "Going live" at the bottom of this page, give your final approval and the change goes live." },
+                  { step: "3", text: "Once the changes are applied and tested, come back here and click 'Run next step' to continue through the review and release stages." },
+                  { step: "4", text: "When you reach 'Going live' at the bottom of this page, give your final approval and the change goes live." },
                 ].map(({ step, text }) => (
                   <li key={step} className="flex items-start gap-2.5">
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-200 text-xs font-bold text-amber-800 dark:bg-amber-800 dark:text-amber-200">
