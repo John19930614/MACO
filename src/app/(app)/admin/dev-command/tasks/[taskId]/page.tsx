@@ -160,8 +160,8 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
         </div>
       )}
 
-      {/* Auto-generate implementation — show for real tasks in code-ready stages */}
-      {isReal && isCodeReady && (
+      {/* Auto-generate implementation — show for any real task */}
+      {isReal && (
         <GenerateImplementationPanel
           taskId={taskId}
           taskTitle={t.title}
