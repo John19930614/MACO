@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Sparkles, Copy, Check, ChevronDown, ChevronRight, FileCode2, Database, TestTube, Loader2, RefreshCw } from "lucide-react";
-import { generateImplementation } from "@/lib/actions/generateImplementation";
 import type { ImplementationBrief, GeneratedFile } from "@/lib/actions/generateImplementation";
 
 function FileBlock({ file }: { file: GeneratedFile }) {
@@ -98,26 +97,32 @@ export function GenerateImplementationPanel({ taskId, taskTitle, initialBrief }:
   const [phase, setPhase] = useState<"idle" | "generating" | "done" | "error">(initialBrief ? "done" : "idle");
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
 
-  function generate() {
+  async function generate() {
     setPhase("generating");
     setError(null);
-    startTransition(async () => {
-      try {
-        const result = await generateImplementation(taskId);
-        if (result.ok && result.brief) {
-          setBrief(result.brief);
-          setPhase("done");
-        } else {
-          setError(result.error ?? "Generation failed. Try again.");
-          setPhase("error");
-        }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Generation failed — please try again.");
+    setIsPending(true);
+    try {
+      const res = await fetch("/api/devcenter/generate-implementation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId }),
+      });
+      const result = await res.json();
+      if (result.ok && result.brief) {
+        setBrief(result.brief);
+        setPhase("done");
+      } else {
+        setError(result.error ?? "Generation failed. Try again.");
         setPhase("error");
       }
-    });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Generation failed — please try again.");
+      setPhase("error");
+    } finally {
+      setIsPending(false);
+    }
   }
 
   function copyPrompt() {
