@@ -27,7 +27,9 @@ import { BranchPlanPanel } from "../../_components/BranchPlanPanel";
 import { PullRequestPlanPanel } from "../../_components/PullRequestPlanPanel";
 import { RunNextStepButton } from "../../_components/RunNextStepButton";
 import { DeleteTaskButton } from "../../_components/DeleteTaskButton";
+import { GenerateImplementationPanel } from "../../_components/GenerateImplementationPanel";
 import { getTaskDetail, getGithubSettings } from "@/lib/devcenter/repo";
+import { getImplementationBrief } from "@/lib/actions/generateImplementation";
 import { taskBundle, SAMPLE_AUDIT, getAgentsOrSample } from "@/lib/devcenter/sample";
 import { WORKFLOW_STAGES, stageIndex, isWorkflowStage, isTerminal } from "@/lib/devcenter/workflow";
 import { branchName, prSections, prTitle, releaseRisk } from "@/lib/devcenter/github-plan";
@@ -75,6 +77,11 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
     .filter((a) => a.status === "approved" || a.status === "ready_for_branch")
     .map((a) => ({ id: a.id, title: a.title ?? "Draft", path: a.path }));
   const githubRequested = view.approvals.some((a) => a.approval_type === "github_branch" || a.approval_type === "pull_request");
+
+  // Auto-generate implementation brief (load saved one if it exists)
+  const { brief: savedBrief } = isReal
+    ? await getImplementationBrief(taskId)
+    : { brief: null };
 
   // Phase 13 — release planning + preview tracking.
   const releaseDetail: ReleaseDetail = { reviewGates: view.reviewGates, approvals: view.approvals, deployments: view.deployments, filePlans: view.filePlans, artifacts: view.artifacts };
@@ -151,6 +158,15 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
             </div>
           </div>
         </div>
+      )}
+
+      {/* Auto-generate implementation — show for real tasks in code-ready stages */}
+      {isReal && isCodeReady && (
+        <GenerateImplementationPanel
+          taskId={taskId}
+          taskTitle={t.title}
+          initialBrief={savedBrief}
+        />
       )}
 
       {/* Workflow control — run the next stage (real tasks only) */}
