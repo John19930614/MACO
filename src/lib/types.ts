@@ -609,6 +609,32 @@ export interface WasteInspection {
   created_at: string;
 }
 
+// One chemical pulled from inventory into a waste profile, with its weight
+// percentage and the GHS data carried over at selection time. This is the only
+// point where chemical inventory and waste management connect.
+export interface WasteProfileConstituent {
+  chemical_id: string;
+  name: string;
+  cas_number: string | null;
+  percentage: number;              // weight %
+  ghs_classes: string[];
+  hazard_statements: string[];     // H-codes carried from inventory
+  physical_state?: string | null;
+}
+
+// AI- or rules-drafted characterization suggestions. Advisory only — a human
+// EHS reviewer must approve the profile before it can be activated.
+export interface WasteProfileAiSuggestions {
+  classification: string;
+  waste_code: string;
+  physical_state: string;
+  process_description: string;
+  hazard_summary: string;
+  rationale: string;
+  codes_considered?: string[];
+  generated_by: "ai" | "rules";
+}
+
 export interface WasteProfile {
   id: string;
   tenant_id: string;
@@ -630,6 +656,11 @@ export interface WasteProfile {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // Guided-wizard fields (jsonb columns added 2026-06-30). Optional so older
+  // rows and pre-migration reads remain valid.
+  composition?: WasteProfileConstituent[];
+  questionnaire?: Record<string, string> | null;
+  ai_suggestions?: WasteProfileAiSuggestions | null;
 }
 
 // ── Equipment & Calibration ───────────────────────────────────────────────────

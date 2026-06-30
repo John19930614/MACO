@@ -504,6 +504,10 @@ export const getWasteProfiles = cache(async (tenantId = MOCK_TENANT_ID): Promise
     created_by: r.created_by ?? null,
     created_at: r.created_at,
     updated_at: r.updated_at,
+    // Guided-wizard fields (jsonb). Absent before the migration is applied → safe defaults.
+    composition: Array.isArray(r.composition) ? (r.composition as WasteProfile["composition"]) : [],
+    questionnaire: (r.questionnaire as Record<string, string> | null) ?? null,
+    ai_suggestions: (r.ai_suggestions as WasteProfile["ai_suggestions"]) ?? null,
   }));
 });
 
