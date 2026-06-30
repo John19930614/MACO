@@ -9,7 +9,7 @@ import { relativeTime } from "@/lib/utils";
 import {
   ListTodo, ShieldCheck, Activity, AlertTriangle, ShieldAlert,
   Smile, FileCode2, GitPullRequest, Rocket, History, ArrowRight,
-  Info, XCircle,
+  Info, XCircle, FileUp,
 } from "lucide-react";
 import type { DashboardMetric } from "@/lib/devcenter/sample";
 import type { DevTask, DevApproval, DevAuditEntry } from "@/lib/devcenter/types";
@@ -51,6 +51,10 @@ export function DevCommandDashboard({
             These are example tasks — the system is ready but no real tasks exist yet.{" "}
             <Link href="/admin/dev-command/tasks/new" className="font-semibold underline underline-offset-2 hover:text-blue-900 dark:hover:text-blue-100">
               Create your first task
+            </Link>{" "}
+            or{" "}
+            <Link href="/admin/dev-command/import" className="font-semibold underline underline-offset-2 hover:text-blue-900 dark:hover:text-blue-100">
+              import from meeting notes
             </Link>{" "}
             to see live data here.
           </span>
@@ -128,9 +132,14 @@ export function DevCommandDashboard({
             title="Active tasks"
             subtitle="Latest work you've handed to the AI team"
             right={
-              <Link href="/admin/dev-command/tasks" className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400">
-                All tasks <ArrowRight className="h-3 w-3" />
-              </Link>
+              <div className="flex items-center gap-3">
+                <Link href="/admin/dev-command/import" className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700 hover:bg-violet-100 transition dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300">
+                  <FileUp className="h-3.5 w-3.5" /> Import notes
+                </Link>
+                <Link href="/admin/dev-command/tasks" className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400">
+                  All tasks <ArrowRight className="h-3 w-3" />
+                </Link>
+              </div>
             }
           />
           <div className="p-4">
