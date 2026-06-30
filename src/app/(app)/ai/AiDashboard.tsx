@@ -804,21 +804,31 @@ function FindingRemediationPanel({ finding, onDone }: { finding: AiFinding; onDo
     const picked = actions.filter((_, i) => selected.has(i));
     if (!picked.length) return;
     startTransition(async () => {
-      const result = await remediateFinding(finding.id, picked.map((a) => ({
-        action: a.action, priority: a.priority, rationale: a.rationale, capa_kind: a.capa_kind,
-      })));
-      if (!result.ok) { setErrorMsg(result.error ?? "Failed."); setPhase("error"); return; }
-      setPhase("done");
-      setTimeout(onDone, 1400);
+      try {
+        const result = await remediateFinding(finding.id, picked.map((a) => ({
+          action: a.action, priority: a.priority, rationale: a.rationale, capa_kind: a.capa_kind,
+        })));
+        if (!result.ok) { setErrorMsg(result.error ?? "Failed."); setPhase("error"); return; }
+        setPhase("done");
+        setTimeout(onDone, 1400);
+      } catch (e) {
+        setErrorMsg(e instanceof Error ? e.message : "An unexpected error occurred.");
+        setPhase("error");
+      }
     });
   }
 
   function handleDismissConfirm() {
     if (!dismissReason.trim()) return;
     startTransition(async () => {
-      const result = await dismissFinding(finding.id, dismissReason.trim());
-      if (!result.ok) { setErrorMsg(result.error ?? "Failed."); setPhase("error"); return; }
-      onDone();
+      try {
+        const result = await dismissFinding(finding.id, dismissReason.trim());
+        if (!result.ok) { setErrorMsg(result.error ?? "Failed."); setPhase("error"); return; }
+        onDone();
+      } catch (e) {
+        setErrorMsg(e instanceof Error ? e.message : "An unexpected error occurred.");
+        setPhase("error");
+      }
     });
   }
 
