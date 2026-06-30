@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Tag, Printer, X } from "lucide-react";
+import { Tag, Printer, X, Shield, Plus, Package, Phone, FileText } from "lucide-react";
 import type { Chemical } from "@/lib/types";
 import { deriveSignalWord, derivePictograms, getHText, getPText } from "@/lib/ghsData";
 import { logLabelPrint, type LabelSnapshot } from "@/lib/actions/labels";
@@ -222,6 +222,24 @@ function buildPrintHtml(chemical: Chemical): string {
 </body></html>`;
 }
 
+// ── Categorise P-statements by section ───────────────────────────────────────
+
+function categorizePStatements(codes: string[]) {
+  const prevention: string[] = [];
+  const response: string[] = [];
+  const storage: string[] = [];
+  const disposal: string[] = [];
+  for (const code of codes) {
+    const base = code.split("+")[0];
+    const num = parseInt(base.slice(1), 10);
+    if (num >= 500)      disposal.push(code);
+    else if (num >= 400) storage.push(code);
+    else if (num >= 300) response.push(code);
+    else                 prevention.push(code); // P1xx + P2xx
+  }
+  return { prevention, response, storage, disposal };
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function GhsLabelButton({ chemical }: { chemical: Chemical }) {
@@ -230,8 +248,9 @@ export function GhsLabelButton({ chemical }: { chemical: Chemical }) {
 
   const h = chemical.hazard_statements ?? [];
   const p = chemical.precautionary_statements ?? [];
-  const signalWord  = deriveSignalWord(h);
-  const picCodes    = derivePictograms(h);
+  const signalWord = deriveSignalWord(h);
+  const picCodes   = derivePictograms(h);
+  const cats       = categorizePStatements(p);
 
   function recordPrint() {
     const snapshot: LabelSnapshot = {
@@ -292,145 +311,259 @@ export function GhsLabelButton({ chemical }: { chemical: Chemical }) {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-8">
-          <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 pt-6">
+          <div className="relative w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
 
-            {/* Modal header */}
+            {/* ── Modal chrome ── */}
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
               <div>
                 <div className="text-sm font-bold text-slate-800">GHS Workplace Label</div>
-                <div className="mt-0.5 text-xs text-slate-500">{chemical.name}</div>
+                <div className="mt-0.5 text-xs text-slate-500">
+                  {chemical.name}{chemical.label_code ? ` ${chemical.label_code}` : ""}
+                </div>
               </div>
               <button onClick={() => setOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
                 <X className="h-4 w-4"/>
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-5">
 
-              {/* ── Label preview ── */}
-              <div className="rounded-lg border-2 border-red-600 bg-white p-4 shadow-sm">
+              {/* ══════════════════════════════════════════════════════════════
+                  LABEL PREVIEW — matches printed GHS workplace label layout
+              ══════════════════════════════════════════════════════════════ */}
+              <div className="overflow-hidden rounded-lg border-[3px] border-red-700 bg-white text-slate-900 shadow">
 
-                {/* Product identifier header */}
-                <div className={`mb-3 border-b-2 pb-2 ${h.length > 0 ? "border-red-600" : "border-slate-400"}`}>
-                  <div className="text-base font-bold leading-tight text-slate-900">{chemical.name}</div>
-                  <div className="mt-0.5 text-[11px] text-slate-500">
-                    {chemical.cas_number && (
-                      <span>CAS No. <span className="font-medium text-slate-700">{chemical.cas_number}</span></span>
-                    )}
-                    {chemical.cas_number && chemical.supplier && <span className="mx-2 text-slate-300">·</span>}
-                    {chemical.supplier && (
-                      <span>Supplier: <span className="font-medium text-slate-700">{chemical.supplier}</span></span>
-                    )}
-                  </div>
-                  {chemical.label_code && (
-                    <div className="mt-1.5 inline-flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-2 py-0.5">
-                      <span className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Container ID</span>
-                      <span className="font-mono text-xs font-bold tracking-widest text-slate-700">{chemical.label_code}</span>
+                {/* ── 1. Header: name / CAS / product ID ── */}
+                <div className="flex items-start justify-between gap-4 border-b-2 border-slate-900 px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="text-lg font-black uppercase leading-tight tracking-tight text-slate-900">
+                      {chemical.name}
                     </div>
-                  )}
-                </div>
-
-                {/* Pictograms + hazard info */}
-                <div className="flex gap-4">
-
-                  {/* Pictogram column */}
-                  {picCodes.length > 0 && (
-                    <div className="flex flex-col gap-1 flex-shrink-0">
-                      {picCodes.map((code) => (
-                        <div key={code} title={`${code} — ${GHS_NAMES[code] ?? ""}`}>
-                          <GhsPictogram code={code} size={60}/>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Hazard info */}
-                  <div className="flex-1 min-w-0">
-
-                    {/* Signal word */}
-                    {signalWord && (
-                      <div className={`text-[22px] font-black mb-2 leading-none ${signalWord === "Danger" ? "text-red-700" : "text-amber-600"}`}>
-                        {signalWord.toUpperCase()}
+                    {chemical.chemical_formula && (
+                      <div className="mt-0.5 text-[10px] text-slate-500">
+                        Chemical Formula: <strong className="text-slate-700">{chemical.chemical_formula}</strong>
                       </div>
                     )}
+                  </div>
+                  <div className="flex flex-shrink-0 items-start gap-5 text-right">
+                    {chemical.cas_number && (
+                      <div>
+                        <div className="text-[8px] font-black uppercase tracking-widest text-slate-400">CAS Number</div>
+                        <div className="text-base font-black text-slate-900">{chemical.cas_number}</div>
+                      </div>
+                    )}
+                    {chemical.label_code && (
+                      <div className="border-l border-slate-300 pl-5">
+                        <div className="text-[8px] font-black uppercase tracking-widest text-slate-400">Product ID</div>
+                        <div className="text-base font-black text-slate-900">{chemical.label_code}</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-                    {/* H-statements */}
+                {/* ── 2. Pictogram + signal word  |  Hazard statements ── */}
+                <div className="flex border-b border-slate-200">
+
+                  {/* Left: pictogram(s) + signal word + primary hazard + GHS name */}
+                  <div className="flex w-1/2 items-center gap-3 border-r border-slate-200 p-4">
+                    {picCodes.length > 0 && (
+                      <div className="flex flex-col gap-1 flex-shrink-0">
+                        {picCodes.map((code) => (
+                          <GhsPictogram key={code} code={code} size={68}/>
+                        ))}
+                      </div>
+                    )}
+                    <div>
+                      {signalWord ? (
+                        <div className={`text-2xl font-black leading-none ${signalWord === "Danger" ? "text-red-700" : "text-amber-500"}`}>
+                          {signalWord.toUpperCase()}
+                        </div>
+                      ) : (
+                        <div className="text-xs italic text-slate-400">No signal word</div>
+                      )}
+                      {h[0] && getHText(h[0]) && (
+                        <div className="mt-1 text-[11px] font-medium leading-snug text-slate-700">
+                          {getHText(h[0])}.
+                        </div>
+                      )}
+                      {picCodes[0] && (
+                        <div className="mt-1.5 text-[10px]">
+                          <span className="font-bold text-red-700">{picCodes[0]}</span>
+                          <span className="text-slate-500">: {GHS_NAMES[picCodes[0]]}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right: all H-statements */}
+                  <div className="w-1/2 p-4">
+                    <div className="mb-2 border-b border-red-200 pb-1 text-[9px] font-black uppercase tracking-widest text-red-700">
+                      Hazard Statement{h.length !== 1 ? "s" : ""}
+                    </div>
                     {h.length > 0 ? (
-                      <div className="mb-3">
-                        <div className="mb-1 border-b border-slate-100 pb-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                          Hazard Statements
-                        </div>
-                        <div className="max-h-36 space-y-0.5 overflow-y-auto">
-                          {h.map((code) => {
-                            const text = getHText(code);
-                            return (
-                              <p key={code} className="text-[11px] leading-snug text-slate-700">
-                                <span className="font-bold text-red-700">{code}</span>
-                                {text && <span className="text-slate-600">: {text}</span>}
-                              </p>
-                            );
-                          })}
-                        </div>
+                      <div className="space-y-1">
+                        {h.map((code) => {
+                          const text = getHText(code);
+                          return (
+                            <p key={code} className="text-[11px] leading-snug">
+                              <span className="font-bold">{code}</span>
+                              {text && <span className="text-slate-600">: {text}.</span>}
+                            </p>
+                          );
+                        })}
                       </div>
                     ) : (
-                      <p className="text-[11px] text-slate-400 italic mt-1">
-                        No GHS hazard classification on record — refer to SDS.
-                      </p>
-                    )}
-
-                    {/* P-statements */}
-                    {p.length > 0 && (
-                      <div>
-                        <div className="mb-1 border-b border-slate-100 pb-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                          Precautionary Statements
-                        </div>
-                        <div className="max-h-44 space-y-0.5 overflow-y-auto">
-                          {p.map((code) => {
-                            const text = getPText(code);
-                            return (
-                              <p key={code} className="text-[11px] leading-snug text-slate-700">
-                                <span className="font-bold text-blue-700">{code}</span>
-                                {text && <span className="text-slate-600">: {text}</span>}
-                              </p>
-                            );
-                          })}
-                        </div>
-                      </div>
+                      <p className="text-[11px] italic text-slate-400">No GHS hazard classification — refer to SDS.</p>
                     )}
                   </div>
                 </div>
 
-                {/* Label footer */}
-                <div className="mt-3 border-t border-slate-200 pt-2 text-[9.5px] leading-relaxed text-slate-500">
-                  {chemical.storage_location && (
-                    <span className="mr-3"><span className="font-semibold text-slate-600">Storage:</span> {chemical.storage_location}</span>
-                  )}
-                  <span><span className="font-semibold text-slate-600">Emergency:</span> 911 · Poison Control: 1-800-222-1222</span>
-                  <div className="mt-0.5">Refer to Safety Data Sheet for complete information.</div>
-                </div>
-              </div>
+                {/* ── 3. Prevention | Response | Storage ── */}
+                <div className="grid grid-cols-3 border-b border-slate-200">
 
-              {/* Pictogram legend */}
-              {picCodes.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {picCodes.map((code) => (
-                    <span key={code} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-medium text-slate-600">
-                      <span className="font-mono text-[9px] text-slate-400">{code}</span>
-                      {GHS_NAMES[code]}
-                    </span>
-                  ))}
-                </div>
-              )}
+                  {/* Prevention (blue) */}
+                  <div className="border-r border-slate-200">
+                    <div className="flex items-center gap-1.5 bg-blue-800 px-3 py-2 text-white">
+                      <Shield className="h-3 w-3 flex-shrink-0"/>
+                      <span className="text-[9px] font-black uppercase tracking-wider">Prevention</span>
+                    </div>
+                    <div className="min-h-[80px] p-3 space-y-1.5">
+                      {cats.prevention.length > 0 ? cats.prevention.map((code) => {
+                        const text = getPText(code);
+                        return (
+                          <p key={code} className="text-[10px] leading-snug text-slate-700">
+                            <span className="font-bold">{code}</span>
+                            {text && <span>: {text}.</span>}
+                          </p>
+                        );
+                      }) : <p className="text-[10px] italic text-slate-300">—</p>}
+                    </div>
+                  </div>
 
-              {/* Regulatory note */}
-              <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[10px] text-slate-500">
-                GHS workplace label per <span className="font-medium">OSHA 29 CFR 1910.1200</span> (HazCom 2012) / GHS Rev. 9 / WHMIS 2015.
-                Signal word and pictograms are derived from H-statement codes. Always verify against the full SDS before printing.
+                  {/* Response / First Aid (red) */}
+                  <div className="border-r border-slate-200">
+                    <div className="flex items-center gap-1.5 bg-red-700 px-3 py-2 text-white">
+                      <Plus className="h-3 w-3 flex-shrink-0"/>
+                      <span className="text-[9px] font-black uppercase tracking-wider">Response / First Aid</span>
+                    </div>
+                    <div className="min-h-[80px] p-3 space-y-1.5">
+                      {cats.response.length > 0 ? cats.response.map((code) => {
+                        const text = getPText(code);
+                        return (
+                          <p key={code} className="text-[10px] leading-snug text-slate-700">
+                            <span className="font-bold">{code}</span>
+                            {text && <span>: {text}.</span>}
+                          </p>
+                        );
+                      }) : <p className="text-[10px] italic text-slate-300">—</p>}
+                    </div>
+                  </div>
+
+                  {/* Storage + Disposal (green) */}
+                  <div>
+                    <div className="flex items-center gap-1.5 bg-green-800 px-3 py-2 text-white">
+                      <Package className="h-3 w-3 flex-shrink-0"/>
+                      <span className="text-[9px] font-black uppercase tracking-wider">Storage</span>
+                    </div>
+                    <div className="min-h-[80px] p-3 space-y-1.5">
+                      {chemical.storage_location && (
+                        <p className="text-[10px] leading-snug text-slate-600">{chemical.storage_location}</p>
+                      )}
+                      {cats.storage.map((code) => {
+                        const text = getPText(code);
+                        return (
+                          <p key={code} className="text-[10px] leading-snug text-slate-700">
+                            <span className="font-bold">{code}</span>
+                            {text && <span>: {text}.</span>}
+                          </p>
+                        );
+                      })}
+                      {cats.disposal.length > 0 && (
+                        <>
+                          <div className="pt-1 text-[8px] font-black uppercase tracking-wider text-amber-600">Disposal</div>
+                          {cats.disposal.map((code) => {
+                            const text = getPText(code);
+                            return (
+                              <p key={code} className="text-[10px] leading-snug text-slate-700">
+                                <span className="font-bold">{code}</span>
+                                {text && <span>: {text}.</span>}
+                              </p>
+                            );
+                          })}
+                        </>
+                      )}
+                      {cats.storage.length === 0 && cats.disposal.length === 0 && !chemical.storage_location && (
+                        <p className="text-[10px] italic text-slate-300">—</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── 4. Emergency | Refer to SDS | Label Info ── */}
+                <div className="grid grid-cols-3">
+
+                  {/* Emergency (dark) */}
+                  <div className="border-r border-slate-200 bg-slate-900 p-3 text-white">
+                    <div className="mb-1.5 flex items-center gap-1 text-[8px] font-black uppercase tracking-wider">
+                      <Phone className="h-3 w-3"/>
+                      Emergency Information
+                    </div>
+                    <p className="text-[10px] leading-snug">
+                      Call <span className="font-black text-red-400">911</span> in case of emergency
+                    </p>
+                    <p className="text-[10px] leading-snug">
+                      Poison Control: <span className="font-bold text-red-400">1-800-222-1222</span>
+                    </p>
+                  </div>
+
+                  {/* Refer to SDS */}
+                  <div className="border-r border-slate-200 p-3">
+                    <div className="mb-1.5 flex items-center gap-1 text-[8px] font-black uppercase tracking-wider text-slate-600">
+                      <FileText className="h-3 w-3"/>
+                      Refer to SDS
+                    </div>
+                    <p className="text-[10px] text-slate-500 leading-snug">
+                      For complete information, refer to the Safety Data Sheet.
+                    </p>
+                    {chemical.sds_url && (
+                      <p className="mt-1 break-all text-[9px] font-medium text-blue-600">{chemical.sds_url}</p>
+                    )}
+                  </div>
+
+                  {/* Label Information */}
+                  <div className="p-3">
+                    <div className="mb-1.5 flex items-center gap-1 text-[8px] font-black uppercase tracking-wider text-slate-600">
+                      <Tag className="h-3 w-3"/>
+                      Label Information
+                    </div>
+                    {chemical.supplier && (
+                      <p className="text-[10px] leading-snug">
+                        <span className="text-slate-500">Prepared by:</span>{" "}
+                        <span className="font-medium">{chemical.supplier}</span>
+                      </p>
+                    )}
+                    {chemical.sds_expiry && (
+                      <p className="text-[10px] leading-snug">
+                        <span className="text-slate-500">Revision date:</span>{" "}
+                        <span className="font-medium">{chemical.sds_expiry}</span>
+                      </p>
+                    )}
+                    <p className="text-[10px] leading-snug">
+                      <span className="text-slate-500">Version:</span>{" "}
+                      <span className="font-medium">1.0</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* ── 5. Compliance footer bar ── */}
+                <div className="bg-red-700 py-1.5 text-center text-[8px] font-bold uppercase tracking-wide text-white">
+                  This label complies with OSHA 29 CFR 1910.1200 (HazCom 2012) and GHS Rev. 9 / WHMIS 2015 requirements.
+                </div>
               </div>
             </div>
 
-            {/* Actions footer */}
+            {/* ── Actions footer ── */}
             <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3">
               {logNote ? (
                 <span className={`text-xs font-medium ${logNote.ok ? "text-emerald-600" : "text-red-600"}`}>

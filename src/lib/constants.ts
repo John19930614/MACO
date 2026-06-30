@@ -114,11 +114,16 @@ export const GHS_HAZARD_CLASSES = [
   "H280", "H281",                               // Gases under pressure
   "H290",                                       // Corrosive to metals
   "H300", "H301", "H302",                       // Acute oral toxicity
+  "H303", "H304",                               // May be harmful / aspiration hazard
   "H310", "H311", "H312",                       // Acute dermal toxicity
+  "H313",                                       // May be harmful in contact with skin
   "H314", "H315", "H317",                       // Skin corrosion/irritation
+  "H316",                                       // Mild skin irritation
   "H318", "H319",                               // Serious eye damage/irritation
+  "H320",                                       // Eye irritation
   "H330", "H331", "H332",                       // Acute inhalation toxicity
-  "H334", "H335",                               // Respiratory sensitisation
+  "H333",                                       // May be harmful if inhaled
+  "H334", "H335", "H336",                       // Respiratory sensitisation / dizziness
   "H340", "H341",                               // Germ cell mutagenicity
   "H350", "H351",                               // Carcinogenicity
   "H360", "H361",                               // Reproductive toxicity
