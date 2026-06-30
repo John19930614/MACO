@@ -160,8 +160,8 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
         </div>
       )}
 
-      {/* Auto-generate implementation — show for any real task */}
-      {isReal && (
+      {/* Auto-generate implementation — only after the team finishes all planning steps */}
+      {isReal && (t.status === "human_final_approval" || t.status === "complete") && (
         <GenerateImplementationPanel
           taskId={taskId}
           taskTitle={t.title}
