@@ -32,7 +32,7 @@ import { taskBundle, SAMPLE_AUDIT, getAgentsOrSample } from "@/lib/devcenter/sam
 import { WORKFLOW_STAGES, stageIndex, isWorkflowStage, isTerminal } from "@/lib/devcenter/workflow";
 import { branchName, prSections, prTitle, releaseRisk } from "@/lib/devcenter/github-plan";
 import { relativeTime } from "@/lib/utils";
-import { ArrowLeft, Target, Flag, ShieldCheck, Lock, Workflow } from "lucide-react";
+import { ArrowLeft, Target, Flag, ShieldCheck, Lock, Workflow, Code2, ClipboardList } from "lucide-react";
 import type { DevTaskMeta } from "@/lib/devcenter/types";
 
 export default async function TaskDetailPage({ params }: { params: Promise<{ taskId: string }> }) {
@@ -52,6 +52,13 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
   const onStage = isWorkflowStage(t.status);
   const stageNum = isWorkflowStage(t.status) ? stageIndex(t.status) + 1 : 0;
   const canRun = isReal && onStage && !isTerminal(t.status) && t.status !== "blocked";
+
+  // "Ready for code" = the planning is done and the team has produced code drafts.
+  const CODE_READY_STAGES = [
+    "code_draft", "qa_review", "security_review", "experience_final_review",
+    "documentation", "release_plan", "human_final_approval",
+  ];
+  const isCodeReady = CODE_READY_STAGES.includes(t.status);
 
   // Split artifacts so each panel shows its own kind (no duplication).
   const planningArtifacts = view.artifacts.filter((a) => (a.structured as Record<string, unknown> | null)?._agent);
@@ -105,6 +112,46 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
           </div>
         </div>
       </div>
+
+      {/* Ready-for-code instructions banner */}
+      {isCodeReady && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-800 dark:bg-amber-950/30">
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900">
+              <Code2 className="h-4 w-4 text-amber-700 dark:text-amber-300" />
+            </div>
+            <div className="flex-1 space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">The team has finished planning — code changes are ready</p>
+                <p className="mt-0.5 text-sm text-amber-800 dark:text-amber-300">
+                  The AI team has written out exactly what needs to change in the app. Here&apos;s how to get it live:
+                </p>
+              </div>
+              <ol className="space-y-2">
+                {[
+                  { step: "1", text: "Scroll down to "Proposed changes" below — you'll see the exact code the team wrote." },
+                  { step: "2", text: "Share this page with your developer, or paste this page's URL into a message to Claude Code and ask it to apply the changes shown." },
+                  { step: "3", text: "Once the changes are applied and tested, come back here and click "Run next step" to continue through the review and release stages." },
+                  { step: "4", text: "When you reach "Going live" at the bottom of this page, give your final approval and the change goes live." },
+                ].map(({ step, text }) => (
+                  <li key={step} className="flex items-start gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-200 text-xs font-bold text-amber-800 dark:bg-amber-800 dark:text-amber-200">
+                      {step}
+                    </span>
+                    <p className="text-sm text-amber-800 dark:text-amber-300">{text}</p>
+                  </li>
+                ))}
+              </ol>
+              <div className="flex items-start gap-2 rounded-lg bg-amber-100 px-3 py-2 dark:bg-amber-900/50">
+                <ClipboardList className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  <strong>Not sure what to do?</strong> Copy this page&apos;s URL and send it to whoever helps you with the technical side. They&apos;ll know exactly what to do with it.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Workflow control — run the next stage (real tasks only) */}
       {isReal && (
