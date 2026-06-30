@@ -28,7 +28,11 @@ export default async function DevCommandHomePage() {
     );
   }
 
-  const live = await getLiveDashboardData();
+  const live = await getLiveDashboardData().catch(() => ({
+    openTasks: [], pendingApprovals: [], recentAudit: [],
+    counts: { openTasks: 0, needApproval: 0, failedRuns: 0, securityBlockers: 0, experienceBlockers: 0, draftArtifacts: 0, runningAgents: 0 },
+    securityBlockerTasks: [], experienceBlockerTasks: [], failedRunTasks: [],
+  }));
   const hasTasks = live.openTasks.length > 0;
   const metrics = dashboardMetrics({
     open_tasks: live.counts.openTasks,

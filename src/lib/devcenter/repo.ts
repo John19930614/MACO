@@ -15,7 +15,7 @@
  */
 import "server-only";
 import { MOCK_MODE } from "@/lib/env";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServerClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type {
   DevTask, DevTaskStatus, DevTaskPriority, RiskLevel,
   DevAgent, DevApproval, DevAuditEntry,
@@ -223,7 +223,10 @@ const EMPTY_DASHBOARD: LiveDashboardData = {
 
 export async function getLiveDashboardData(): Promise<LiveDashboardData> {
   if (MOCK_MODE) return EMPTY_DASHBOARD;
-  const client = await createSupabaseServerClient();
+  try {
+  // Service role client — dev_* tables have superadmin RLS; the cookie client
+  // fails for superadmin sessions (tenant_id = null breaks private.auth_tenant_id()).
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return EMPTY_DASHBOARD;
 
   const TERMINAL = ["complete", "cancelled", "failed"];
@@ -280,6 +283,9 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
     experienceBlockerTasks,
     failedRunTasks,
   };
+  } catch {
+    return EMPTY_DASHBOARD;
+  }
 }
 
 export async function createDevTask(input: {
