@@ -155,30 +155,50 @@ Generate the complete implementation brief now.`;
           },
         },
       ],
-      tool_choice: { type: "any" as const },
+      // Force the specific tool so the model can't return plain text instead
+      tool_choice: { type: "tool" as const, name: "submit_implementation_brief" },
     });
 
-    // Extract the tool call input — always complete and properly encoded
-    const toolUse = response.content.find((b) => b.type === "tool_use");
-    if (!toolUse || toolUse.type !== "tool_use") {
-      return { ok: false, error: "AI did not return structured output. Try again." };
+    // Extract the tool call input
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const contents = response.content as any[];
+    const toolUse = contents.find((b) => b.type === "tool_use" && b.name === "submit_implementation_brief");
+
+    let brief: ImplementationBrief;
+    if (toolUse?.input) {
+      brief = toolUse.input as ImplementationBrief;
+    } else {
+      // Fallback: try to extract JSON from any text block
+      const textBlock = contents.find((b) => b.type === "text");
+      const raw = textBlock?.text ?? "";
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return { ok: false, error: "AI did not return a usable response. Try again." };
+      }
+      try {
+        brief = JSON.parse(jsonMatch[0]) as ImplementationBrief;
+      } catch {
+        return { ok: false, error: "AI response could not be parsed. Try again." };
+      }
     }
 
-    const brief = toolUse.input as ImplementationBrief;
-
-    // Save as an artifact so it persists
-    const { data: artifact } = await db.from("dev_artifacts").insert({
-      task_id: taskId,
-      kind: "implementation_brief",
-      artifact_type: "implementation_brief",
-      title: "Generated implementation brief",
-      content: JSON.stringify(brief, null, 2),
-      structured: brief as unknown as Record<string, unknown>,
-      status: "ready_for_review",
-      created_by: "claude-code-generator",
-      risk_level: "medium",
-      approval_required: false,
-    }).select("id").single();
+    // Save as an artifact so it persists (best-effort — don't block response on DB failure)
+    let artifactId: string | undefined;
+    try {
+      const { data: artifact } = await db.from("dev_artifacts").insert({
+        task_id: taskId,
+        kind: "implementation_brief",
+        artifact_type: "implementation_brief",
+        title: "Generated implementation brief",
+        content: JSON.stringify(brief, null, 2),
+        structured: brief as unknown as Record<string, unknown>,
+        status: "ready_for_review",
+        created_by: "claude-code-generator",
+        risk_level: "medium",
+        approval_required: false,
+      }).select("id").single();
+      artifactId = artifact?.id as string | undefined;
+    } catch { /* non-fatal */ }
 
     // Audit log (best-effort)
     if (tenantId) {
@@ -192,7 +212,7 @@ Generate the complete implementation brief now.`;
       } catch { /* non-fatal */ }
     }
 
-    return { ok: true, brief, artifactId: artifact?.id };
+    return { ok: true, brief, artifactId };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Generation failed." };
   }

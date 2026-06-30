@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useRef, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card } from "@/components/ui/primitives";
 import { createDevTask, type CreateTaskState } from "@/lib/actions/devcenter";
@@ -79,10 +80,17 @@ interface Prefill {
 }
 
 export function DevTaskIntakeForm({ prefill }: { prefill?: Prefill }) {
+  const router = useRouter();
   const [state, formAction, pending] = useActionState<CreateTaskState, FormData>(createDevTask, {});
   const [preview, setPreview] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const hiddenRef = useRef<HTMLTextAreaElement>(null);
+
+  // Navigate when the server action returns a redirect URL (avoids NEXT_REDIRECT
+  // bubbling through the React 19 error boundary).
+  useEffect(() => {
+    if (state.redirectTo) router.push(state.redirectTo);
+  }, [state.redirectTo, router]);
 
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -293,8 +301,8 @@ export function DevTaskIntakeForm({ prefill }: { prefill?: Prefill }) {
         <Link href="/admin/dev-command/tasks" className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300">
           Cancel
         </Link>
-        <button type="submit" disabled={pending} className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60">
-          {pending ? "Sending to the team…" : "Send to the AI team"}
+        <button type="submit" disabled={pending || !!state.redirectTo} className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60">
+          {state.redirectTo ? "Opening task…" : pending ? "Sending to the team…" : "Send to the AI team"}
         </button>
       </div>
     </form>

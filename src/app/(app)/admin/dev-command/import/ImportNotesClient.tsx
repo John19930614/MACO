@@ -123,12 +123,11 @@ export function ImportNotesClient() {
         if (result?.error) {
           setTasks((prev) => prev.map((t) => t._id === id ? { ...t, _state: "failed", _error: result.error } : t));
         } else {
-          // createDevTask redirects on success — if we get here without error it created ok
+          // redirectTo means it was created — stay on page (don't follow the redirect)
           setTasks((prev) => prev.map((t) => t._id === id ? { ...t, _state: "created" } : t));
         }
       } catch {
-        // redirect() throws — means it succeeded and is navigating away; mark as created
-        setTasks((prev) => prev.map((t) => t._id === id ? { ...t, _state: "created" } : t));
+        setTasks((prev) => prev.map((t) => t._id === id ? { ...t, _state: "failed", _error: "Unexpected error — try again." } : t));
       }
 
       // Check if all tasks are resolved

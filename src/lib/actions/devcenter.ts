@@ -2,7 +2,6 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { createSupabaseServerClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { isSuperadmin, getServerUser } from "@/lib/auth/session";
 import { MOCK_MODE } from "@/lib/env";
@@ -27,6 +26,7 @@ const nowIso = () => new Date().toISOString();
 
 export interface CreateTaskState {
   error?: string;
+  redirectTo?: string;
 }
 
 const schema = z.object({
@@ -135,7 +135,9 @@ export async function createDevTask(
 
   revalidatePath("/admin/dev-command/tasks");
   revalidatePath("/admin/dev-command");
-  redirect(`/admin/dev-command/tasks/${taskId}`);
+  // Return the redirect URL — client handles navigation so NEXT_REDIRECT
+  // doesn't propagate through React's error boundary in Next.js 15 / React 19.
+  return { redirectTo: `/admin/dev-command/tasks/${taskId}` };
 }
 
 // â”€â”€ Phase 5: workflow engine (Dev Manager) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
