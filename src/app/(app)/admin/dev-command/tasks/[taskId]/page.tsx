@@ -28,6 +28,7 @@ import { PullRequestPlanPanel } from "../../_components/PullRequestPlanPanel";
 import { RunNextStepButton } from "../../_components/RunNextStepButton";
 import { DeleteTaskButton } from "../../_components/DeleteTaskButton";
 import { GenerateImplementationPanel } from "../../_components/GenerateImplementationPanel";
+import { DeployButton } from "../../_components/DeployButton";
 import { getTaskDetail, getGithubSettings } from "@/lib/devcenter/repo";
 import { getImplementationBrief } from "@/lib/actions/generateImplementation";
 import { taskBundle, SAMPLE_AUDIT, getAgentsOrSample } from "@/lib/devcenter/sample";
@@ -115,6 +116,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
             <PriorityBadge priority={t.priority} />
             <RiskLevelBadge level={t.risk_level} />
             <TaskStatusBadge status={t.status} />
+            {isReal && t.status === "complete" && <DeployButton taskId={t.id} />}
             {isReal && <DeleteTaskButton taskId={t.id} taskTitle={t.title} />}
           </div>
         </div>
