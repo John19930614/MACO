@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useTransition } from "react";
 import React from "react";
+import { useRouter } from "next/navigation";
 import {
   Send, RotateCcw, FlaskConical, GraduationCap, Shield, AlertTriangle,
   ChevronRight, Sparkles, Bot, BarChart3, Clock, CheckCircle2, XCircle,
@@ -1003,6 +1004,7 @@ function FindingsPanel({ findings, runs, latestRun }: {
   runs: PredictabilityRun[];
   latestRun: PredictabilityRun | null;
 }) {
+  const router = useRouter();
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const pending  = findings.filter((f) => f.review_status === "pending").length;
@@ -1133,7 +1135,7 @@ function FindingsPanel({ findings, runs, latestRun }: {
                         <td colSpan={7} className="p-0">
                           <FindingRemediationPanel
                             finding={f}
-                            onDone={() => setExpandedId(null)}
+                            onDone={() => { setExpandedId(null); router.refresh(); }}
                           />
                         </td>
                       </tr>
