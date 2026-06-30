@@ -6,7 +6,7 @@ import {
   getTenantSettings,
 } from "@/lib/data/ehsRepo";
 import { redirect } from "next/navigation";
-import { getEffectiveTenantId, isSuperadmin } from "@/lib/auth/session";
+import { getEffectiveTenantId, isSuperadmin, getPreviewTenantId } from "@/lib/auth/session";
 import { oshaRate, resolveOshaHours, OSHA_DART_BENCHMARK } from "@/lib/osha";
 import { MOCK_MODE } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -32,8 +32,10 @@ export default async function DashboardPage({
 
   // Superadmins manage the platform, not a client tenant — send them to the SA
   // console. This also keeps the tenant dashboard's onboarding prompt (which has
-  // no meaning for a tenant-less platform admin) away from them.
-  if (await isSuperadmin()) redirect("/sa/companies");
+  // no meaning for a tenant-less platform admin) away from them. EXCEPTION: when
+  // a superadmin is previewing a tenant (read-only), let the tenant dashboard
+  // render so they can see the tenant's app.
+  if ((await isSuperadmin()) && !(await getPreviewTenantId())) redirect("/sa/companies");
 
   const tenantId   = await getEffectiveTenantId();
   const tenantName = await getTenantName(tenantId);

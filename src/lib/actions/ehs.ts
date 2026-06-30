@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getStore, nextId } from "@/lib/data/store";
 import { MOCK_TENANT_ID, MOCK_SITE_ID } from "@/lib/data/mock";
 import { createSupabaseServerClient, DEMO_SARAH_ID } from "@/lib/supabase/server";
-import { getServerTenantId, getServerProfileId } from "@/lib/auth/session";
+import { getServerTenantId, getServerProfileId, getPreviewTenantId } from "@/lib/auth/session";
 import { MOCK_MODE, serverSecrets, hasLiveAi } from "@/lib/env";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { PROGRAM_DEFS, generateProgram, type SourceBlock } from "@/lib/ai/programBuilder";
@@ -28,6 +28,9 @@ import {
 // and profile_id. All live-mode actions use this so RLS is always respected.
 
 async function getCtx() {
+  // Read-only tenant preview: a superadmin previewing a tenant must not write.
+  // (RLS would also refuse the write, but blocking here gives a clean path.)
+  if (await getPreviewTenantId()) return null;
   const client = await createSupabaseServerClient();
   if (!client) return null;
   const tenantId = await getServerTenantId();
