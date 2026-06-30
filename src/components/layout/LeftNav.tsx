@@ -53,6 +53,7 @@ const BASE_COMPANY_NAV: NavSection[] = [
       { href: "/ergonomics", label: "Ergonomics & MSD",         description: "Workstation & MSD risk controls",icon: "🪑" },
       { href: "/monitoring", label: "Monitoring & Equipment",  description: "Calibration & inspections",      icon: "📡" },
       { href: "/incidents",  label: "Incident Reporting",      description: "Near-miss & injury reports",     icon: "⚠" },
+      { href: "/emergency", label: "Emergency Action Plan",   description: "Emergency contacts & procedures",icon: "🚨" },
     ],
   },
   {
