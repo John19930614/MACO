@@ -109,7 +109,17 @@ export function GenerateImplementationPanel({ taskId, taskTitle, initialBrief }:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId }),
       });
-      const result = await res.json();
+      // Read as text first so a non-JSON body (Vercel error page) shows a
+      // useful message instead of "Unexpected token" in the error panel.
+      const text = await res.text();
+      let result: { ok: boolean; brief?: ImplementationBrief; error?: string };
+      try {
+        result = JSON.parse(text);
+      } catch {
+        setError(`Server error (${res.status}): ${text.slice(0, 200)}`);
+        setPhase("error");
+        return;
+      }
       if (result.ok && result.brief) {
         setBrief(result.brief);
         setPhase("done");
