@@ -38,6 +38,10 @@ export async function generateImplementation(taskId: string): Promise<{
     };
   }
 
+  // Wrap everything — any uncaught throw must return { ok: false } so the
+  // error surfaces in the panel, not the React error boundary.
+  try {
+
   const db = createServiceRoleClient();
   if (!db) return { ok: false, error: "Database not available." };
 
@@ -215,6 +219,12 @@ Generate the complete implementation brief now.`;
     return { ok: true, brief, artifactId };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Generation failed." };
+  }
+
+  } catch (e) {
+    // Outer catch — covers DB queries, context building, and any other throw
+    // outside the inner AI try/catch. Ensures we never throw to the error boundary.
+    return { ok: false, error: e instanceof Error ? e.message : "Unexpected error — please try again." };
   }
 }
 

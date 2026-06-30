@@ -1,3 +1,6 @@
+// Give Vercel enough time for the Anthropic API call (default is 10s on hobby)
+export const maxDuration = 60;
+
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Card, CardHeader } from "@/components/ui/primitives";

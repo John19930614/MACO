@@ -104,12 +104,17 @@ export function GenerateImplementationPanel({ taskId, taskTitle, initialBrief }:
     setPhase("generating");
     setError(null);
     startTransition(async () => {
-      const result = await generateImplementation(taskId);
-      if (result.ok && result.brief) {
-        setBrief(result.brief);
-        setPhase("done");
-      } else {
-        setError(result.error ?? "Generation failed. Try again.");
+      try {
+        const result = await generateImplementation(taskId);
+        if (result.ok && result.brief) {
+          setBrief(result.brief);
+          setPhase("done");
+        } else {
+          setError(result.error ?? "Generation failed. Try again.");
+          setPhase("error");
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Generation failed — please try again.");
         setPhase("error");
       }
     });
