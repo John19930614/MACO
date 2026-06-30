@@ -109,7 +109,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
       {/* Workflow control — run the next stage (real tasks only) */}
       {isReal && (
         <Card>
-          <CardHeader title="Workflow" subtitle="The Dev Manager moves this task one stage at a time" right={<Workflow className="h-4 w-4 text-slate-300" />} />
+          <CardHeader title="Progress" subtitle="The AI team works through this one step at a time — you approve anything important" right={<Workflow className="h-4 w-4 text-slate-300" />} />
           <div className="space-y-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm">
@@ -135,14 +135,14 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
 
       {/* 5-6. Business goal + success criteria + details + safety controls */}
       <Card>
-        <CardHeader title="About this task" subtitle="What it's for and how we'll know it's done" />
+        <CardHeader title="About this task" subtitle="What you asked for and how we'll know it's done" />
         <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
-          <Detail icon={<Flag className="h-4 w-4" />} label="Business goal" value={meta.business_goal} />
-          <Detail icon={<Target className="h-4 w-4" />} label="Success criteria" value={meta.success_criteria} />
+          <Detail icon={<Flag className="h-4 w-4" />} label="Why this matters" value={meta.business_goal} />
+          <Detail icon={<Target className="h-4 w-4" />} label="How we know it's done" value={meta.success_criteria} />
           <Detail label="Who uses it" value={meta.who_uses_it} />
-          <Detail label="Data involved" value={meta.data_involved} />
-          <Detail label="AI's role" value={meta.ai_role} />
-          <Detail label="Notes" value={meta.notes} />
+          <Detail label="Sensitive information involved" value={meta.data_involved} />
+          <Detail label="What the team is focused on" value={meta.ai_role} />
+          <Detail label="Extra notes" value={meta.notes} />
         </div>
         {meta.visual_reference && (
           <div className="border-t border-slate-100 px-4 py-4 dark:border-slate-700">
@@ -156,10 +156,10 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
         )}
         <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-700">
           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
-            <ShieldCheck className="h-3.5 w-3.5" /> Safety controls
+            <ShieldCheck className="h-3.5 w-3.5" /> What the team is allowed to do
           </p>
           <div className="flex flex-wrap gap-1.5">
-            <Badge label="Your approval required" tone="success" />
+            <Badge label="Your approval always required" tone="success" />
             {permissions.map((p) =>
               p.on ? (
                 <Badge key={p.label} label={`${p.label}: allowed`} tone="info" />
@@ -174,17 +174,17 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
       </Card>
 
       {/* ── Section: Planning ─────────────────────────────────────────────── */}
-      <SectionLabel label="Planning" hint="What the AI team intends to do" />
+      <SectionLabel label="Planning" hint="What the team is planning to do — they figure out the technical details so you don't have to" />
       <PlanningOutputPanel artifacts={planningArtifacts} />
 
       {/* ── Section: Code ─────────────────────────────────────────────────── */}
-      <SectionLabel label="Code" hint="Draft files and proposed changes — nothing is applied without your approval" />
+      <SectionLabel label="Proposed changes" hint="What the team wants to change — nothing is saved until you approve it" />
       <ArtifactViewer artifacts={codeDraftArtifacts} actionable={isReal} />
       <AppliedChangesPanel changes={view.appliedChanges} />
       <FileChangePlanViewer plans={view.filePlans} actionable={isReal} />
 
       {/* ── Section: Review ───────────────────────────────────────────────── */}
-      <SectionLabel label="Review" hint="What the agents found — fix issues here before release" />
+      <SectionLabel label="Quality check" hint="The team checks their own work before asking you to approve anything" />
       <ExperienceScorecard gates={view.reviewGates} approvals={view.approvals} />
       <RequiredFixesPanel gates={view.reviewGates} />
       <PlainEnglishTable />
@@ -203,11 +203,11 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
       </div>
 
       {/* ── Section: Approvals ────────────────────────────────────────────── */}
-      <SectionLabel label="Approvals" hint="Risky steps that need your explicit go-ahead" />
-      <ApprovalCenter approvals={view.approvals} title="Approvals for this task" subtitle="Every dangerous action is paused here until you decide" actionable={isReal} />
+      <SectionLabel label="Your approvals" hint="The team has paused and is waiting for your go-ahead before doing anything that changes the app" />
+      <ApprovalCenter approvals={view.approvals} title="Waiting for your approval" subtitle="Review each item and approve or reject it — nothing happens until you do" actionable={isReal} />
 
       {/* ── Section: Release ──────────────────────────────────────────────── */}
-      <SectionLabel label="Release" hint="Branch, pull request, and production release planning" />
+      <SectionLabel label="Going live" hint="The final steps to put the finished change into the real app" />
       <BranchPlanPanel
         settings={githubSettings} branch={branch} risk={release} approvedArtifacts={approvedForBranch}
         taskId={t.id} actionable={isReal} alreadyRequested={githubRequested}
@@ -217,7 +217,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ tas
       <ChangelogPanel sections={changelogSections} />
 
       {/* ── Section: Timeline & Team ──────────────────────────────────────── */}
-      <SectionLabel label="Timeline &amp; team" hint="Agent activity and the full team working on this task" />
+      <SectionLabel label="Activity &amp; team" hint="Everything the AI team has done on this task, in order" />
       <TaskTimeline runs={view.runs} messages={view.messages} agents={agents} />
       <div>
         <p className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">The AI team on this task</p>
