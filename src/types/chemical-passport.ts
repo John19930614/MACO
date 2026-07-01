@@ -31,4 +31,6 @@ export interface ChemicalPassportData {
   aiConfidenceScore: number | null; // 0–100; shown as a confidence ring
   lastVerifiedAt: string | null;  // ISO date string
   reviewStatus: ReviewStatus;
+  containerCapacity: number | null;      // single-container capacity (for CLP print size)
+  containerCapacityUnit: string | null;  // mL | L | gal | g | kg
 }

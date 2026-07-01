@@ -34,6 +34,10 @@ const TIERS: { maxL: number; tier: ClpTier; w: number; h: number }[] = [
   { maxL: Infinity, tier: ">500 L",   w: 148, h: 210 },
 ];
 
+/** CLP tiers as a selectable list (for a print-size picker). */
+export const CLP_TIERS: { tier: ClpTier; labelWmm: number; labelHmm: number }[] =
+  TIERS.map((t) => ({ tier: t.tier, labelWmm: t.w, labelHmm: t.h }));
+
 const GALLON_TO_L = 3.785411784;
 
 /**

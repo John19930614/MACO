@@ -26,7 +26,11 @@ export default async function SmartChemicalPassportPage({ params }: { params: Pr
           </p>
         </div>
 
-        <PassportActions chemicalId={id} />
+        <PassportActions
+          chemicalId={id}
+          containerCapacity={data.containerCapacity}
+          containerCapacityUnit={data.containerCapacityUnit}
+        />
 
         <BuildSmartChemicalPassport data={data} />
       </div>

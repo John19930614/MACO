@@ -118,5 +118,7 @@ export async function getChemicalPassportData(id: string): Promise<ChemicalPassp
     aiConfidenceScore: normalizeConfidence(chemical.hazard_band_confidence ?? null),
     lastVerifiedAt: chemical.hazard_band_reviewed_at ?? null,
     reviewStatus: chemical.hazard_band_reviewed_at ? "verified" : "pending",
+    containerCapacity: chemical.container_capacity ?? null,
+    containerCapacityUnit: chemical.container_capacity_unit ?? null,
   };
 }

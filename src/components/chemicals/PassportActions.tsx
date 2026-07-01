@@ -3,14 +3,23 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Printer, FileDown, Image as ImageIcon, Loader2 } from "lucide-react";
+import { labelSizeForContainer, CLP_TIERS } from "@/lib/chemicals/labelSizing";
 
 interface Props {
   chemicalId: string;
+  containerCapacity?: number | null;
+  containerCapacityUnit?: string | null;
 }
 
-export function PassportActions({ chemicalId }: Props) {
+export function PassportActions({ chemicalId, containerCapacity, containerCapacityUnit }: Props) {
   const [exporting, setExporting] = useState<"pdf" | "png" | "print" | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Print/PDF size picker. Defaults to the chemical's EU CLP tier (derived from
+  // its container capacity); "fit" scales the label to one landscape page.
+  const derived = labelSizeForContainer(containerCapacity, containerCapacityUnit);
+  const [sizeKey, setSizeKey] = useState<string>(derived.isFallback ? "fit" : derived.tier);
+  const selected = sizeKey === "fit" ? null : (CLP_TIERS.find((t) => t.tier === sizeKey) ?? null);
 
   // Print the SAME single fitted image the PNG/PDF export produces (a proven,
   // working render). CSS transform/zoom on the live element can't guarantee one
@@ -23,11 +32,15 @@ export function PassportActions({ chemicalId }: Props) {
     try {
       const canvas = await captureLabel();
       const dataUrl = canvas.toDataURL("image/png");
+      // Selected EU CLP size (physical mm) or fit-to-landscape-page.
+      const pageCss = selected
+        ? `@page{size:${selected.labelWmm}mm ${selected.labelHmm}mm;margin:0}`
+        : `@page{size:landscape;margin:0.3in}`;
       const w = window.open("", "_blank", "width=1100,height=800");
       if (!w) { window.print(); return; } // popup blocked → in-page fallback
       w.document.write(
         `<!doctype html><html><head><meta charset="utf-8"><title>Chemical Passport</title>` +
-        `<style>@page{size:landscape;margin:0.3in}html,body{height:100%;margin:0;background:#fff}` +
+        `<style>${pageCss}html,body{height:100%;margin:0;background:#fff}` +
         `body{display:flex;align-items:center;justify-content:center}` +
         `img{max-width:100%;max-height:100%}</style></head>` +
         `<body><img alt="Chemical passport" src="${dataUrl}" onload="setTimeout(function(){window.focus();window.print();},150)"/></body></html>`,
@@ -74,10 +87,22 @@ export function PassportActions({ chemicalId }: Props) {
     try {
       const canvas = await captureLabel();
       const { jsPDF } = await import("jspdf");
-      const w = canvas.width / 3, h = canvas.height / 3;
-      const pdf = new jsPDF({ orientation: w > h ? "landscape" : "portrait", unit: "px", format: [w, h] });
-      pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, w, h);
-      pdf.save(`chemical-passport-${chemicalId}.pdf`);
+      const img = canvas.toDataURL("image/png");
+      const imgAr = canvas.width / canvas.height;
+      if (selected) {
+        // Physical EU CLP page in mm; fit the image within it, preserving aspect.
+        const pw = selected.labelWmm, ph = selected.labelHmm;
+        const pdf = new jsPDF({ orientation: pw > ph ? "landscape" : "portrait", unit: "mm", format: [pw, ph] });
+        let dw = pw, dh = pw / imgAr;
+        if (dh > ph) { dh = ph; dw = ph * imgAr; }
+        pdf.addImage(img, "PNG", (pw - dw) / 2, (ph - dh) / 2, dw, dh);
+        pdf.save(`chemical-passport-${chemicalId}.pdf`);
+      } else {
+        const w = canvas.width / 3, h = canvas.height / 3;
+        const pdf = new jsPDF({ orientation: w > h ? "landscape" : "portrait", unit: "px", format: [w, h] });
+        pdf.addImage(img, "PNG", 0, 0, w, h);
+        pdf.save(`chemical-passport-${chemicalId}.pdf`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "PDF export failed. Try Print instead.");
     } finally {
@@ -108,6 +133,24 @@ export function PassportActions({ chemicalId }: Props) {
       >
         <ArrowLeft className="h-4 w-4" /> Back to Chemical Record
       </Link>
+
+      <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+        <span className="font-medium">Print size:</span>
+        <select
+          value={sizeKey}
+          onChange={(e) => setSizeKey(e.target.value)}
+          disabled={!!exporting}
+          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm font-medium text-slate-800 disabled:opacity-50"
+          aria-label="Regulation print size"
+        >
+          <option value="fit">Fit to one page (Letter)</option>
+          {CLP_TIERS.map((t) => (
+            <option key={t.tier} value={t.tier}>
+              EU CLP {t.tier} — {t.labelWmm}×{t.labelHmm} mm
+            </option>
+          ))}
+        </select>
+      </label>
 
       <button
         onClick={handlePrint}
@@ -141,7 +184,10 @@ export function PassportActions({ chemicalId }: Props) {
 
       {error && <p className="w-full text-xs text-red-600">{error}</p>}
       <p className="mt-1 w-full text-xs text-slate-400">
-        Tip: use <strong>PDF</strong> for drums and totes; use <strong>PNG</strong> for bottles and smaller containers.
+        {selected
+          ? `Prints at ${selected.labelWmm}×${selected.labelHmm} mm (EU CLP ${selected.tier}). Print and PDF use this physical size.`
+          : "Prints scaled to one landscape page. Pick an EU CLP size above to print at regulation container dimensions."}
+        {!derived.isFallback && sizeKey !== derived.tier && ` This chemical's container suggests ${derived.tier}.`}
       </p>
     </div>
   );
