@@ -19,8 +19,17 @@ export function RunNextStepButton({ taskId }: { taskId: string }) {
         disabled={pending}
         onClick={() =>
           start(async () => {
-            const r = await runNextStep(taskId);
-            setResult({ text: r.message ?? "", paused: r.paused, ok: r.ok });
+            // A thrown server action (e.g. a Vercel timeout) must NOT bubble to
+            // the page error boundary — show it inline so the page stays usable.
+            try {
+              const r = await runNextStep(taskId);
+              setResult({ text: r.message ?? "", paused: r.paused, ok: r.ok });
+            } catch {
+              setResult({
+                text: "That step took too long and was interrupted. It may have partly run — reload to see the latest state, then run the next step again.",
+                ok: false,
+              });
+            }
           })
         }
         className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"

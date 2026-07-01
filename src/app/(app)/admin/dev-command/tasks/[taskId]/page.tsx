@@ -1,5 +1,7 @@
-// Give Vercel enough time for the Anthropic API call (default is 10s on hobby)
-export const maxDuration = 60;
+// Agent steps (runNextStep) call the AI synchronously — some stages run several
+// agents, which can exceed 60s. Server actions invoked from this page inherit
+// this route's maxDuration, so give them the Vercel Pro max (300s).
+export const maxDuration = 300;
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
