@@ -3,6 +3,7 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getServerTenantId } from "@/lib/auth/session";
 import { MOCK_MODE, serverSecrets } from "@/lib/env";
+import { codebaseContextForPrompt } from "@/lib/devcenter/codebaseContext";
 
 export interface GeneratedFile {
   path: string;
@@ -128,7 +129,7 @@ Generate the complete implementation brief now.`;
     const response = await client.messages.create({
       model: anthropicModel || "claude-sonnet-4-6",
       max_tokens: 16000,
-      system: systemPrompt,
+      system: `${systemPrompt}\n\n${codebaseContextForPrompt()}`,
       messages: [{ role: "user", content: userMessage }],
       tools: [
         {

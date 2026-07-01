@@ -13,6 +13,7 @@ import "server-only";
 import { z } from "zod";
 import { MOCK_MODE, hasLiveAi } from "@/lib/env";
 import { generateStructuredJson, type JsonSchemaSpec } from "@/lib/ai/provider";
+import { codebaseContextForPrompt } from "./codebaseContext";
 import { getActiveMemory, formatMemoryForPrompt } from "./memory";
 import type { DevTask, DevTaskMeta, RiskLevel } from "./types";
 
@@ -108,7 +109,10 @@ async function withAI<T>(opts: {
 }): Promise<{ data: T; aiBacked: boolean }> {
   if (MOCK_MODE || !hasLiveAi()) return { data: opts.fallback, aiBacked: false };
   try {
-    const res = await generateStructuredJson({ system: opts.system, user: opts.user, schema: opts.schema, maxTokens: 1600, tier: "deep" });
+    // Ground every planning agent in the real codebase (cached as the system
+    // prefix by the provider, so it's cheap across all agents/records).
+    const system = `${opts.system}\n\n${codebaseContextForPrompt()}`;
+    const res = await generateStructuredJson({ system, user: opts.user, schema: opts.schema, maxTokens: 1600, tier: "deep" });
     const parsed = opts.zod.safeParse(res.data);
     return parsed.success ? { data: parsed.data, aiBacked: true } : { data: opts.fallback, aiBacked: false };
   } catch {

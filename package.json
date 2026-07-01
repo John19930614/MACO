@@ -4,7 +4,8 @@
   "private": true,
   "description": "SafetyIQ — Reliance Predictive Safety Technologies EHS Platform. AI-powered environmental, health & safety management with predictive compliance intelligence.",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbo",
+    "prebuild": "node scripts/gen-codebase-context.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
