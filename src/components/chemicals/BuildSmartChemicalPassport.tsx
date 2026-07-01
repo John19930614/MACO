@@ -121,16 +121,19 @@ export function BuildSmartChemicalPassport({ data }: Props) {
           {/* MAIN */}
           <div style={{ flex: "1 1 0", minWidth: 0, padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
             {/* Identity */}
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, borderBottom: "1px solid #e5e7eb", paddingBottom: 12 }}>
+            {/* Stacked (not space-between) so the name and CAS/Product ID never
+                overlap in the html2canvas PNG/PDF export, which ignores
+                flex-shrink / min-width:0. Name on top, meta row beneath. */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, borderBottom: "1px solid #e5e7eb", paddingBottom: 12 }}>
               <div style={{ minWidth: 0 }}>
-                <h2 style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.05, margin: 0, textTransform: "uppercase", color: "#0f172a" }}>{data.chemicalName}</h2>
+                <h2 style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.1, margin: 0, textTransform: "uppercase", color: "#0f172a", overflowWrap: "anywhere" }}>{data.chemicalName}</h2>
                 <p style={{ marginTop: 8, fontSize: 13, color: "#334155" }}>
                   CHEMICAL FORMULA: <b>{data.formula}</b> &nbsp;•&nbsp; MOLECULAR WEIGHT: <b>{mwText}</b>
                 </p>
               </div>
-              <div style={{ display: "flex", gap: 20, flexShrink: 0 }}>
-                <div><p style={blueCaps}>CAS Number</p><p style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>{data.casNumber}</p></div>
-                <div style={{ borderLeft: "1px solid #e5e7eb", paddingLeft: 20 }}><p style={blueCaps}>Product ID</p><p style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>{data.productId}</p></div>
+              <div style={{ display: "flex", gap: 24, flexShrink: 0 }}>
+                <div><p style={blueCaps}>CAS Number</p><p style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>{data.casNumber}</p></div>
+                <div style={{ borderLeft: "1px solid #e5e7eb", paddingLeft: 24 }}><p style={blueCaps}>Product ID</p><p style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>{data.productId}</p></div>
               </div>
             </div>
 
