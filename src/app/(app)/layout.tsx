@@ -8,18 +8,16 @@ import { MobileNavDrawer } from "@/components/layout/MobileNavDrawer";
 import { ModuleGateClient } from "@/components/layout/ModuleGateClient";
 import { DemoUserProvider } from "@/lib/context/demo-user";
 import { AuthGuard } from "@/components/layout/AuthGuard";
-import { TenantPreviewBanner } from "@/components/layout/TenantPreviewBanner";
 import { GuidedTour } from "@/components/tour/GuidedTour";
 import { getCapaActions, getRiskAssessments, getWorkspaceTasks, getIncidents } from "@/lib/data/ehsRepo";
-import { getEffectiveTenantId, getServerUser, getServerProfileId, getPreviewTenantId } from "@/lib/auth/session";
+import { getEffectiveTenantId, getServerUser, getServerProfileId } from "@/lib/auth/session";
 import type { NotifItem } from "@/components/layout/NotificationsDropdown";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const [serverUser, effectiveTenantId, profileId, previewTenantId] = await Promise.all([
+  const [serverUser, effectiveTenantId, profileId] = await Promise.all([
     getServerUser(),
     getEffectiveTenantId(),
     getServerProfileId(),
-    getPreviewTenantId(),
   ]);
 
   const [capas, risks, tasks, incidents] = await Promise.all([
@@ -101,7 +99,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {serverUser?.tenant_id !== null && <AssistantDrawer />}
         <MobileNavDrawer />
         <div className="flex h-screen flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
-          {previewTenantId && <TenantPreviewBanner tenantName={serverUser?.company ?? "tenant"} />}
           <TopBar notifCount={notifCount} notifItems={notifItems} serverUser={serverUser} />
           <CommandPalette />
           <div className="flex flex-1 overflow-hidden">

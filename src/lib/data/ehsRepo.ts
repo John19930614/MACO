@@ -3,8 +3,8 @@ import { cache } from "react";
 import { getStore } from "./store";
 import { MOCK_TENANT_ID, MOCK_SITE_ID, MOCK_TENANTS_ALL } from "./mock";
 import { MOCK_MODE } from "@/lib/env";
-import { createSupabaseServerClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { getEffectiveTenantId, getPreviewTenantId } from "@/lib/auth/session";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getEffectiveTenantId } from "@/lib/auth/session";
 import type {
   Chemical, LegalRequirement, Audit, AuditFinding, CapaAction,
   TrainingCourse, TrainingRecord, Document, WasteStream, Equipment,
@@ -18,19 +18,7 @@ import type {
 } from "@/lib/types";
 import type { Severity, CapaStatus, AuditStatus, RiskLevel, TrainingDelivery } from "@/lib/constants";
 
-// Reads run under the user's RLS session by default. When a Reliance superadmin
-// is previewing a tenant (read-only), reads switch to the service-role client so
-// that tenant's rows are visible — gated entirely by getPreviewTenantId(), which
-// returns non-null ONLY for a superadmin with the preview cookie. Normal tenant
-// users never hit this branch, so their isolation is unchanged.
-async function sb() {
-  const preview = await getPreviewTenantId();
-  if (preview) {
-    const svc = createServiceRoleClient();
-    if (svc) return svc;
-  }
-  return createSupabaseServerClient();
-}
+async function sb() { return createSupabaseServerClient(); }
 
 // ── Tenant / establishment identity (live tenant + onboarding profile) ─────────
 

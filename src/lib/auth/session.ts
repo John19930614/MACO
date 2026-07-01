@@ -1,11 +1,8 @@
 import "server-only";
 import { MOCK_MODE } from "@/lib/env";
 import { MOCK_TENANT_ID, MOCK_PROFILES_ALL } from "@/lib/data/mock";
-import { getAuthUser, getAuthProfile, DEMO_SARAH_ID, createServiceRoleClient } from "@/lib/supabase/server";
+import { getAuthUser, getAuthProfile, DEMO_SARAH_ID } from "@/lib/supabase/server";
 import type { ServerUser } from "./types";
-
-// Cookie holding the tenant a Reliance superadmin is previewing (read-only).
-export const PREVIEW_TENANT_COOKIE = "safetyiq-preview-tenant";
 
 // The nil UUID. In live mode, any query filtered by this tenant_id/profile_id
 // returns zero rows — a safe "no data" result that never matches a real or demo
@@ -25,25 +22,7 @@ export async function getServerTenantId(): Promise<string | null> {
     return tenantFromCookie || MOCK_TENANT_ID;
   }
   const profile = await getAuthProfile();
-  // Superadmin previewing a tenant (read-only) → surface that tenant for reads.
-  if (profile && profile.tenant_id === null) {
-    const preview = await getPreviewTenantId();
-    if (preview) return preview;
-  }
   return profile?.tenant_id ?? null;
-}
-
-// Read-only "preview as tenant" for Reliance superadmins. Returns the tenant_id
-// the superadmin is currently previewing (from an httpOnly cookie), or null.
-// GATED ON SUPERADMIN: a non-superadmin who somehow holds the cookie still gets
-// null here, so real tenant users' isolation is never affected by this feature.
-export async function getPreviewTenantId(): Promise<string | null> {
-  if (MOCK_MODE) return null;
-  const profile = await getAuthProfile();
-  if (!profile || profile.tenant_id !== null) return null; // superadmins only
-  const { cookies } = await import("next/headers");
-  const cookieStore = await cookies();
-  return cookieStore.get(PREVIEW_TENANT_COOKIE)?.value || null;
 }
 
 // Resolves a tenant_id that is ALWAYS safe to pass to a data query.
@@ -92,30 +71,6 @@ export async function getServerUser(): Promise<ServerUser | null> {
   if (MOCK_MODE) return null;
   const profile = await getAuthProfile();
   if (!profile) return null;
-
-  // Superadmin previewing a tenant: present AS that tenant so the tenant nav and
-  // modules render. The persistent preview banner makes this state unmistakable,
-  // and all writes are blocked (read-only).
-  if (profile.tenant_id === null) {
-    const preview = await getPreviewTenantId();
-    if (preview) {
-      const svc = createServiceRoleClient();
-      let company: string | null = null;
-      if (svc) {
-        const { data } = await svc.from("tenants").select("name").eq("id", preview).single();
-        company = (data?.name as string) ?? null;
-      }
-      return {
-        id: profile.id,
-        display_name: profile.display_name,
-        role: profile.role,
-        tenant_id: preview,
-        job_title: profile.job_title ?? null,
-        company,
-      };
-    }
-  }
-
   const t = profile.tenants as { name: string } | { name: string }[] | null;
   const company = Array.isArray(t) ? (t[0]?.name ?? null) : (t?.name ?? null);
   return {

@@ -7,10 +7,9 @@ import { Modal, Field, Input, Select as FormSelect, SubmitRow } from "@/componen
 import { createClient } from "@/lib/supabase/client";
 import { MOCK_MODE } from "@/lib/env";
 import { addTenant, updateTenant } from "@/lib/actions/sa";
-import { startTenantPreview } from "@/lib/actions/preview";
 import {
   Search, Download, Building2, Users, Rocket, TrendingUp,
-  Pencil, Trash2, ChevronUp, ChevronDown, ExternalLink, Eye,
+  Pencil, Trash2, ChevronUp, ChevronDown, ExternalLink,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -497,15 +496,6 @@ export default function SACompaniesPage() {
                     <td className="px-4 py-3 text-xs text-slate-400">{c.created_at}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
-                        {!MOCK_MODE && c.status !== "archived" && (
-                          <button
-                            onClick={() => startTenantPreview(c.id)}
-                            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-violet-900/40 hover:text-violet-300"
-                            title="Preview this tenant's app (read-only)"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                          </button>
-                        )}
                         <Link
                           href={`/sa/companies/${c.id}`}
                           className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-blue-900/40 hover:text-blue-300"
