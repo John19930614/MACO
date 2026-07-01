@@ -12,7 +12,22 @@ export function PassportActions({ chemicalId }: Props) {
   const [exporting, setExporting] = useState<"pdf" | "png" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handlePrint = () => window.print();
+  // Fit the label onto ONE landscape page. A fixed print scale can't do this —
+  // the label's height varies by chemical. Measure it and compute the scale that
+  // fits both the width and height of a landscape Letter page (minus 0.3in
+  // margins, at 96 CSS px/in), then expose it to the print CSS as --print-scale.
+  const handlePrint = () => {
+    const el = document.getElementById("chemical-passport-label");
+    if (el) {
+      const PAGE_W = (11 - 0.6) * 96; // 998px printable width  (landscape Letter)
+      const PAGE_H = (8.5 - 0.6) * 96; // 758px printable height
+      const w = el.scrollWidth || 1160;
+      const h = el.scrollHeight || 1;
+      const scale = Math.min(PAGE_W / w, PAGE_H / h, 1) * 0.98; // 2% safety margin
+      el.style.setProperty("--print-scale", scale.toFixed(3));
+    }
+    window.print();
+  };
 
   const captureLabel = async () => {
     const { default: html2canvas } = await import("html2canvas");
