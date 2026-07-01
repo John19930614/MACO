@@ -18,6 +18,14 @@ const xmlEsc = (v: unknown): string => {
     .replace(/'/g, "&apos;");
 };
 
+// CSV/formula-injection guard for text cells. A string that opens with =, +, -, @
+// (or a leading tab/CR that Excel trims before parsing) is treated as a formula by
+// Excel/Sheets/LibreOffice. Prefixing an apostrophe forces it to render as literal
+// text — the apostrophe is not shown to the user. Only applied to inline strings;
+// numeric cells go through their own branch and are never at risk.
+export const antiInjection = (s: string): string =>
+  /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+
 // ── Style token type ──────────────────────────────────────────────────────────
 
 export type StyleId =
@@ -198,7 +206,7 @@ function sheetXml(sheet: XlsSheet, xfIndex: Record<StyleId, number>): string {
       } else if (isNum) {
         cellsXml.push(`<c r="${ref}"${s}><v>${Number(c.v)}</v></c>`);
       } else {
-        cellsXml.push(`<c r="${ref}"${s} t="inlineStr"><is><t xml:space="preserve">${xmlEsc(c.v)}</t></is></c>`);
+        cellsXml.push(`<c r="${ref}"${s} t="inlineStr"><is><t xml:space="preserve">${xmlEsc(antiInjection(String(c.v)))}</t></is></c>`);
       }
       if (span > 0) merges.push(`${ref}:${colLetter(startCol + span)}${rowNum}`);
       col += span + 1;

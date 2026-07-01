@@ -1,8 +1,10 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { useState } from "react";
+import { Download, Loader2, AlertCircle } from "lucide-react";
 import { useDemoUser } from "@/lib/context/demo-user";
 import type { Chemical } from "@/lib/types";
+import { exportChemicalSummaries } from "@/lib/actions/exportChemicalSummaries";
 import {
   buildXls,
   titleBlock,
@@ -25,12 +27,15 @@ function fmtDate(s: string | null | undefined): string {
   return new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-const INVENTORY_COLS = [180, 90, 120, 65, 50, 120, 80, 85, 90, 140];
+const INVENTORY_COLS = [180, 90, 120, 65, 50, 120, 80, 85, 90, 140, 320];
+const INV = 11; // inventory-sheet column count (incl. AI Quick Summary)
 const D = 5;
 
 export function ChemicalExportButton({ chemicals }: { chemicals: Chemical[] }) {
   const { user } = useDemoUser();
-  function handleExport() {
+  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
+
+  function buildAndDownload(summaries: Record<string, string>) {
     const now = new Date();
     const dateStr = now.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
     const isoDate = now.toISOString().slice(0, 10);
@@ -112,9 +117,12 @@ export function ChemicalExportButton({ chemicals }: { chemicals: Chemical[] }) {
           { v: fmtDate(c.sds_expiry), s: alt(i) },
           { v: c.is_scheduled ? "Yes" : "No", s: schedStyle },
           { v: highHaz ? "HIGH — Carcinogen/Toxic" : "Standard", s: riskStyle },
+          { v: summaries[c.id] ?? "—", s: alt(i) },
         ] as XlsCell[],
       };
     }
+
+    const INV_HEADERS = ["Chemical Name", "CAS #", "Supplier", "Qty", "Unit", "Location", "SDS Status", "SDS Expiry", "Scheduled", "Risk Level", "AI Quick Summary"];
 
     // ── Sheet 2: Chemical Inventory ─────────────────────────────────────────────
 
@@ -124,9 +132,9 @@ export function ChemicalExportButton({ chemicals }: { chemicals: Chemical[] }) {
         "Chemical Inventory",
         "OSHA HazCom Standard — 29 CFR 1910.1200 · GHS Hazard Communication",
         dateStr,
-        10,
+        INV,
       ),
-      theadRow(["Chemical Name", "CAS #", "Supplier", "Qty", "Unit", "Location", "SDS Status", "SDS Expiry", "Scheduled", "Risk Level"]),
+      theadRow(INV_HEADERS),
       ...chemicals.map((c, i) => buildInventoryRow(c, i)),
     ];
 
@@ -138,15 +146,25 @@ export function ChemicalExportButton({ chemicals }: { chemicals: Chemical[] }) {
         "High Hazard & Scheduled",
         "OSHA HazCom Standard — 29 CFR 1910.1200 · GHS Hazard Communication",
         dateStr,
-        10,
+        INV,
       ),
       ...(highHazard.length === 0
-        ? [{ cells: [{ v: "✓ No high-hazard or scheduled substances found.", s: "good", m: 9 }] as XlsCell[] }]
+        ? [{ cells: [{ v: "✓ No high-hazard or scheduled substances found.", s: "good", m: INV - 1 }] as XlsCell[] }]
         : [
-            theadRow(["Chemical Name", "CAS #", "Supplier", "Qty", "Unit", "Location", "SDS Status", "SDS Expiry", "Scheduled", "Risk Level"]),
+            theadRow(INV_HEADERS),
             ...highHazard.map((c, i) => buildInventoryRow(c, i)),
           ]),
     ];
+
+    // ── Footer note: AI summaries are advisory ──────────────────────────────────
+    const aiNote: XlsRow = {
+      cells: [{
+        v: "AI-generated summaries are for reference only and do not replace official Safety Data Sheets or safety documentation. No inventory records were modified by this export.",
+        s: "meta",
+        m: INV - 1,
+      }] as XlsCell[],
+    };
+    inventoryRows.push(blankRow(INV), aiNote);
 
     buildXls({
       filename: `${user.company.split(" ")[0]}-Chemical-Inventory-${isoDate}.xls`,
@@ -158,13 +176,49 @@ export function ChemicalExportButton({ chemicals }: { chemicals: Chemical[] }) {
     });
   }
 
+  async function handleExport() {
+    if (chemicals.length === 0) return;
+    setStatus("loading");
+    try {
+      // AI-assisted plain-language summaries are generated server-side at export
+      // time only. On any failure the action still returns a per-row fallback, so
+      // the workbook always builds.
+      const { summaries } = await exportChemicalSummaries();
+      buildAndDownload(summaries);
+      setStatus("idle");
+    } catch (err) {
+      console.error("[ChemicalExportButton] export failed:", err);
+      // Last-resort fallback: still produce the workbook with empty summary cells
+      // so a transient server error never blocks the user's export.
+      try {
+        buildAndDownload({});
+        setStatus("idle");
+      } catch {
+        setStatus("error");
+        setTimeout(() => setStatus("idle"), 6000);
+      }
+    }
+  }
+
+  const isLoading = status === "loading";
+
   return (
-    <button
-      onClick={handleExport}
-      className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-    >
-      <Download className="h-3.5 w-3.5" />
-      Export Inventory
-    </button>
+    <div className="flex flex-col items-end gap-1">
+      <button
+        onClick={handleExport}
+        disabled={isLoading || chemicals.length === 0}
+        aria-busy={isLoading}
+        className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+        {isLoading ? "Preparing your file…" : "Export Inventory"}
+      </button>
+      {status === "error" && (
+        <span role="alert" className="flex items-center gap-1 text-xs text-red-600">
+          <AlertCircle className="h-3 w-3" />
+          Couldn&apos;t generate the export. Please try again.
+        </span>
+      )}
+    </div>
   );
 }
