@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ScanLine } from "lucide-react";
 import { getChemicalById } from "@/lib/data/ehsRepo";
 import { PageHeader, Pill } from "@/components/ui/primitives";
 import { EditChemicalForm } from "./EditChemicalForm";
@@ -31,13 +31,22 @@ export default async function ChemicalDetailPage({ params }: { params: Promise<{
         title={chemical.name}
         subtitle={`Chemical · ${chemical.storage_location}`}
         actions={
-          <Link
-            href="/chemicals"
-            className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Chemicals
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/chemicals/${chemical.id}/passport`}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+              <ScanLine className="h-4 w-4" />
+              Generate Smart Chemical Passport Label
+            </Link>
+            <Link
+              href="/chemicals"
+              className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Chemicals
+            </Link>
+          </div>
         }
       />
 
