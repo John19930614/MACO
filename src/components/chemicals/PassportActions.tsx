@@ -9,24 +9,35 @@ interface Props {
 }
 
 export function PassportActions({ chemicalId }: Props) {
-  const [exporting, setExporting] = useState<"pdf" | "png" | null>(null);
+  const [exporting, setExporting] = useState<"pdf" | "png" | "print" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Fit the label onto ONE landscape page. A fixed print scale can't do this —
-  // the label's height varies by chemical. Measure it and compute the scale that
-  // fits both the width and height of a landscape Letter page (minus 0.3in
-  // margins, at 96 CSS px/in), then expose it to the print CSS as --print-scale.
-  const handlePrint = () => {
-    const el = document.getElementById("chemical-passport-label");
-    if (el) {
-      const PAGE_W = (11 - 0.6) * 96; // 998px printable width  (landscape Letter)
-      const PAGE_H = (8.5 - 0.6) * 96; // 758px printable height
-      const w = el.scrollWidth || 1160;
-      const h = el.scrollHeight || 1;
-      const scale = Math.min(PAGE_W / w, PAGE_H / h, 1) * 0.98; // 2% safety margin
-      el.style.setProperty("--print-scale", scale.toFixed(3));
+  // Print the SAME single fitted image the PNG/PDF export produces (a proven,
+  // working render). CSS transform/zoom on the live element can't guarantee one
+  // page — transforms don't shrink the box the print engine paginates on. An
+  // image sized to the page physically cannot paginate → always exactly one
+  // landscape page, whatever the label's height.
+  const handlePrint = async () => {
+    setError(null);
+    setExporting("print");
+    try {
+      const canvas = await captureLabel();
+      const dataUrl = canvas.toDataURL("image/png");
+      const w = window.open("", "_blank", "width=1100,height=800");
+      if (!w) { window.print(); return; } // popup blocked → in-page fallback
+      w.document.write(
+        `<!doctype html><html><head><meta charset="utf-8"><title>Chemical Passport</title>` +
+        `<style>@page{size:landscape;margin:0.3in}html,body{height:100%;margin:0;background:#fff}` +
+        `body{display:flex;align-items:center;justify-content:center}` +
+        `img{max-width:100%;max-height:100%}</style></head>` +
+        `<body><img alt="Chemical passport" src="${dataUrl}" onload="setTimeout(function(){window.focus();window.print();},150)"/></body></html>`,
+      );
+      w.document.close();
+    } catch {
+      window.print(); // capture failed → plain browser print
+    } finally {
+      setExporting(null);
     }
-    window.print();
   };
 
   const captureLabel = async () => {
@@ -100,10 +111,12 @@ export function PassportActions({ chemicalId }: Props) {
 
       <button
         onClick={handlePrint}
-        className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+        disabled={!!exporting}
+        className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50"
         aria-label="Print label"
       >
-        <Printer className="h-4 w-4" /> Print Label
+        {exporting === "print" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+        {exporting === "print" ? "Preparing…" : "Print Label"}
       </button>
 
       <button
