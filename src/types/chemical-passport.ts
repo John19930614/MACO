@@ -13,19 +13,22 @@ export interface ChemicalPassportData {
   id: string;
   chemicalName: string;           // Always shown alongside CAS number — never CAS alone
   productId: string;
+  smartLabelId: string;           // e.g. 'SCP-CR1906-250521'
   casNumber: string;
   formula: string;
   molecularWeight: string | number;
+  signalWord: "Danger" | "Warning" | null; // derived from hazard statements
   ghsPictograms: string[];        // e.g. ['GHS01', 'GHS07']
   hazardStatements: string[];     // e.g. ['H225 – Highly flammable liquid and vapour']
   ppeRequirements: PpeRequirement[];
   storageGuidance: string;        // Plain action-oriented language
+  compatibleWith: string[];       // 'Compatible With' list
   incompatibleWith: string[];     // 'Do Not Mix With / Store Away From' list
   usedFor: string[];              // Renamed from 'task modes'
   emergencyPhone: string;
   emergencyName: string | null;
   emergencyInstructions: string | null;
-  aiConfidenceScore: number | null; // 0–100; displayed as colored dot, never raw number
+  aiConfidenceScore: number | null; // 0–100; shown as a confidence ring
   lastVerifiedAt: string | null;  // ISO date string
   reviewStatus: ReviewStatus;
 }

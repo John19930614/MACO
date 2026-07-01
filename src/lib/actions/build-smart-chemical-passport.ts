@@ -2,9 +2,27 @@
 
 import { getChemicalById, getTenantSettings } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
-import { derivePictograms, getHText } from "@/lib/ghsData";
+import { derivePictograms, getHText, deriveSignalWord } from "@/lib/ghsData";
 import { getPpeName, getStorageClassName } from "@/lib/chemicalRefData";
+import { computeMolecularWeight } from "@/lib/chemicals/molecularWeight";
 import type { ChemicalPassportData } from "@/types/chemical-passport";
+
+// Generic, honest "compatible with" guidance (real compatibility must come from
+// the SDS). Kept short so the label reads cleanly.
+const COMPATIBLE_BASE = [
+  "Same-class waste containers",
+  "Secondary containment / spill trays",
+  "Materials listed as compatible in SDS Section 7",
+];
+
+function smartLabelId(productId: string, isoDate: string | null): string {
+  const d = isoDate ? new Date(isoDate) : new Date();
+  const yy = String(d.getFullYear()).slice(2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const pid = (productId || "CHEM").replace(/[^A-Za-z0-9]/g, "").slice(0, 12) || "CHEM";
+  return `SCP-${pid}-${yy}${mm}${dd}`;
+}
 
 // Storage-class → common incompatibilities (plain-language, for the
 // "Do Not Mix With / Store Away From" section). Derived from the chemical's
@@ -75,17 +93,23 @@ export async function getChemicalPassportData(id: string): Promise<ChemicalPassp
     label: getPpeName(code),
   }));
 
+  const productId = chemical.label_code || chemical.id.slice(0, 8).toUpperCase();
+  const mw = computeMolecularWeight(chemical.chemical_formula);
+
   return {
     id: chemical.id,
     chemicalName: chemical.name || "Unknown Chemical",
-    productId: chemical.label_code || chemical.id.slice(0, 8).toUpperCase(),
+    productId,
+    smartLabelId: smartLabelId(productId, chemical.hazard_band_reviewed_at ?? null),
     casNumber: chemical.cas_number || "—",
     formula: chemical.chemical_formula || "—",
-    molecularWeight: "—", // not stored on chemical_inventory
+    molecularWeight: mw !== null ? mw : "—",
+    signalWord: deriveSignalWord(chemical.hazard_statements ?? []),
     ghsPictograms: derivePictograms(chemical.hazard_statements ?? []),
     hazardStatements,
     ppeRequirements,
     storageGuidance: buildStorageGuidance(chemical.storage_class ?? null, chemical.storage_location ?? null),
+    compatibleWith: COMPATIBLE_BASE,
     incompatibleWith: deriveIncompatibles(chemical.storage_class ?? null),
     usedFor: [], // not captured on the chemical record
     emergencyPhone,

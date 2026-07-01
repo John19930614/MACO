@@ -21,11 +21,11 @@ interface Props {
 export function PpeIcon({ code, label }: Props) {
   const Icon = ICONS[code] ?? ShieldCheck;
   return (
-    <div style={{ display: "flex", width: 80, flexDirection: "column", alignItems: "center", gap: 4 }} aria-label={`PPE Required: ${label}`}>
-      <div style={{ display: "flex", height: 48, width: 48, alignItems: "center", justifyContent: "center", borderRadius: 9999, border: "2px solid #1d4ed8", background: "#eff6ff" }}>
-        <Icon size={24} color="#1d4ed8" />
+    <div style={{ display: "flex", width: 72, flexDirection: "column", alignItems: "center", gap: 5 }} aria-label={`PPE Required: ${label}`}>
+      <div style={{ display: "flex", height: 44, width: 44, alignItems: "center", justifyContent: "center", borderRadius: 9999, background: "#1e3a8a" }}>
+        <Icon size={22} color="#ffffff" />
       </div>
-      <span style={{ textAlign: "center", fontSize: 12, fontWeight: 700, lineHeight: 1.15, color: "#1e40af" }}>{label}</span>
+      <span style={{ textAlign: "center", fontSize: 11, fontWeight: 600, lineHeight: 1.15, color: "#334155" }}>{label}</span>
     </div>
   );
 }

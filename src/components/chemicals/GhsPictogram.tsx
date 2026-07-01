@@ -105,9 +105,10 @@ const SYMBOLS: Record<string, React.ReactNode> = {
 interface Props {
   code: string;
   size?: number;
+  showLabel?: boolean;
 }
 
-export function GhsPictogram({ code, size = 56 }: Props) {
+export function GhsPictogram({ code, size = 56, showLabel = true }: Props) {
   const label = GHS_LABELS[code] ?? code;
   const clipId = `ghs-${code}`;
   const symbol = SYMBOLS[code];
@@ -131,7 +132,7 @@ export function GhsPictogram({ code, size = 56 }: Props) {
           {code}
         </div>
       )}
-      <span style={{ fontSize: 12, fontWeight: 600, color: "#b91c1c" }}>{label}</span>
+      {showLabel && <span style={{ fontSize: 12, fontWeight: 600, color: "#b91c1c" }}>{label}</span>}
     </div>
   );
 }
