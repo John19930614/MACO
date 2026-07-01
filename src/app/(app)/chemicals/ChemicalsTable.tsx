@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import type { Chemical } from "@/lib/types";
 import { Pill } from "@/components/ui/primitives";
@@ -419,6 +419,7 @@ export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
   const [category, setCategory]     = useState<CategoryKey>("all");
   const [expanded, setExpanded]     = useState<Set<string>>(new Set());
   const [sdsModal, setSdsModal]     = useState<Chemical | null>(null);
+  const [page, setPage]             = useState(1);
 
   function toggleGroup(key: string) {
     setExpanded((prev) => {
@@ -505,6 +506,16 @@ export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
 
   const totalContainers = filtered.reduce((s, g) => s + g.items.length, 0);
 
+  // Paginate the rendered rows — a large inventory (1000s of chemicals) freezes
+  // the browser if every group renders at once.
+  const PER_PAGE = 50;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const safePage = Math.min(page, pageCount);
+  const visible = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
+
+  // Reset to the first page whenever the filters change the result set.
+  useEffect(() => { setPage(1); }, [category, hazardFilter, search]);
+
   return (
     <>
       {sdsModal && <SdsModal chemical={sdsModal} onClose={() => setSdsModal(null)} />}
@@ -569,7 +580,7 @@ export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((group) => (
+            {visible.map((group) => (
               <GroupRow
                 key={group.key}
                 group={group}
@@ -588,6 +599,32 @@ export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {pageCount > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3">
+          <span className="text-xs text-slate-400">
+            Showing {(safePage - 1) * PER_PAGE + 1}–{Math.min(safePage * PER_PAGE, filtered.length)} of {filtered.length}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+            >
+              ← Prev
+            </button>
+            <span className="px-2 text-xs font-medium text-slate-500">Page {safePage} of {pageCount}</span>
+            <button
+              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              disabled={safePage >= pageCount}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
