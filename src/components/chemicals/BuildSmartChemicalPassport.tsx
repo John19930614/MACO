@@ -83,9 +83,16 @@ export function BuildSmartChemicalPassport({ data }: Props) {
     <>
       <style>{`
         @media print {
+          @page { size: landscape; margin: 0.3in; }
+          html, body { background: #ffffff !important; }
           body * { visibility: hidden; }
           #chemical-passport-label, #chemical-passport-label * { visibility: visible; }
-          #chemical-passport-label { position: absolute; inset: 0; margin: 0 auto; }
+          /* The label is a fixed 1160px wide; scale it down so it fits a
+             landscape page instead of overflowing to a tiny corner print. */
+          #chemical-passport-label {
+            position: absolute; left: 0; top: 0;
+            transform: scale(0.82); transform-origin: top left;
+          }
           .no-print { display: none !important; }
         }
       `}</style>

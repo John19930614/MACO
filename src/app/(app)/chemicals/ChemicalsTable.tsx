@@ -390,9 +390,18 @@ function GroupRow({
           </div>
         </td>
 
-        {/* Label (on representative) */}
+        {/* Label (on representative) — branded Smart Chemical Passport + the
+            simpler GHS workplace label */}
         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-          <GhsLabelButton chemical={rep} />
+          <div className="flex items-center gap-1.5">
+            <Link
+              href={`/chemicals/${rep.id}/passport`}
+              className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
+            >
+              <Printer className="h-3.5 w-3.5" /> Passport
+            </Link>
+            <GhsLabelButton chemical={rep} />
+          </div>
         </td>
       </tr>
 
