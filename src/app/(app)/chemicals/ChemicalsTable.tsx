@@ -390,8 +390,8 @@ function GroupRow({
           </div>
         </td>
 
-        {/* Label (on representative) — branded Smart Chemical Passport + the
-            simpler GHS workplace label */}
+        {/* Label (on representative) — branded Smart Chemical Passport.
+            The per-container GHS workplace label lives on the expanded rows. */}
         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-1.5">
             <Link
@@ -400,7 +400,6 @@ function GroupRow({
             >
               <Printer className="h-3.5 w-3.5" /> Passport
             </Link>
-            <GhsLabelButton chemical={rep} />
           </div>
         </td>
       </tr>

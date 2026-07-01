@@ -306,6 +306,16 @@ function parsePpeCodes(raw: string | null): string[] {
   )];
 }
 
+// Container-capacity fields (drive EU CLP label sizing). Blank → null so a
+// missing value falls back to the smallest CLP tier at print time.
+function containerCapFields(formData: FormData): { container_capacity: number | null; container_capacity_unit: string | null } {
+  const raw = ((formData.get("container_capacity") as string) ?? "").trim();
+  return {
+    container_capacity: raw === "" ? null : (parseFloat(raw) || null),
+    container_capacity_unit: (formData.get("container_capacity_unit") as string) || null,
+  };
+}
+
 export async function addChemical(_prev: unknown, formData: FormData) {
   const hazards      = parseHazardCodes(formData.get("hazard_codes") as string);
   const precautions  = parsePrecautionCodes(formData.get("precaution_codes") as string);
@@ -328,6 +338,7 @@ export async function addChemical(_prev: unknown, formData: FormData) {
         precautionary_statements: precautions,
         quantity: parseFloat(formData.get("quantity") as string) || 0,
         unit: (formData.get("unit") as string) || "L",
+        ...containerCapFields(formData),
         storage_location: (formData.get("storage_location") as string) || "",
         storage_class: storageClass,
         recommended_ppe: ppe,
@@ -397,6 +408,7 @@ export async function updateChemical(id: string, formData: FormData) {
         cas_number:       (formData.get("cas_number") as string) || null,
         quantity:         parseFloat(formData.get("quantity") as string) || 0,
         unit:             (formData.get("unit") as string) || "L",
+        ...containerCapFields(formData),
         storage_location: (formData.get("storage_location") as string) || "",
         supplier:         (formData.get("supplier") as string) || null,
         ...(hasHazards ? {
@@ -422,6 +434,7 @@ export async function updateChemical(id: string, formData: FormData) {
         cas_number:       (formData.get("cas_number") as string) || null,
         quantity:         parseFloat(formData.get("quantity") as string) || 0,
         unit:             (formData.get("unit") as string) || "L",
+        ...containerCapFields(formData),
         storage_location: (formData.get("storage_location") as string) || "",
         supplier:         (formData.get("supplier") as string) || null,
         ...(hasHazards ? {

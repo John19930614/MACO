@@ -5,6 +5,7 @@ import { Tag, Printer, X, Shield, Plus, Package, Phone, FileText } from "lucide-
 import type { Chemical } from "@/lib/types";
 import { deriveSignalWord, derivePictograms, getHText, getPText } from "@/lib/ghsData";
 import { logLabelPrint, type LabelSnapshot } from "@/lib/actions/labels";
+import { labelSizeForContainer, isCompactTier, type ClpTier } from "@/lib/chemicals/labelSizing";
 
 const REGULATORY_BASIS = "OSHA 29 CFR 1910.1200 (HazCom 2012) / GHS Rev. 9 / WHMIS 2015";
 
@@ -128,7 +129,7 @@ function GhsPictogram({ code, size = 60 }: { code: string; size?: number }) {
 
 // ── Print HTML builder — same symbols as HTML-format SVG strings ──────────────
 
-function buildPictogramSvgStr(code: string, size: number): string {
+function buildPictogramSvgStr(code: string, sizeMm: number): string {
   const SYMBOL_HTML: Record<string, string> = {
     GHS01: `<polygon points="40,12 43,23 54,18 47,28 60,31 49,36 55,47 41,41 40,53 39,41 25,47 31,36 20,31 33,28 26,18 37,23" fill="black"/><circle cx="40" cy="63" r="12" fill="black"/><path d="M 40 51 Q 50 44 47 35" stroke="black" stroke-width="2.5" fill="none" stroke-linecap="round"/>`,
     GHS02: `<path d="M 40 68 C 25 59 17 46 22 33 C 24 25 31 24 30 30 C 30 21 35 13 40 11 C 40 18 37 22 40 25 C 43 17 50 12 53 18 C 57 25 53 32 55 38 C 60 47 54 59 40 68 Z" fill="black"/><ellipse cx="40" cy="50" rx="5.5" ry="9" fill="white"/>`,
@@ -141,7 +142,7 @@ function buildPictogramSvgStr(code: string, size: number): string {
     GHS09: `<rect x="18" y="36" width="6" height="28" rx="2" fill="black"/><path d="M 21 36 L 10 22 M 21 42 L 8 34 M 21 36 L 34 22 M 21 42 L 36 30" stroke="black" stroke-width="3.5" stroke-linecap="round" fill="none"/><path d="M 12 66 L 30 66" stroke="black" stroke-width="3" stroke-linecap="round" fill="none"/><path d="M 44 54 C 46 47 54 44 61 46 C 68 48 70 54 70 57 C 70 60 68 65 61 67 C 54 69 46 67 44 60 Z" fill="black"/><path d="M 44 57 L 36 52 L 36 62 Z" fill="black"/><circle cx="63" cy="56" r="3.5" fill="white"/>`,
   };
   const sym = SYMBOL_HTML[code] ?? "";
-  return `<svg width="${size}" height="${size}" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:top;"><defs><clipPath id="c${code}"><polygon points="40,2 78,40 40,78 2,40"/></clipPath></defs><polygon points="40,2 78,40 40,78 2,40" fill="white" stroke="#cc0000" stroke-width="5"/><g clip-path="url(#c${code})">${sym}</g></svg>`;
+  return `<svg width="${sizeMm}mm" height="${sizeMm}mm" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:top;"><defs><clipPath id="c${code}"><polygon points="40,2 78,40 40,78 2,40"/></clipPath></defs><polygon points="40,2 78,40 40,78 2,40" fill="white" stroke="#cc0000" stroke-width="5"/><g clip-path="url(#c${code})">${sym}</g></svg>`;
 }
 
 function esc(s: string | null | undefined): string {
@@ -155,42 +156,50 @@ function buildPrintHtml(chemical: Chemical): string {
   const signalWord = deriveSignalWord(h);
   const pictogramCodes = derivePictograms(h);
 
-  const picsHtml = pictogramCodes.map((c) => buildPictogramSvgStr(c, 72)).join(" ");
+  // EU CLP: label page + pictogram size come from the container capacity.
+  const size = labelSizeForContainer(chemical.container_capacity, chemical.container_capacity_unit);
+  const compact = isCompactTier(size);
+  const FONT_SCALE: Record<ClpTier, number> = { "≤3 L": 0.72, "3–50 L": 0.86, "50–500 L": 1, ">500 L": 1.3 };
+  const fscale = FONT_SCALE[size.tier];
+  const fs = (pt: number) => (pt * fscale).toFixed(1) + "pt";
+
+  const picsHtml = pictogramCodes.map((c) => buildPictogramSvgStr(c, size.pictogramMm)).join(" ");
 
   const hLines = h.map((code) => {
     const text = getHText(code);
-    return `<p style="margin:1px 0 3px;font-size:9.5pt;line-height:1.3;"><strong style="color:#8b0000;">${esc(code)}</strong>${text ? ": " + esc(text) : " — see SDS"}</p>`;
+    return `<p style="margin:1px 0 3px;font-size:${fs(9.5)};line-height:1.3;"><strong style="color:#8b0000;">${esc(code)}</strong>${text ? ": " + esc(text) : " — see SDS"}</p>`;
   }).join("");
 
-  const pLines = p.slice(0, 12).map((code) => {
+  // Compact tiers (small containers) trim P-statements so the essentials stay legible.
+  const pLines = p.slice(0, compact ? 6 : 12).map((code) => {
     const text = getPText(code);
-    return `<p style="margin:1px 0 3px;font-size:9.5pt;line-height:1.3;"><strong style="color:#1d4ed8;">${esc(code)}</strong>${text ? ": " + esc(text) : " — see SDS"}</p>`;
+    return `<p style="margin:1px 0 3px;font-size:${fs(9.5)};line-height:1.3;"><strong style="color:#1d4ed8;">${esc(code)}</strong>${text ? ": " + esc(text) : " — see SDS"}</p>`;
   }).join("");
 
   const signalHtml = signalWord
-    ? `<div style="font-size:24pt;font-weight:900;color:${signalWord === "Danger" ? "#cc0000" : "#d97706"};margin-bottom:6px;letter-spacing:-0.5px;">${signalWord.toUpperCase()}</div>`
+    ? `<div style="font-size:${fs(24)};font-weight:900;color:${signalWord === "Danger" ? "#cc0000" : "#d97706"};margin-bottom:6px;letter-spacing:-0.5px;">${signalWord.toUpperCase()}</div>`
     : "";
 
   const labelCodeHtml = chemical.label_code
-    ? `<div style="font-family:monospace;font-size:11pt;font-weight:bold;letter-spacing:2px;color:#334155;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:3px 8px;display:inline-block;margin-top:4px;">${esc(chemical.label_code)}</div>`
+    ? `<div style="font-family:monospace;font-size:${fs(11)};font-weight:bold;letter-spacing:2px;color:#334155;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:3px 8px;display:inline-block;margin-top:4px;">${esc(chemical.label_code)}</div>`
     : "";
 
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Label — ${esc(chemical.name)}</title>
 <style>
-  @page { size: 4in 4in; margin: 0.15in; }
+  @page { size: ${size.labelWmm}mm ${size.labelHmm}mm; margin: 3mm; }
   * { box-sizing: border-box; }
-  body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 8px; background: white; }
-  .label { border: 3px solid ${h.length > 0 ? "#cc0000" : "#334155"}; padding: 10px; }
+  body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: ${compact ? 4 : 8}px; background: white; }
+  .label { border: 3px solid ${h.length > 0 ? "#cc0000" : "#334155"}; padding: ${compact ? 6 : 10}px; }
   .hdr { border-bottom: 2px solid ${h.length > 0 ? "#cc0000" : "#334155"}; padding-bottom: 6px; margin-bottom: 8px; }
-  .name { font-size: 15pt; font-weight: bold; line-height: 1.2; color: #111; }
-  .sub { font-size: 8.5pt; color: #555; margin-top: 3px; }
+  .name { font-size: ${fs(15)}; font-weight: bold; line-height: 1.2; color: #111; }
+  .sub { font-size: ${fs(8.5)}; color: #555; margin-top: 3px; }
   .body { display: flex; gap: 10px; }
   .pics { flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; }
   .content { flex: 1; }
-  .sec-title { font-size: 7pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.6px; color: #888; border-bottom: 1px solid #ddd; margin: 6px 0 3px; padding-bottom: 1px; }
-  .footer { border-top: 1px solid #ccc; margin-top: 8px; padding-top: 6px; font-size: 7.5pt; color: #555; line-height: 1.5; }
-  .reg { font-size: 6.5pt; color: #aaa; margin-top: 2px; }
+  .sec-title { font-size: ${fs(7)}; font-weight: bold; text-transform: uppercase; letter-spacing: 0.6px; color: #888; border-bottom: 1px solid #ddd; margin: 6px 0 3px; padding-bottom: 1px; }
+  .footer { border-top: 1px solid #ccc; margin-top: 8px; padding-top: 6px; font-size: ${fs(7.5)}; color: #555; line-height: 1.5; }
+  .reg { font-size: ${fs(6.5)}; color: #aaa; margin-top: 2px; }
 </style></head>
 <body>
 <div class="label">
@@ -215,7 +224,7 @@ function buildPrintHtml(chemical: Chemical): string {
     ${chemical.storage_location ? `<strong>Storage:</strong> ${esc(chemical.storage_location)}<br>` : ""}
     <strong>Emergency:</strong> Call 911 &nbsp;&middot;&nbsp; Poison Control: 1-800-222-1222<br>
     Refer to Safety Data Sheet for complete health, safety and environmental information.
-    <div class="reg">${h.length > 0 ? "GHS workplace label &mdash; OSHA 29 CFR 1910.1200 (HazCom 2012) / GHS Rev. 9 / WHMIS 2015" : "Container identification label &mdash; SafetyIQ"}</div>
+    <div class="reg">${h.length > 0 ? "GHS workplace label &mdash; OSHA 29 CFR 1910.1200 (HazCom 2012) / GHS Rev. 9 / WHMIS 2015" : "Container identification label &mdash; SafetyIQ"}<br>Label size ${size.labelWmm}&times;${size.labelHmm} mm (EU CLP ${esc(size.tier)})${size.isFallback ? " &mdash; container size not set; using smallest tier" : ""}.</div>
   </div>
 </div>
 <script>setTimeout(function(){window.print();},350);</script>
@@ -251,6 +260,7 @@ export function GhsLabelButton({ chemical }: { chemical: Chemical }) {
   const signalWord = deriveSignalWord(h);
   const picCodes   = derivePictograms(h);
   const cats       = categorizePStatements(p);
+  const size       = labelSizeForContainer(chemical.container_capacity, chemical.container_capacity_unit);
 
   function recordPrint() {
     const snapshot: LabelSnapshot = {
@@ -320,6 +330,12 @@ export function GhsLabelButton({ chemical }: { chemical: Chemical }) {
                 <div className="text-sm font-bold text-slate-800">GHS Workplace Label</div>
                 <div className="mt-0.5 text-xs text-slate-500">
                   {chemical.name}{chemical.label_code ? ` ${chemical.label_code}` : ""}
+                </div>
+                <div className="mt-1 text-[11px] font-medium text-slate-600">
+                  Prints at {size.labelWmm}×{size.labelHmm} mm — EU CLP {size.tier}
+                  {size.isFallback && (
+                    <span className="text-amber-600"> · container size not set (smallest tier); set it on the chemical to size correctly</span>
+                  )}
                 </div>
               </div>
               <button onClick={() => setOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">

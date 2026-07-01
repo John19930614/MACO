@@ -111,6 +111,21 @@ export function AddChemicalButton() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
+              <Field label="Container Capacity (single container — sets GHS label size)">
+                <Input name="container_capacity" type="number" min="0" step="0.001" placeholder="e.g. 20" />
+              </Field>
+              <Field label="Container Unit">
+                <Select name="container_capacity_unit" defaultValue="L">
+                  <option value="mL">mL (millilitres)</option>
+                  <option value="L">L (litres)</option>
+                  <option value="gal">gal (US gallons)</option>
+                  <option value="g">g (grams)</option>
+                  <option value="kg">kg (kilograms)</option>
+                </Select>
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <Field label="Storage Location" required>
                 <Input name="storage_location" placeholder="Lab 3 — Flammables Cabinet A" required />
               </Field>

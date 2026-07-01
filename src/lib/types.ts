@@ -172,6 +172,8 @@ export interface Chemical {
   ghs_classes: GhsHazardClass[];     // GHS hazard classification codes
   quantity: number;
   unit: string;                      // kg, L, t, m³
+  container_capacity?: number | null;      // capacity of ONE container (for CLP label sizing)
+  container_capacity_unit?: string | null; // mL | L | gal | g | kg
   storage_location: string;
   storage_class?: string | null;     // GHS storage-class code (see STORAGE_CLASSES)
   recommended_ppe?: string[];        // PPE codes (see PPE_TYPES)

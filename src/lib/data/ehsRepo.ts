@@ -177,6 +177,8 @@ export const getChemicals = cache(async (tenantId = MOCK_TENANT_ID): Promise<Che
     ghs_classes: r.ghs_classes ?? [],
     quantity: Number(r.quantity) || 0,
     unit: r.unit ?? "L",
+    container_capacity: r.container_capacity ?? null,
+    container_capacity_unit: r.container_capacity_unit ?? null,
     storage_location: r.storage_location ?? "",
     sds_url: r.sds_url ?? null,
     sds_expiry: r.sds_expiry ?? null,
