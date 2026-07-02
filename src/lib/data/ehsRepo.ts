@@ -204,6 +204,7 @@ export const getChemicals = cache(async (tenantId = MOCK_TENANT_ID): Promise<Che
     hazard_band_confidence: r.hazard_band_confidence ?? null,
     hazard_band_reviewed_at: r.hazard_band_reviewed_at ?? null,
     hazard_band_reason: r.hazard_band_reason ?? null,
+    hazard_review_status: (r.hazard_review_status ?? null) as Chemical["hazard_review_status"],
     label_code: r.label_code ?? null,
   }));
 });

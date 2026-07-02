@@ -181,6 +181,57 @@ function normalizeName(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Common naming aliases → canonical chemical name. Lab staff, SDS authors and
+ * suppliers rarely use the same name for the same substance ("IPA", "rubbing
+ * alcohol" and "2-propanol" are all isopropyl alcohol). We normalise the entered
+ * name through this map before threshold matching so a dilution of "IPA" is
+ * classified against the isopropyl-alcohol thresholds rather than falling through
+ * to "insufficient data".
+ *
+ * Keys are already name-normalized (lowercase, alphanumerics + single spaces).
+ */
+export const NAME_ALIASES: Record<string, string> = {
+  "ipa": "isopropyl alcohol",
+  "iso propanol": "isopropyl alcohol",
+  "isopropanol": "isopropyl alcohol",
+  "2 propanol": "isopropyl alcohol",
+  "rubbing alcohol": "isopropyl alcohol",
+  "dcm": "dichloromethane",
+  "methylene chloride": "dichloromethane",
+  "tce": "trichloroethylene",
+  "mek": "methyl ethyl ketone",
+  "butanone": "methyl ethyl ketone",
+  "meoh": "methanol",
+  "methyl alcohol": "methanol",
+  "wood alcohol": "methanol",
+  "etoh": "ethanol",
+  "ethyl alcohol": "ethanol",
+  "grain alcohol": "ethanol",
+  "naoh": "sodium hydroxide",
+  "lye": "sodium hydroxide",
+  "caustic soda": "sodium hydroxide",
+  "koh": "potassium hydroxide",
+  "caustic potash": "potassium hydroxide",
+  "hcl": "hydrochloric acid",
+  "muriatic acid": "hydrochloric acid",
+  "h2so4": "sulfuric acid",
+  "battery acid": "sulfuric acid",
+  "h2o2": "hydrogen peroxide",
+  "acetic acid glacial": "acetic acid",
+  "glacial acetic acid": "acetic acid",
+  "toluol": "toluene",
+  "methylbenzene": "toluene",
+  "hexane": "n-hexane",
+  "ammonium hydroxide": "ammonia",
+};
+
+/** Normalise a chemical name and resolve any known alias to its canonical name. */
+export function resolveChemicalName(raw: string): string {
+  const norm = normalizeName(raw);
+  return NAME_ALIASES[norm] ?? norm;
+}
+
 export function analyzeConcentrationHazard(opts: {
   casNumber: string | null;
   chemicalName: string;
@@ -190,9 +241,11 @@ export function analyzeConcentrationHazard(opts: {
   quantityKg: number | null;       // estimated quantity in kg
   storageLocation: string;
   sdsExpiry: string | null;
+  flashPointC?: number | null;     // flash point in °C (SDS section 9)
+  expirationDate?: string | null;  // chemical (not SDS) expiry
   dilutionNotes?: string;
 }): HazardAnalysisResult {
-  const { casNumber, chemicalName, hStatements, concentrationPct, physicalState, quantityKg, storageLocation, sdsExpiry, dilutionNotes } = opts;
+  const { casNumber, chemicalName, hStatements, concentrationPct, physicalState, quantityKg, storageLocation, sdsExpiry, flashPointC, expirationDate, dilutionNotes } = opts;
 
   const factors: HazardFactor[] = [];
   let maxBandScore = 0;
@@ -200,10 +253,16 @@ export function analyzeConcentrationHazard(opts: {
   const hazardTypes: string[] = [];
 
   // ── 1. CAS number / name threshold lookup ─────────────────────────────────
-  const nameNorm = normalizeName(chemicalName);
+  // Resolve common aliases (IPA → isopropyl alcohol, DCM → dichloromethane, …)
+  // to a canonical name before matching so dilutions entered under a shorthand
+  // name are still classified against the correct chemical thresholds.
+  const nameNorm = resolveChemicalName(chemicalName);
   const threshold = THRESHOLDS.find((t) => {
     if (casNumber && t.casNumber === casNumber.trim()) return true;
-    return t.commonNames.some((n) => normalizeName(n) === nameNorm || nameNorm.includes(normalizeName(n)));
+    return t.commonNames.some((n) => {
+      const cn = resolveChemicalName(n);
+      return cn === nameNorm || nameNorm.includes(cn) || cn.includes(nameNorm);
+    });
   });
 
   if (threshold) {
@@ -315,6 +374,81 @@ export function analyzeConcentrationHazard(opts: {
     maxBandScore = Math.min(4, maxBandScore + 1);
   }
 
+  // ── 4b. Flash point (GHS flammability of the substance itself) ────────────
+  // Only meaningful for liquids/near-pure material. A low flash point means the
+  // liquid gives off ignitable vapour at or near room temperature. Dilute
+  // aqueous solutions (<10%) largely suppress this, so we damp the effect there.
+  if (flashPointC !== null && flashPointC !== undefined && physicalState !== "solid") {
+    const dilutedAway = concentrationPct < 10;
+    if (flashPointC < 23) {
+      factors.push({
+        name: "Highly flammable — low flash point",
+        description: `Flash point ${flashPointC}°C is below 23°C (GHS flammable liquid Cat. 1/2). This liquid releases ignitable vapour at normal room temperature.${dilutedAway ? " At <10% concentration the flammability is substantially reduced, but ignition sources should still be controlled." : " Keep away from all ignition sources and store in a flammables cabinet."}`,
+        severity: dilutedAway ? "warning" : "danger",
+      });
+      maxBandScore = Math.max(maxBandScore, dilutedAway ? 2 : 3);
+      if (!hazardTypes.includes("Flammable")) hazardTypes.push("Flammable");
+    } else if (flashPointC <= 60) {
+      factors.push({
+        name: "Flammable — moderate flash point",
+        description: `Flash point ${flashPointC}°C (GHS flammable liquid Cat. 3). Flammable when heated; control ignition sources during heating or transfer.`,
+        severity: "warning",
+      });
+      maxBandScore = Math.max(maxBandScore, 2);
+      if (!hazardTypes.includes("Flammable")) hazardTypes.push("Flammable");
+    } else if (flashPointC <= 93) {
+      factors.push({
+        name: "Combustible — elevated flash point",
+        description: `Flash point ${flashPointC}°C (GHS combustible liquid Cat. 4). Lower fire risk, but still combustible if strongly heated.`,
+        severity: "info",
+      });
+      maxBandScore = Math.max(maxBandScore, 1);
+    }
+  }
+
+  // ── 4c. Storage location suitability ──────────────────────────────────────
+  // Storage only matters once there is a real flammable/critical hazard. Flag
+  // when a flammable material is not recorded in an appropriate cabinet.
+  if ((hazardTypes.includes("Flammable") || maxBandScore >= 3)) {
+    const loc = storageLocation.toLowerCase();
+    const inControlledStore = /cabinet|flammable|ventilat|fume|store|bund/.test(loc);
+    if (!inControlledStore) {
+      factors.push({
+        name: "Check storage suitability",
+        description: storageLocation
+          ? `Stored at "${storageLocation}". A material with this hazard profile should be kept in a suitable ventilated / flammables cabinet — confirm the storage location meets that requirement.`
+          : "No storage location on file — confirm this material is kept in a suitable ventilated / flammables cabinet.",
+        severity: "warning",
+      });
+    }
+  }
+
+  // ── 4d. Chemical expiration ───────────────────────────────────────────────
+  // A chemical past its expiry can degrade, concentrate, or (for peroxide-formers
+  // and oxidizers) become unstable. Escalate and force review.
+  let chemicalExpired = false;
+  if (expirationDate) {
+    const expD = new Date(expirationDate);
+    const now = new Date();
+    if (!isNaN(expD.getTime())) {
+      if (expD < now) {
+        chemicalExpired = true;
+        factors.push({
+          name: "Chemical is past its expiration date",
+          description: `Expired ${expD.toLocaleDateString()} — the material may have degraded or destabilised. Do not use until re-verified or disposed of; expired oxidizers and peroxide-formers can become hazardous.`,
+          severity: "danger",
+        });
+        maxBandScore = Math.min(4, maxBandScore + 1);
+      } else if (expD.getTime() - now.getTime() < 30 * 24 * 60 * 60 * 1000) {
+        factors.push({
+          name: "Chemical expiring soon",
+          description: `Expires ${expD.toLocaleDateString()} (within 30 days). Plan use or disposal.`,
+          severity: "warning",
+        });
+      }
+    }
+  }
+
   // ── 5. SDS expiry check ───────────────────────────────────────────────────
   let sdsExpired = false;
   let sdsWarning: string | null = null;
@@ -352,8 +486,10 @@ export function analyzeConcentrationHazard(opts: {
   if (thresholdMatched) confidence += 25;
   if (hStatements.length > 0) confidence += 15;
   if (sdsExpiry && !sdsExpired) confidence += 10;
+  if (flashPointC !== null && flashPointC !== undefined) confidence += 5;
   confidence = Math.min(100, confidence);
   if (sdsExpired) confidence = Math.max(30, confidence - 20);
+  if (chemicalExpired) confidence = Math.max(30, confidence - 15);
   if (!thresholdMatched && hStatements.length === 0) confidence = 20;
 
   // ── 8. Plain-English summary ──────────────────────────────────────────────
@@ -372,7 +508,7 @@ export function analyzeConcentrationHazard(opts: {
     plainEnglishSummary += ` Dilution note: ${dilutionNotes}`;
   }
 
-  const requiresReview = confidence < 70 || band === "high" || band === "critical" || sdsExpired;
+  const requiresReview = confidence < 70 || band === "high" || band === "critical" || sdsExpired || chemicalExpired;
 
   return {
     band,

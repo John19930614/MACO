@@ -17,6 +17,8 @@ export interface HazardAnalysisInput {
   quantityKg: number | null;
   storageLocation: string;
   sdsExpiry: string | null;
+  flashPointC?: number | null;
+  expirationDate?: string | null;
   dilutionNotes?: string;
 }
 
@@ -40,6 +42,8 @@ export async function runHazardAnalysis(
       quantityKg: input.quantityKg,
       storageLocation: input.storageLocation,
       sdsExpiry: input.sdsExpiry,
+      flashPointC: input.flashPointC,
+      expirationDate: input.expirationDate,
       dilutionNotes: input.dilutionNotes,
     });
     return { ok: true, result };
@@ -54,12 +58,16 @@ export async function saveHazardReview(
 ): Promise<{ ok: boolean; error?: string }> {
   const {
     chemicalId, chemicalName, casNumber, concentrationPct, physicalState,
-    dilutionNotes, result, reviewDecision, reviewReason,
+    flashPointC, expirationDate, dilutionNotes, result, reviewDecision, reviewReason,
   } = input;
 
   if (!reviewReason.trim()) {
     return { ok: false, error: "A reason is required to save this classification." };
   }
+
+  // A reviewer accepting or overriding the classification finalizes it; the
+  // record is no longer "pending uncertain review".
+  const reviewStatus = reviewDecision === "overridden" ? "overridden" : "approved";
 
   const payload = {
     chemical_id: chemicalId,
@@ -67,6 +75,8 @@ export async function saveHazardReview(
     cas_number: casNumber,
     concentration_pct: concentrationPct,
     physical_state: physicalState,
+    flash_point_c: flashPointC ?? null,
+    expiration_date: expirationDate ?? null,
     dilution_notes: dilutionNotes ?? null,
     hazard_band: result.band,
     confidence: result.confidence,
@@ -74,6 +84,7 @@ export async function saveHazardReview(
     factors: result.factors,
     plain_english_summary: result.plainEnglishSummary,
     sds_expired: result.sdsExpired,
+    requires_review: result.requiresReview,
     review_decision: reviewDecision,
     review_reason: reviewReason,
   };
@@ -104,8 +115,11 @@ export async function saveHazardReview(
         hazard_band_confidence: result.confidence,
         hazard_band_reviewed_at: new Date().toISOString(),
         hazard_band_reason: reviewReason,
+        hazard_review_status: reviewStatus,
         concentration_pct: concentrationPct,
         physical_state: physicalState,
+        flash_point_c: flashPointC ?? null,
+        expiration_date: expirationDate ?? null,
       })
       .eq("id", chemicalId)
       .eq("tenant_id", tenantId);
@@ -116,6 +130,7 @@ export async function saveHazardReview(
 
   revalidatePath("/chemicals");
   revalidatePath(`/chemicals/${chemicalId}`);
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 

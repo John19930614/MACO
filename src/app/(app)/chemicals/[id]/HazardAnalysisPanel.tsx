@@ -95,6 +95,8 @@ export function HazardAnalysisPanel({ chemical }: { chemical: Chemical }) {
           quantityKg: estimatedKg,
           storageLocation: chemical.storage_location,
           sdsExpiry: chemical.sds_expiry,
+          flashPointC: chemical.flash_point_c ?? null,
+          expirationDate: chemical.expiration_date ?? null,
           dilutionNotes,
         });
         if (!res.ok || !res.result) {
@@ -130,6 +132,8 @@ export function HazardAnalysisPanel({ chemical }: { chemical: Chemical }) {
           quantityKg: estimatedKg,
           storageLocation: chemical.storage_location,
           sdsExpiry: chemical.sds_expiry,
+          flashPointC: chemical.flash_point_c ?? null,
+          expirationDate: chemical.expiration_date ?? null,
           dilutionNotes,
           result,
           reviewDecision,

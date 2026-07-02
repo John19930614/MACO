@@ -148,12 +148,33 @@ export default async function DashboardPage({
     return days >= 0 && days <= 7;
   });
 
+  // Chemicals whose concentration-based hazard classification is not yet
+  // finalized. A hazardous chemical (scheduled, carries H-statements, or was
+  // reviewed as pending) with no approved/overridden hazard band is awaiting an
+  // EHS-manager decision on the uncertain classification.
+  const pendingHazardChemicals = chemicals
+    .filter((c) => {
+      const finalized = c.hazard_review_status === "approved" || c.hazard_review_status === "overridden";
+      if (finalized) return false;
+      const isHazardous = c.is_scheduled || c.hazard_statements.length > 0 || c.hazard_review_status === "pending";
+      return isHazardous;
+    })
+    .slice(0, 5)
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      reason: c.hazard_review_status === "pending"
+        ? "AI uncertain — awaiting your review"
+        : "Not yet classified at working concentration",
+    }));
+
   // Priority actions — aggregated from all already-fetched data
   const priorityItems = buildPriorityItems({
     overdueCapas,
     overdueEquipment,
     expiringTrainingSoon,
     pendingFindings,
+    pendingHazardChemicals,
   });
 
   // Trend icon helper

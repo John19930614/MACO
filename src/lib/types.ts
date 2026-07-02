@@ -188,6 +188,7 @@ export interface Chemical {
   hazard_band_confidence?: number | null;
   hazard_band_reviewed_at?: string | null;
   hazard_band_reason?: string | null;
+  hazard_review_status?: "pending" | "approved" | "overridden" | null;
   hazard_statements: string[];       // H-statements (H200-H420)
   precautionary_statements: string[]; // P-statements (P200-P501)
   is_scheduled: boolean;             // listed on a regulatory controlled substance list

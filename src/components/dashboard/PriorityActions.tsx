@@ -109,11 +109,13 @@ export function buildPriorityItems({
   overdueEquipment,
   expiringTrainingSoon,
   pendingFindings,
+  pendingHazardChemicals = [],
 }: {
   overdueCapas: Array<{ id: string; title: string; due_date: string | null; status: string }>;
   overdueEquipment: Array<{ id: string; name: string; status: string }>;
   expiringTrainingSoon: Array<{ id: string; course_id: string; expiry_date: string | null }>;
   pendingFindings: Array<{ id: string; job: string; source_type?: string; output: unknown }>;
+  pendingHazardChemicals?: Array<{ id: string; name: string; reason: string }>;
 }): ActionItem[] {
   const now = new Date();
   const items: ActionItem[] = [];
@@ -161,6 +163,19 @@ export function buildPriorityItems({
       meta: `Training · expires ${new Date(t.expiry_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · course ${t.course_id.slice(0, 8)}`,
       href: "/training",
       badge: `${daysLeft}d left`,
+    });
+  }
+
+  // Chemicals with an uncertain / unfinalized hazard classification awaiting
+  // EHS-manager review (RequireAReason gate — blocked from finalization).
+  for (const c of pendingHazardChemicals.slice(0, 5)) {
+    items.push({
+      id: `chem-hazard-${c.id}`,
+      urgency: "pending",
+      title: `Confirm hazard classification — ${c.name}`,
+      meta: `Chemical Management · ${c.reason}`,
+      href: `/chemicals/${c.id}`,
+      badge: "Review",
     });
   }
 
