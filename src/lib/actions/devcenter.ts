@@ -20,6 +20,7 @@ import { runPlanningAgent } from "@/lib/devcenter/planning-agents";
 import { generateFilePlans } from "@/lib/devcenter/file-plans";
 import { generateCodeDrafts } from "@/lib/devcenter/code-drafts";
 import { generateReviewGate, STAGE_REVIEW_GATES, REQUIRED_FOR_RELEASE, gateCleared } from "@/lib/devcenter/review-gates";
+import { getFindingById } from "@/lib/devcenter/platform-review";
 import type { ReviewGateStatus } from "@/lib/devcenter/types";
 
 const nowIso = () => new Date().toISOString();
@@ -948,6 +949,40 @@ export async function decideReviewGate(
   });
   revalidatePath(`/admin/dev-command/tasks/${gate.task_id}`);
   revalidatePath("/admin/dev-command");
+  return { ok: true };
+}
+
+/**
+ * Dismiss a Platform Review finding the operator doesn't want to act on, or
+ * restore a dismissed one. Recorded as a dev_audit_log event (no extra table):
+ * the review page reads the latest finding_dismissed / finding_restored event
+ * per finding to decide what to hide.
+ */
+export async function setFindingDismissed(
+  findingId: string,
+  dismissed: boolean,
+): Promise<{ ok: boolean; error?: string }> {
+  if (MOCK_MODE) return { ok: false, error: "Dismissing needs the live database." };
+  if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired â€” please reload." };
+
+  const finding = getFindingById(findingId);
+  if (!finding) return { ok: false, error: "That finding no longer exists." };
+
+  const by = (await getServerUser())?.display_name ?? "Reliance Admin";
+  const { error } = await client.from("dev_audit_log").insert({
+    actor_type: "human",
+    actor_id: by,
+    action: dismissed ? "finding_dismissed" : "finding_restored",
+    entity: "platform_review_finding",
+    entity_id: findingId,
+    risk_level: finding.risk_level,
+    detail: { title: finding.title, check: finding.check },
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/admin/dev-command/review");
   return { ok: true };
 }
 

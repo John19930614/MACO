@@ -49,3 +49,41 @@ describe("Platform Review — converted findings move to the task board", () => 
     expect(prefill.source_finding_id).toBe("db-confirm-prod-migrations");
   });
 });
+
+describe("Platform Review — dismissed findings", () => {
+  it("hides dismissed findings from the open list and returns them separately", () => {
+    const all = buildPlatformReview(null, NOW);
+    const [first] = all.findings;
+    const result = buildPlatformReview(null, NOW, [], [first.id]);
+    expect(result.findings.map((f) => f.id)).not.toContain(first.id);
+    expect(result.dismissed.map((f) => f.id)).toContain(first.id);
+    expect(result.convertedCount).toBe(0);
+  });
+
+  it("converted wins over dismissed — the finding belongs to the task board", () => {
+    const all = buildPlatformReview(null, NOW);
+    const [first] = all.findings;
+    const result = buildPlatformReview(null, NOW, [first.id], [first.id]);
+    expect(result.findings.map((f) => f.id)).not.toContain(first.id);
+    expect(result.dismissed.map((f) => f.id)).not.toContain(first.id);
+    expect(result.convertedCount).toBe(1);
+  });
+
+  it("dismissed findings no longer count toward check status", () => {
+    const all = buildPlatformReview(null, NOW);
+    const dbFinding = all.findings.find((f) => f.check === "database");
+    expect(dbFinding).toBeDefined();
+    const before = all.checks.find((c) => c.key === "database")!.findingCount;
+    const after = buildPlatformReview(null, NOW, [], [dbFinding!.id]).checks.find(
+      (c) => c.key === "database",
+    )!.findingCount;
+    expect(after).toBe(before - 1);
+  });
+
+  it("ignores dismissed ids that don't match any curated finding", () => {
+    const all = buildPlatformReview(null, NOW);
+    const result = buildPlatformReview(null, NOW, [], ["no-such-finding"]);
+    expect(result.findings.length).toBe(all.findings.length);
+    expect(result.dismissed.length).toBe(0);
+  });
+});

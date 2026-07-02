@@ -16,6 +16,7 @@
 import "server-only";
 import { MOCK_MODE } from "@/lib/env";
 import { createSupabaseServerClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { listReviewFindings } from "./platform-review";
 import type {
   DevTask, DevTaskStatus, DevTaskPriority, RiskLevel,
   DevAgent, DevApproval, DevAuditEntry,
@@ -133,6 +134,8 @@ export async function getDevTasks(opts: { status?: DevTaskStatus; limit?: number
  * Finding ids from the Platform Review that already have a task on the board.
  * Cancelled tasks don't count — cancelling a task puts its finding back on the
  * review list, since the underlying issue is still unaddressed.
+ * Tasks created before source_finding_id existed carry no link in metadata, so
+ * an exact title match against the curated catalog counts as converted too.
  */
 export async function getConvertedFindingIds(): Promise<string[]> {
   if (MOCK_MODE) return [];
@@ -140,13 +143,44 @@ export async function getConvertedFindingIds(): Promise<string[]> {
   if (!client) return [];
   const { data } = await client
     .from("dev_tasks")
-    .select("metadata")
-    .not("metadata->>source_finding_id", "is", null)
+    .select("title, metadata")
     .neq("status", "cancelled");
-  const ids = (data ?? [])
-    .map((row) => (row.metadata as { source_finding_id?: string } | null)?.source_finding_id)
-    .filter((id): id is string => !!id);
-  return [...new Set(ids)];
+  const byTitle = new Map(
+    listReviewFindings().map((f) => [f.title.trim().toLowerCase(), f.id]),
+  );
+  const ids = new Set<string>();
+  for (const row of data ?? []) {
+    const metaId = (row.metadata as { source_finding_id?: string } | null)?.source_finding_id;
+    if (metaId) {
+      ids.add(metaId);
+      continue;
+    }
+    const titleId = byTitle.get(((row.title as string) ?? "").trim().toLowerCase());
+    if (titleId) ids.add(titleId);
+  }
+  return [...ids];
+}
+
+/**
+ * Finding ids the operator dismissed from the Platform Review. Stored as
+ * dev_audit_log events (finding_dismissed / finding_restored) so no extra
+ * table is needed; the latest event per finding wins.
+ */
+export async function getDismissedFindingIds(): Promise<string[]> {
+  if (MOCK_MODE) return [];
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return [];
+  const { data } = await client
+    .from("dev_audit_log")
+    .select("action, entity_id, created_at")
+    .eq("entity", "platform_review_finding")
+    .in("action", ["finding_dismissed", "finding_restored"])
+    .order("created_at", { ascending: true });
+  const state = new Map<string, boolean>();
+  for (const row of data ?? []) {
+    if (row.entity_id) state.set(row.entity_id as string, row.action === "finding_dismissed");
+  }
+  return [...state.entries()].filter(([, dismissed]) => dismissed).map(([id]) => id);
 }
 
 export async function getDevTask(id: string): Promise<DevTask | null> {
