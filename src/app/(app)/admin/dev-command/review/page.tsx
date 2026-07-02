@@ -1,6 +1,6 @@
 import { runGatewayHealthCheck } from "@/lib/gateway/agent";
 import { buildPlatformReview, type GatewayLiveInput } from "@/lib/devcenter/platform-review";
-import { getConvertedFindingIds } from "@/lib/devcenter/repo";
+import { getConvertedFindingIds, getDismissedFindingIds } from "@/lib/devcenter/repo";
 import { PlatformReviewPanel } from "../_components/PlatformReviewPanel";
 
 export const metadata = { title: "Platform Review · AI Dev Command Center" };
@@ -12,9 +12,10 @@ export default async function PlatformReviewPage() {
   // The one live signal. Degrade gracefully if the gateway can't be reached so
   // the review still renders its catalog findings. Findings that already became
   // tasks move to the task board and drop off this list.
-  const [snapshot, convertedIds] = await Promise.all([
+  const [snapshot, convertedIds, dismissedIds] = await Promise.all([
     runGatewayHealthCheck({ persist: false }).catch(() => null),
     getConvertedFindingIds().catch(() => [] as string[]),
+    getDismissedFindingIds().catch(() => [] as string[]),
   ]);
   const gateway: GatewayLiveInput | null = snapshot
     ? {
@@ -25,6 +26,6 @@ export default async function PlatformReviewPage() {
       }
     : null;
 
-  const result = buildPlatformReview(gateway, new Date().toISOString(), convertedIds);
+  const result = buildPlatformReview(gateway, new Date().toISOString(), convertedIds, dismissedIds);
   return <PlatformReviewPanel result={result} />;
 }
