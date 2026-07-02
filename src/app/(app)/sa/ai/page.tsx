@@ -10,12 +10,12 @@ import { detectAiAnomalies } from "@/lib/analytics/alerts";
 import { getGatewayHealthSnapshots } from "@/lib/gateway/agent";
 
 const JOB_CONFIGS = [
-  { job: "chemical_hazard_analysis",   label: "Chemical Hazard Analysis",  trigger: "Chemical inventory update",    frequency: "On change",  model: "claude-sonnet-4-6", enabled: true  },
-  { job: "compliance_gap_detection",   label: "Compliance Gap Detection",   trigger: "Legal register review",        frequency: "Weekly",     model: "claude-sonnet-4-6", enabled: true  },
-  { job: "training_gap_analysis",      label: "Training Gap Analysis",      trigger: "Training records change",      frequency: "Daily",      model: "claude-sonnet-4-6", enabled: true  },
-  { job: "risk_score_prediction",      label: "Risk Score Prediction",      trigger: "P-Engine schedule",            frequency: "Daily",      model: "claude-sonnet-4-6", enabled: true  },
-  { job: "incident_pattern_analysis",  label: "Incident Pattern Analysis",  trigger: "After incident report",        frequency: "On change",  model: "claude-sonnet-4-6", enabled: true  },
-  { job: "waste_classification",       label: "Waste Classification",       trigger: "P-Engine scan",                frequency: "On scan",    model: "claude-sonnet-4-6", enabled: true  },
+  { job: "chemical_hazard_analysis",   label: "Chemical Hazard Analysis",  trigger: "Chemical inventory update",    frequency: "On change",  model: "claude-sonnet-5", enabled: true  },
+  { job: "compliance_gap_detection",   label: "Compliance Gap Detection",   trigger: "Legal register review",        frequency: "Weekly",     model: "claude-sonnet-5", enabled: true  },
+  { job: "training_gap_analysis",      label: "Training Gap Analysis",      trigger: "Training records change",      frequency: "Daily",      model: "claude-sonnet-5", enabled: true  },
+  { job: "risk_score_prediction",      label: "Risk Score Prediction",      trigger: "P-Engine schedule",            frequency: "Daily",      model: "claude-sonnet-5", enabled: true  },
+  { job: "incident_pattern_analysis",  label: "Incident Pattern Analysis",  trigger: "After incident report",        frequency: "On change",  model: "claude-sonnet-5", enabled: true  },
+  { job: "waste_classification",       label: "Waste Classification",       trigger: "P-Engine scan",                frequency: "On scan",    model: "claude-sonnet-5", enabled: true  },
 ];
 
 const STATUS_TONE = {
@@ -61,7 +61,7 @@ export default async function SAAIPage() {
         <div className="mb-4 rounded-xl border bg-violet-900/20 border-violet-800/50 p-4 text-sm text-violet-300">
           <strong>PROMPT_VERSION:</strong> <code className="rounded bg-violet-900/50 px-1.5 py-0.5 font-mono text-xs">{PROMPT_VERSION}</code>
           {" · "}
-          <strong>Model:</strong> <code className="rounded bg-violet-900/50 px-1.5 py-0.5 font-mono text-xs">claude-sonnet-4-6</code>
+          <strong>Model:</strong> <code className="rounded bg-violet-900/50 px-1.5 py-0.5 font-mono text-xs">claude-sonnet-5</code>
           {" · "}
           <strong>Provider:</strong> Anthropic
         </div>

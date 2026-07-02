@@ -6,6 +6,15 @@
  * provider boundary and recorded per call, so the cost split is visible in
  * telemetry. Both tiers are env-overridable so routing is tunable without a
  * redeploy.
+ *
+ * Benchmark note (2026-07-02, /sa/gateway → AI Model Benchmark):
+ *   Models compared: claude-sonnet-4-6 (then-default), claude-haiku-4-5
+ *                    (triage), claude-sonnet-5, claude-opus-4-8.
+ *   Result: UPGRADE — claude-sonnet-5 scored 100/100 completeness, 0 failures,
+ *   $0.0151/call vs claude-sonnet-4-6's 75/100 (2 timeouts + 1 non-answer) at
+ *   the same $3/$15 sticker. Opus 4.8 scored 87.5 at 34% higher cost.
+ *   Approved by: John Haldemann, 2026-07-02. Default changed in src/lib/env.ts.
+ *   Triage tier unchanged (claude-haiku-4-5).
  */
 export type ModelTier = "triage" | "deep";
 

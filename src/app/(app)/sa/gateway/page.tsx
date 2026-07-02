@@ -12,6 +12,7 @@ import { getEffectiveTenantId } from "@/lib/auth/session";
 import { runGatewayHealthCheck, getGatewayHealthSnapshots, getGatewaySettings, getGatewayVersions, getGatewayNotes, getGatewayQualifications, GATEWAY_POSITIONING } from "@/lib/gateway/agent";
 import { EhsGatewayDashboard } from "./EhsGatewayDashboard";
 import GatewayAgentPanel from "./GatewayAgentPanel";
+import ModelBenchmarkPanel from "./ModelBenchmarkPanel";
 
 export default async function EhsGatewayPage() {
   // Canonical tenant resolution — real tenant in live, NIL_UUID (safe empty) when
@@ -41,16 +42,21 @@ export default async function EhsGatewayPage() {
   ]);
 
   return (
-    <EhsGatewayDashboard
-      incidents={incidents}
-      capas={capas}
-      chemicals={chemicals}
-      audits={audits}
-      findings={findings}
-      wasteStreams={wasteStreams}
-      equipment={equipment}
-      riskAssessments={riskAssessments}
-      topSlot={<GatewayAgentPanel live={health} history={history} settings={settings} versions={versions} notes={notes} qualifications={qualifications} positioning={GATEWAY_POSITIONING} />}
-    />
+    <>
+      <EhsGatewayDashboard
+        incidents={incidents}
+        capas={capas}
+        chemicals={chemicals}
+        audits={audits}
+        findings={findings}
+        wasteStreams={wasteStreams}
+        equipment={equipment}
+        riskAssessments={riskAssessments}
+        topSlot={<GatewayAgentPanel live={health} history={history} settings={settings} versions={versions} notes={notes} qualifications={qualifications} positioning={GATEWAY_POSITIONING} />}
+      />
+      <div className="mt-6">
+        <ModelBenchmarkPanel />
+      </div>
+    </>
   );
 }

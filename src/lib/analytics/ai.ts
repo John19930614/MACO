@@ -47,6 +47,9 @@ export const MODEL_PRICES: Record<string, { in: number; out: number }> = {
   "gpt-4o-mini": { in: 0.15, out: 0.6 },
   "claude-haiku-4-5": { in: 1, out: 5 },
   "claude-sonnet-4-6": { in: 3, out: 15 },
+  // Sticker price — an introductory $2/$10 applies through 2026-08-31; we
+  // record the durable price so upgrade decisions aren't skewed by a promo.
+  "claude-sonnet-5": { in: 3, out: 15 },
   "claude-opus-4-8": { in: 5, out: 25 },
 };
 

@@ -106,7 +106,7 @@ Output ONLY valid JSON: { "tasks": [...], "rawSummary": "..." }`;
       const base64 = Buffer.from(bytes).toString("base64");
 
       response = await client.messages.create({
-        model: anthropicModel || "claude-sonnet-4-6",
+        model: anthropicModel || "claude-sonnet-5",
         max_tokens: 8000,
         system: systemPrompt,
         messages: [
@@ -165,7 +165,7 @@ Output ONLY valid JSON: { "tasks": [...], "rawSummary": "..." }`;
       }
 
       response = await client.messages.create({
-        model: anthropicModel || "claude-sonnet-4-6",
+        model: anthropicModel || "claude-sonnet-5",
         max_tokens: 8000,
         system: systemPrompt,
         messages: [

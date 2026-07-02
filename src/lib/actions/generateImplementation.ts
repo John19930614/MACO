@@ -129,7 +129,7 @@ Generate the complete implementation brief now.`;
     // Use tool use (structured output) so Claude is forced to return complete,
     // properly-escaped JSON — avoids truncated strings from raw JSON generation.
     const response = await client.messages.create({
-      model: anthropicModel || "claude-sonnet-4-6",
+      model: anthropicModel || "claude-sonnet-5",
       max_tokens: 16000,
       system: `${systemPrompt}\n\n${codebaseContextForPrompt()}`,
       messages: [{ role: "user", content: userMessage }],

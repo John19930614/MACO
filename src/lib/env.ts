@@ -31,7 +31,11 @@ export function serverSecrets() {
     openaiKey:       process.env.OPENAI_API_KEY               ?? "",
     aiModel:         process.env.SAFETYIQ_AI_MODEL            ?? "gpt-4o-mini",
     anthropicKey:    process.env.ANTHROPIC_API_KEY            ?? "",
-    anthropicModel:  process.env.SAFETYIQ_ANTHROPIC_MODEL     ?? "claude-sonnet-4-6",
+    // Benchmark 2026-07-02 (/sa/gateway → AI Model Benchmark, run_at
+    // 2026-07-02T16:26:05Z): claude-sonnet-5 scored 100/100 completeness with
+    // 0 failures vs claude-sonnet-4-6's 75 (2 timeouts + 1 non-answer) at the
+    // same $3/$15 sticker price. Upgrade approved by John 2026-07-02.
+    anthropicModel:  process.env.SAFETYIQ_ANTHROPIC_MODEL     ?? "claude-sonnet-5",
     resendKey:       process.env.RESEND_API_KEY               ?? "",
   };
 }
@@ -41,7 +45,7 @@ export type AiProvider = "openai" | "anthropic";
 /**
  * Which LLM provider the Predictability Engine uses. Set SAFETYIQ_AI_PROVIDER
  * to force one; otherwise inferred — prefer Anthropic when only its key is
- * present (claude-sonnet-4-6 provides better regulatory reasoning quality).
+ * present (claude-sonnet-5 provides better regulatory reasoning quality).
  */
 export function aiProvider(): AiProvider {
   const explicit = process.env.SAFETYIQ_AI_PROVIDER;
