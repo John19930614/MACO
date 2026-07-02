@@ -1215,7 +1215,8 @@ export function TrainingDashboard({
       const st = cellStatus(r, true);
       return st === "expired" || st === "failed" || st === "not_started" || st === "expiring";
     }).length;
-  }, [activeCourses, user.id, user.role, recordLookup]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeCourses, user.id, user.role, recordLookup]); // eslint-disable-line react-hooks/exhaustive-deps -- recompute the at-risk count only on course/user/record changes; latestRecord & cellStatus are stable module helpers
+
 
   return (
     <div className="space-y-5">

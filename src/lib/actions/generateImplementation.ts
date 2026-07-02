@@ -165,7 +165,7 @@ Generate the complete implementation brief now.`;
     });
 
     // Extract the tool call input
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Anthropic SDK types response.content as a block union; we narrow to the tool_use block manually below
     const contents = response.content as any[];
     const toolUse = contents.find((b) => b.type === "tool_use" && b.name === "submit_implementation_brief");
 

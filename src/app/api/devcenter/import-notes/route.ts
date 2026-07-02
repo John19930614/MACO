@@ -103,7 +103,7 @@ Output ONLY valid JSON: { "tasks": [...], "rawSummary": "..." }`;
       const bytes = await file.arrayBuffer();
       const base64 = Buffer.from(bytes).toString("base64");
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Anthropic SDK's create() overload rejects the PDF document block we send at runtime; cast to invoke the runtime-supported path
       response = await (client.messages.create as any)({
         model: anthropicModel || "claude-sonnet-4-6",
         max_tokens: 8000,
@@ -208,7 +208,7 @@ Output ONLY valid JSON: { "tasks": [...], "rawSummary": "..." }`;
       });
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Anthropic response.content is a discriminated block union; cast to any[] to scan for the tool_use block
     const toolUse = (response.content as any[]).find((b: any) => b.type === "tool_use");
     if (!toolUse || toolUse.type !== "tool_use") {
       return NextResponse.json({ error: "AI did not return structured output. Try again." }, { status: 500 });

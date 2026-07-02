@@ -230,8 +230,13 @@ export default async function ReportsPage({
   return (
     <div className="flex flex-col overflow-hidden h-full">
       <div className="print-only mb-6 flex items-center gap-4 border-b-2 border-slate-800 pb-3">
+        {/* raw <img> required: this header renders only in the print/PDF export
+            (print-only). next/image rewrites src to a /_next/image URL and wraps
+            the element in a <span>, both of which break @media print output — a
+            plain <img> with a resolvable src is used instead. Do not replace with
+            <Image>. */}
         {logoUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
+          // eslint-disable-next-line @next/next/no-img-element -- print/PDF-only report header; next/image's /_next/image URL + wrapper break @media print, so a plain <img> with a resolvable src is used
           <img src={logoUrl} alt={`${tenantName} logo`} className="h-12 w-auto object-contain" />
         )}
         <div>

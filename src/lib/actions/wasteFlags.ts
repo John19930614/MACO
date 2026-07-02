@@ -86,7 +86,7 @@ export async function updateWasteFlagStatus(input: {
 
   const resolved = input.status === "confirmed" || input.status === "closed" || input.status === "not_applicable";
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic update payload whose columns depend on status; Record<string, any> avoids a brittle partial-row type
   const patch: Record<string, any> = {
     status:         input.status,
     reviewer_notes: input.reviewerNotes ?? null,

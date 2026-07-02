@@ -399,7 +399,7 @@ export function EhsGatewayDashboard(props: EhsGatewayDashboardProps) {
       props.findings, props.wasteStreams, props.equipment, props.riskAssessments,
       lastRun,
     ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-run validation on any prop change (whole props object) or ticker tick; listing each prop field would duplicate props
     [props, ticker],
   );
 

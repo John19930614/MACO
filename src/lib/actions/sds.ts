@@ -134,7 +134,6 @@ export async function extractSdsData(
 
     const anthropic = new Anthropic({ apiKey: anthropicKey, timeout: 90_000 });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const resp = await anthropic.messages.create({
       model: anthropicModel || "claude-sonnet-4-6",
       max_tokens: 4096,

@@ -38,6 +38,10 @@ export function PassportActions({ chemicalId, containerCapacity, containerCapaci
         : `@page{size:landscape;margin:0.3in}`;
       const w = window.open("", "_blank", "width=1100,height=800");
       if (!w) { window.print(); return; } // popup blocked → in-page fallback
+      // raw <img> required: this HTML is written into a bare print window that has
+      // no Next.js runtime, so next/image is unavailable. `dataUrl` is a self-
+      // contained base64 PNG of the captured passport; a plain <img> is the only
+      // way to render it for the browser print dialog.
       w.document.write(
         `<!doctype html><html><head><meta charset="utf-8"><title>Chemical Passport</title>` +
         `<style>${pageCss}html,body{height:100%;margin:0;background:#fff}` +

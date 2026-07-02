@@ -237,7 +237,7 @@ export async function getWasteReviewFlags(tenantId: string): Promise<WasteReview
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase join select returns an untyped row shape; cast to any[] before mapping to the typed DTO
   return (data as any[]).map((r) => ({
     id: r.id,
     tenant_id: r.tenant_id,

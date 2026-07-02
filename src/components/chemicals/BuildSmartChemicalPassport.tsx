@@ -227,8 +227,13 @@ export function BuildSmartChemicalPassport({ data }: Props) {
               <div style={{ flex: 1, textAlign: "center" }}>
                 <p style={{ ...blueCaps, marginBottom: 6 }}>Scan for Full Data</p>
                 <div style={{ display: "inline-block", border: "1px solid #e5e7eb", borderRadius: 10, padding: 6, background: "#fff" }}>
+                  {/* raw <img> required: this passport is captured to PNG/PDF via
+                      html2canvas/jsPDF, which cannot resolve next/image's
+                      /_next/image loader URL at capture time. A plain <img> with a
+                      data-URL src is the only pattern that renders in the export.
+                      Do not replace with <Image>. */}
                   {qr
-                    // eslint-disable-next-line @next/next/no-img-element
+                    // eslint-disable-next-line @next/next/no-img-element -- html2canvas/jsPDF cannot resolve next/image's /_next/image loader URL at capture time; a plain <img> with a data-URL src is required
                     ? <img src={qr} alt="QR code to open the digital chemical record" width={120} height={120} />
                     : <div style={{ width: 120, height: 120 }} />}
                 </div>

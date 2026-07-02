@@ -147,7 +147,7 @@ Generate the implementation brief now.`,
       tool_choice: { type: "tool" as const, name: "submit_brief" },
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Anthropic response.content is a block union; cast to any[] to locate the submit_brief tool_use block
     const toolUse = (response.content as any[]).find((b) => b.type === "tool_use" && b.name === "submit_brief");
     if (!toolUse?.input) {
       return NextResponse.json({ ok: false, error: "AI did not return a usable response. Try again." }, { status: 500 });

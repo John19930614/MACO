@@ -123,7 +123,7 @@ export function ComplianceCalendar({ requirements, audits, capas, equipment }: P
     });
 
     return items.sort((a, b) => a.date.getTime() - b.date.getTime());
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- recompute only when the source datasets change; parseDate/getUrgency/now are stable and intentionally excluded
   }, [requirements, audits, capas, equipment]);
 
   // Index by day
