@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { MOCK_MODE, serverSecrets } from "@/lib/env";
-import { createClient } from "@supabase/supabase-js";
+import { isSuperadmin } from "@/lib/auth/session";
+import { createServiceRoleClient } from "@/lib/supabase/server";
 
 // Set to Vercel Pro max. Also set in vercel.json for belt-and-suspenders.
 export const maxDuration = 300;
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
   if (MOCK_MODE) {
     return NextResponse.json({
       ok: true,
+      mock: true,
       brief: {
         summary: "Mock implementation brief — connect Supabase to generate real specs.",
         files: [],
@@ -34,21 +36,24 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // Superadmin only — this route uses the service-role client (bypasses RLS)
+  // and exposes internal dev-task data. Mirrors the import-notes route gate;
+  // the /admin middleware superadmin check does NOT cover /api/devcenter/*.
+  if (!(await isSuperadmin())) {
+    return NextResponse.json({ ok: false, error: "Not authorized." }, { status: 403 });
+  }
+
   try {
     const { taskId } = (await req.json()) as { taskId?: string };
     if (!taskId || typeof taskId !== "string") {
       return NextResponse.json({ ok: false, error: "taskId is required." }, { status: 400 });
     }
 
-    // Service-role client — bypass RLS entirely (superadmin context)
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!supabaseUrl || !serviceRoleKey) {
+    // Service-role client — bypass RLS entirely (superadmin context, gated above)
+    const db = createServiceRoleClient();
+    if (!db) {
       return NextResponse.json({ ok: false, error: "Database not configured." }, { status: 500 });
     }
-    const db = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
 
     // Load task + artifacts
     const [{ data: task }, { data: artifacts }, { data: filePlans }] = await Promise.all([
@@ -166,9 +171,9 @@ Generate the implementation brief now.`,
       });
       await db.from("dev_audit_log").insert({
         task_id: taskId,
-        actor: "system",
+        actor_type: "system",
         action: "implementation_brief_generated",
-        details: { files_count: brief.files.length, has_migration: !!brief.dbMigration },
+        detail: { files_count: brief.files.length, has_migration: !!brief.dbMigration },
       });
     } catch { /* non-fatal */ }
 

@@ -815,7 +815,9 @@ export async function applyApprovedArtifact(artifactId: string): Promise<{ ok: b
   if (a.status === "applied") return { ok: false, message: "This draft is already applied." };
   if (a.status !== "approved") return { ok: false, message: "Blocked: this draft must be approved before it can be applied." };
 
-  // 7â€“8. Path safety + destructive check.
+  // 7â€“8. Path safety + destructive check. Guard an empty path explicitly so the
+  // outcome is a clear message rather than relying on checkPath to reject null.
+  if (!a.path) return { ok: false, message: "Blocked: this draft has no file path to apply." };
   const pc = checkPath(a.path);
   if (!pc.allowed && !pc.dangerous) return { ok: false, message: `Blocked: ${pc.reason}` };
 

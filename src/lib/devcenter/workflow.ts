@@ -99,8 +99,24 @@ export function isGate(stage: WorkflowStage): boolean {
   return !!STAGE_CONFIG[stage]?.gate;
 }
 
+/**
+ * Permanently closed — the task is done for good and cannot be reopened by the
+ * workflow. NOTE: "blocked" is deliberately NOT terminal; it is a pause that an
+ * admin can lift. To gate whether the next agent step may run, use canProgress()
+ * (which also excludes blocked), not isTerminal().
+ */
 export function isTerminal(status: string): boolean {
   return status === "complete" || status === "rejected";
+}
+
+/**
+ * Whether the next workflow step is allowed to run: the task must be sitting on
+ * a real, non-final workflow stage. This excludes complete (final stage),
+ * rejected, and blocked (neither is a workflow stage), so callers no longer need
+ * the "&& status !== 'blocked'" guard alongside isTerminal().
+ */
+export function canProgress(status: string): boolean {
+  return isWorkflowStage(status) && status !== "complete";
 }
 
 /** Whether the given status is a real workflow stage (vs rejected/blocked). */
