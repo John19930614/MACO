@@ -164,25 +164,6 @@ const CURATED: ReviewFinding[] = [
       "docs/migrations-status.md lists every migration as applied or pending on prod. Any pending code-depended migration is flagged for apply.",
   },
   {
-    id: "ux-remove-demo-data-sa",
-    check: "routes_ux",
-    title: "Remove demo data from superadmin UI",
-    detail:
-      "sa/companies renders MOCK_COMPANIES (BioStar/NovaChem) and sa/security renders MOCK_AUDIT_LOG (fake Sarah Chen events) outside mock mode, which is confusing in production.",
-    recommendation:
-      "Gate mock fixtures strictly on MOCK_MODE, or show an empty state with a 'no data connected' banner until the real feed is wired.",
-    severity: "amber",
-    source: "curated",
-    module: "Admin Console",
-    who_uses_it: "Superadmin",
-    priority: "medium",
-    risk_level: "low",
-    effort: "small",
-    where: "src/app/(app)/sa/companies/page.tsx, src/app/(app)/sa/security/page.tsx",
-    success_criteria:
-      "No fake company or audit data renders when MOCK_MODE is off. Empty states read clearly. Mock-mode demos still work.",
-  },
-  {
     id: "ux-eap-persist-and-errors",
     check: "routes_ux",
     title: "Fix EAP form persistence and add save-error feedback",
@@ -225,9 +206,9 @@ const CURATED: ReviewFinding[] = [
     check: "ai_engine",
     title: "Evaluate upgrading the default AI models",
     detail:
-      "Defaults are claude-sonnet-4-6 / claude-haiku-4-5, which are a generation behind the current top tier (Opus 4.8, Sonnet 5, Haiku 4.5). Regulatory reasoning may benefit from an upgrade.",
+      "Defaults are claude-sonnet-5 (upgraded from claude-sonnet-4-6 on 2026-07-02 after an in-app benchmark: 100/100 vs 75/100 completeness at the same price) / claude-haiku-4-5 triage. Re-evaluate whenever Anthropic ships a new model generation.",
     recommendation:
-      "Benchmark the current defaults against Sonnet 5 / Opus 4.8 on a sample of EHS analyses, then update the SAFETYIQ_ANTHROPIC_MODEL default in env.ts if the newer model wins on accuracy vs cost.",
+      "Re-run the /sa/gateway AI Model Benchmark against new candidate models, then update the SAFETYIQ_ANTHROPIC_MODEL default in env.ts if the newer model wins on accuracy vs cost.",
     severity: "green",
     source: "curated",
     module: "AI Gateway",

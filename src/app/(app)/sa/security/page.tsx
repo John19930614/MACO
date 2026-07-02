@@ -30,6 +30,17 @@ const mfaPct        = TENANTS_STATUS.length
 const ssoCount      = TENANTS_STATUS.filter(t => t.sso).length;
 const blockedEvents = AUDIT_LOG.filter(e => e.status === "blocked").length;
 
+const MOCK_SECURITY_SETTINGS: { label: string; value: string; ok: boolean | null }[] = [
+  { label: "MFA enforcement",        value: "Required for admin", ok: true },
+  { label: "Session timeout",         value: "8 hours",           ok: true },
+  { label: "Password policy",         value: "12 char min, MFA",  ok: true },
+  { label: "IP allowlisting",         value: "Disabled",          ok: null },
+  { label: "Data encryption at rest", value: "AES-256",           ok: true },
+  { label: "TLS version",             value: "TLS 1.3",           ok: true },
+  { label: "SOC 2 audit",             value: "Due Aug 2026",      ok: null },
+];
+const SECURITY_SETTINGS = MOCK_MODE ? MOCK_SECURITY_SETTINGS : [];
+
 const MOCK_API_KEYS = [
   { name: "Supabase — Main DB", status: "configured", last: "Jun 10" },
   { name: "Anthropic / AI Engine (Claude)", status: "configured", last: "Jun 5" },
@@ -156,15 +167,12 @@ export default function SecurityPage() {
             <DarkCard>
               <DarkCardHeader title="Security Settings" subtitle="Platform-wide configuration" right={<Lock className="h-4 w-4 text-slate-400" />} />
               <div className="divide-y divide-white/5">
-                {[
-                  { label: "MFA enforcement",        value: "Required for admin", ok: true },
-                  { label: "Session timeout",         value: "8 hours",           ok: true },
-                  { label: "Password policy",         value: "12 char min, MFA",  ok: true },
-                  { label: "IP allowlisting",         value: "Disabled",          ok: null },
-                  { label: "Data encryption at rest", value: "AES-256",           ok: true },
-                  { label: "TLS version",             value: "TLS 1.3",           ok: true },
-                  { label: "SOC 2 audit",             value: "Due Aug 2026",      ok: null },
-                ].map((item) => (
+                {SECURITY_SETTINGS.length === 0 && (
+                  <div className="px-4 py-8 text-center text-xs text-slate-400">
+                    No security configuration data yet — this view will populate once platform security settings are wired.
+                  </div>
+                )}
+                {SECURITY_SETTINGS.map((item) => (
                   <div key={item.label} className="flex items-center gap-2 px-4 py-2.5">
                     {item.ok === true  && <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" />}
                     {item.ok === null  && <Clock className="h-4 w-4 shrink-0 text-amber-400" />}
