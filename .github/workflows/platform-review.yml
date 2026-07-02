@@ -8,6 +8,11 @@ on:
   schedule:
     - cron: "0 6 * * *" # nightly, 06:00 UTC
   workflow_dispatch:
+    inputs:
+      run_ai:
+        description: "Also run the paid Claude judgment pass (normally nightly-only)"
+        type: boolean
+        default: false
 
 concurrency:
   group: platform-review
@@ -34,10 +39,13 @@ jobs:
       - name: Codified audit scan
         run: node scripts/platform-review-scan.mjs --json findings-scan.json
 
-      # No-ops (empty findings, green) when ANTHROPIC_API_KEY is not configured.
+      # COST CAP: the paid Claude call runs at most once a day — only on the
+      # nightly schedule (or a manual dispatch that explicitly opts in via the
+      # run_ai checkbox). Other runs get an empty key and the script no-ops,
+      # so on-demand "Run deep scan" clicks stay free (code audits only).
       - name: Claude judgment pass
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ (github.event_name == 'schedule' || inputs.run_ai) && secrets.ANTHROPIC_API_KEY || '' }}
         run: node scripts/platform-review-ai.mjs --json findings-ai.json
 
       # Upserts open findings + auto-resolves fixed ones. No-ops on forks.
