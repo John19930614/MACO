@@ -8,6 +8,7 @@ import {
   SOURCE_LABEL,
 } from "@/lib/devcenter/platform-review";
 import { ReRunReviewButton } from "./ReRunReviewButton";
+import { FindingDismissButton } from "./FindingDismissButton";
 
 const PRIORITY_TONE: Record<string, string> = {
   urgent: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
@@ -108,7 +109,7 @@ export function PlatformReviewPanel({ result }: { result: PlatformReviewResult }
         {result.findings.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white p-6 text-center dark:border-slate-700 dark:bg-slate-900">
             <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
-              Every finding has been turned into a task.
+              Every finding has been turned into a task or dismissed.
             </p>
             <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
               New findings will appear here after the next full review.
@@ -118,6 +119,31 @@ export function PlatformReviewPanel({ result }: { result: PlatformReviewResult }
           result.findings.map((f) => <FindingCard key={f.id} f={f} />)
         )}
       </div>
+
+      {/* Dismissed findings — hidden from the open list, restorable any time */}
+      {result.dismissed.length > 0 && (
+        <div className="space-y-2.5">
+          <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+            Dismissed ({result.dismissed.length})
+          </h3>
+          {result.dismissed.map((f) => (
+            <div
+              key={f.id}
+              className="flex flex-col gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3.5 opacity-80 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700 dark:bg-slate-900/60"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-slate-600 dark:text-slate-300">
+                  {f.title}
+                </p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                  {f.module} · {SOURCE_LABEL[f.source]} — dismissed, not deleted
+                </p>
+              </div>
+              <FindingDismissButton findingId={f.id} dismissed />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -157,13 +183,16 @@ function FindingCard({ f }: { f: ReviewFinding }) {
             </p>
           )}
         </div>
-        <Link
-          href={href}
-          className="flex shrink-0 items-center gap-1.5 self-start rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
-        >
-          Turn into a task
-          <ArrowRight className="h-3 w-3" />
-        </Link>
+        <div className="flex shrink-0 items-center gap-2 self-start">
+          <Link
+            href={href}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
+          >
+            Turn into a task
+            <ArrowRight className="h-3 w-3" />
+          </Link>
+          <FindingDismissButton findingId={f.id} />
+        </div>
       </div>
     </div>
   );

@@ -80,6 +80,7 @@ export interface PlatformReviewResult {
   findings: ReviewFinding[];   // live + curated, most severe first
   liveRan: boolean;            // did the live AI/Gateway check succeed this run
   convertedCount: number;      // findings already turned into tasks (hidden here)
+  dismissed: ReviewFinding[];  // findings the operator dismissed (restorable)
 }
 
 // ── Curated catalog — seeded from the 2026-07-02 full review ──────────────────
@@ -357,17 +358,24 @@ function gatewayStatusToReview(s: GatewayLiveInput["overall_status"]): ReviewSta
  * pass null if it could not run (the AI Engine check then degrades to the
  * curated view and liveRan=false). Findings whose id appears in convertedIds
  * already live on the task board, so they are dropped from the review list.
+ * Findings in dismissedIds were waved off by the operator — hidden from the
+ * open list (and from check statuses) but returned separately so they can be
+ * restored.
  */
 export function buildPlatformReview(
   gateway: GatewayLiveInput | null,
   reviewedAt: string,
   convertedIds: string[] = [],
+  dismissedIds: string[] = [],
 ): PlatformReviewResult {
   const converted = new Set(convertedIds);
-  const findings = CURATED.filter((f) => !converted.has(f.id)).sort(
+  const dismissedSet = new Set(dismissedIds);
+  // Converted wins over dismissed — a finding with a task belongs to the board.
+  const dismissed = CURATED.filter((f) => dismissedSet.has(f.id) && !converted.has(f.id));
+  const findings = CURATED.filter((f) => !converted.has(f.id) && !dismissedSet.has(f.id)).sort(
     (a, b) => RANK[a.severity] - RANK[b.severity],
   );
-  const convertedCount = CURATED.length - findings.length;
+  const convertedCount = CURATED.filter((f) => converted.has(f.id)).length;
 
   const checks: ReviewCheckResult[] = REVIEW_CHECKS.map((c) => {
     const own = findings.filter((f) => f.check === c.key);
@@ -407,11 +415,17 @@ export function buildPlatformReview(
     findings,
     liveRan: gateway != null,
     convertedCount,
+    dismissed,
   };
 }
 
 export function getFindingById(id: string): ReviewFinding | undefined {
   return CURATED.find((f) => f.id === id);
+}
+
+/** Full curated catalog — lets the repo match legacy tasks back to findings. */
+export function listReviewFindings(): ReviewFinding[] {
+  return CURATED;
 }
 
 // ── Labels / tones (mirrors suggestions.ts conventions) ──────────────────────
