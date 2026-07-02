@@ -25,6 +25,37 @@ export async function getServerTenantId(): Promise<string | null> {
   return profile?.tenant_id ?? null;
 }
 
+// Thrown when a tenant_id supplied by a caller/payload does not match the
+// authenticated session's tenant. Call sites catch this and return a friendly
+// error instead of letting a cross-tenant write proceed.
+export class TenantMismatchError extends Error {
+  constructor(
+    message = "Tenant ownership check failed: claimed tenant does not match authenticated session tenant.",
+  ) {
+    super(message);
+    this.name = "TenantMismatchError";
+  }
+}
+
+// Verifies that a claimed tenant_id (from a request payload, action argument,
+// or any resolution path other than getServerTenantId itself) matches the
+// authenticated session's tenant, and returns the verified id. MUST be called
+// before any service-role write (service-role clients bypass RLS, so this is
+// the only tenant check those writes get). Throws TenantMismatchError when the
+// session has no tenant or the claimed id doesn't match.
+export async function assertTenantOwnership(claimedTenantId: string): Promise<string> {
+  const sessionTenantId = await getServerTenantId();
+  if (!sessionTenantId) {
+    throw new TenantMismatchError("No authenticated tenant found for this session.");
+  }
+  if (claimedTenantId !== sessionTenantId) {
+    throw new TenantMismatchError(
+      `Tenant mismatch: claimed tenant_id "${claimedTenantId}" does not match session tenant "${sessionTenantId}".`,
+    );
+  }
+  return sessionTenantId;
+}
+
 // Resolves a tenant_id that is ALWAYS safe to pass to a data query.
 // MOCK_MODE → cookie tenant or BioStar demo tenant.
 // Live → the real tenant_id, or NIL_UUID when it can't be resolved (so pages

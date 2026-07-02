@@ -2,7 +2,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { serverSecrets, APP_URL } from "@/lib/env";
-import { getServerTenantId } from "@/lib/auth/session";
+import { getServerTenantId, assertTenantOwnership, TenantMismatchError } from "@/lib/auth/session";
 
 function serviceClient() {
   const { serviceRoleKey } = serverSecrets();
@@ -52,8 +52,21 @@ function makeTempPassword() {
 export async function inviteTeamMembers(
   employees: EmployeeInvite[],
 ): Promise<InviteResult | InviteError> {
-  const tenantId = await getServerTenantId();
-  if (!tenantId) return { ok: false, error: "No tenant", sent: 0 };
+  const rawTenantId = await getServerTenantId();
+  if (!rawTenantId) return { ok: false, error: "No tenant", sent: 0 };
+
+  // Everything below writes through the service-role client (bypasses RLS):
+  // auth.admin user creation, profiles insert/update, tenants update. Verify
+  // tenant ownership before any of it runs.
+  let tenantId: string;
+  try {
+    tenantId = await assertTenantOwnership(rawTenantId);
+  } catch (err) {
+    if (err instanceof TenantMismatchError) {
+      return { ok: false, error: "Action blocked: tenant ownership check failed.", sent: 0 };
+    }
+    throw err;
+  }
 
   const { serviceRoleKey } = serverSecrets();
   if (!serviceRoleKey) {

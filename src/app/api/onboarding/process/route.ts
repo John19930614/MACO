@@ -16,6 +16,7 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { assertTenantOwnership, TenantMismatchError } from "@/lib/auth/session";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import { read as xlsxRead, utils as xlsxUtils } from "xlsx";
@@ -1694,9 +1695,25 @@ export async function POST(req: NextRequest) {
   const { data: profile } = await sessionClient.from("profiles").select("tenant_id, default_site_id").eq("id", user.id).single();
   if (!profile?.tenant_id) return NextResponse.json({ error: "no_tenant" }, { status: 403 });
 
-  const tenantId = profile.tenant_id as string;
-  const siteId   = (profile.default_site_id as string | null) ?? null;
-  const userId   = user.id;
+  // SECURITY: every seed below runs with the service-role key (bypasses RLS),
+  // so cross-check the tenant resolved from this route's own profile query
+  // against the canonical session helper before anything is written. Guards
+  // against the two resolution paths ever drifting (e.g. a future change that
+  // reads tenant_id from the request body).
+  let tenantId: string;
+  try {
+    tenantId = await assertTenantOwnership(profile.tenant_id as string);
+  } catch (err) {
+    if (err instanceof TenantMismatchError) {
+      return NextResponse.json(
+        { error: "tenant_mismatch", message: "We couldn't complete setup for this account. Please refresh and try again." },
+        { status: 403 },
+      );
+    }
+    throw err;
+  }
+  const siteId = (profile.default_site_id as string | null) ?? null;
+  const userId = user.id;
 
   let uploads: UploadMap;
   try {
