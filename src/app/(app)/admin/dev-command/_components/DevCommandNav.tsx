@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 
 const TABS = [
   { href: "/admin/dev-command", label: "Overview", exact: true },
+  { href: "/admin/dev-command/review", label: "Platform Review" },
   { href: "/admin/dev-command/tasks", label: "Tasks" },
   { href: "/admin/dev-command/agents", label: "AI Team" },
   { href: "/admin/dev-command/approvals", label: "Approvals" },

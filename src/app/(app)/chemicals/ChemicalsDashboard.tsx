@@ -882,6 +882,27 @@ export function ChemicalsDashboard({
     [chemicals, courses],
   );
 
+  // Scale guards: the analytical tabs render per-chemical content and would
+  // freeze the browser on a large inventory. The compatibility matrix is O(n²)
+  // (n×n cells) so it needs a much tighter cap; the row-based tabs render one
+  // block per chemical. Beyond these caps we render a subset + a notice; the
+  // Inventory tab (paginated + searchable) remains the full-inventory view.
+  const MATRIX_CAP = 40;
+  const ROW_CAP = 150;
+  const matrixChems = chemicals.length > MATRIX_CAP ? chemicals.slice(0, MATRIX_CAP) : chemicals;
+  const rowChems = chemicals.length > ROW_CAP ? chemicals.slice(0, ROW_CAP) : chemicals;
+
+  const CapNotice = ({ shown, cap }: { shown: number; cap: number }) =>
+    shown > cap ? (
+      <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>
+          Large inventory — showing the first <strong>{cap}</strong> of <strong>{shown}</strong> chemicals here for performance.
+          Use the <strong>Inventory</strong> tab&apos;s search to find and open a specific chemical.
+        </span>
+      </div>
+    ) : null;
+
   return (
     <div className="space-y-5">
       {/* KPIs */}
@@ -1049,7 +1070,8 @@ export function ChemicalsDashboard({
               }
             />
             <div className="p-5">
-              <ClassificationsTab chemicals={chemicals} />
+              <CapNotice shown={chemicals.length} cap={ROW_CAP} />
+              <ClassificationsTab chemicals={rowChems} />
             </div>
           </Card>
         )}
@@ -1067,7 +1089,8 @@ export function ChemicalsDashboard({
               }
             />
             <div className="p-5">
-              <CompatibilityMatrix chemicals={chemicals} />
+              <CapNotice shown={chemicals.length} cap={MATRIX_CAP} />
+              <CompatibilityMatrix chemicals={matrixChems} />
             </div>
           </Card>
         )}
@@ -1086,7 +1109,8 @@ export function ChemicalsDashboard({
               }
             />
             <div className="p-4">
-              <PPEControlsTable chemicals={chemicals} />
+              <CapNotice shown={chemicals.length} cap={ROW_CAP} />
+              <PPEControlsTable chemicals={rowChems} />
             </div>
           </Card>
         )}
@@ -1105,7 +1129,8 @@ export function ChemicalsDashboard({
               }
             />
             <div className="p-5">
-              <SDSRegister chemicals={chemicals} />
+              <CapNotice shown={chemicals.length} cap={ROW_CAP} />
+              <SDSRegister chemicals={rowChems} />
             </div>
           </Card>
         )}
@@ -1124,7 +1149,8 @@ export function ChemicalsDashboard({
               }
             />
             <div className="p-5">
-              <WasteReviewTab chemicals={chemicals} flags={wasteFlags} />
+              <CapNotice shown={chemicals.length} cap={ROW_CAP} />
+              <WasteReviewTab chemicals={rowChems} flags={wasteFlags} />
             </div>
           </Card>
         )}

@@ -724,7 +724,7 @@ interface SavedAudit {
 // flat SavedItem[] and a top-level oshaStandard.
 function parseSavedAudit(audit: Audit): SavedAudit {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSON.parse returns an untyped blob of persisted audit notes; typed as any and narrowed field-by-field below
     const p: any = JSON.parse(audit.notes ?? "{}");
     if (!p || typeof p !== "object") return {};
     let items: SavedItem[] | undefined;
@@ -1260,7 +1260,7 @@ export function AuditConductForm({ audit, profiles }: { audit: Audit; profiles: 
                         {item.photos.length > 0 ? (
                           <div className="mt-1.5 flex flex-wrap gap-2">
                             {item.photos.map((src, pi) => (
-                              // eslint-disable-next-line @next/next/no-img-element
+                              // eslint-disable-next-line @next/next/no-img-element -- evidence src values are runtime blob/object/data URLs from in-session uploads that next/image cannot optimise; a plain <img> renders them directly
                               <img
                                 key={pi}
                                 src={src}

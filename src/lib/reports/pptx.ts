@@ -47,7 +47,7 @@ const WIDE_W = 13.33;
 // Resolve the pptxgenjs constructor robustly across CJS/ESM bundler interop
 // (some bundlers expose it as the module namespace, others under `.default`).
 async function loadPptxGenJS() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pptxgenjs ships no ESM type for its default export; cast the dynamic-import namespace before resolving the constructor across CJS/ESM interop
   const mod: any = await import("pptxgenjs");
   const Ctor = mod?.default ?? mod;
   if (typeof Ctor !== "function") throw new Error("pptxgenjs failed to load");
@@ -57,7 +57,7 @@ async function loadPptxGenJS() {
 // Browser-reliable save: build a Blob and click an anchor. pptxgenjs's own
 // writeFile() can fail silently in bundled browser builds, so we download the
 // blob ourselves.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- pptxgenjs does not export its presentation instance type; annotate as any for this blob-save helper
 async function savePptx(pptx: any, fileName: string): Promise<void> {
   const name = fileName.toLowerCase().endsWith(".pptx") ? fileName : `${fileName}.pptx`;
   const blob = (await pptx.write("blob")) as Blob;
@@ -77,7 +77,6 @@ async function savePptx(pptx: any, fileName: string): Promise<void> {
 // slide, header repeated, autoPage off.
 const ROWS_PER_SLIDE = 16;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function chunkRows<T>(rows: T[]): T[][] {
   if (rows.length === 0) return [[]];
   const out: T[][] = [];

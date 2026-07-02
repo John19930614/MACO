@@ -1,13 +1,13 @@
 import { Card, CardHeader } from "@/components/ui/primitives";
-import { EmptyStateCard } from "../_components/states";
-import { MEMORY_KIND_LABEL, FEEDBACK_CATEGORY_LABEL } from "@/lib/devcenter/labels";
-import { SAMPLE_MEMORY, SAMPLE_FEEDBACK } from "@/lib/devcenter/sample";
-import { relativeTime } from "@/lib/utils";
-import { ShieldCheck, Lock, Lightbulb, MessageSquarePlus } from "lucide-react";
+import { FeedbackWidget } from "../_components/FeedbackWidget";
+import { FeedbackList } from "../_components/FeedbackList";
+import { MemoryManager } from "../_components/MemoryManager";
+import { getAllFeedback, getAllMemory } from "@/lib/devcenter/repo";
+import { ShieldCheck, Lock } from "lucide-react";
 
 export const metadata = { title: "Settings · AI Dev Command Center" };
 
-// The hard safety rules that apply to every agent (read-only here).
+// The hard safety rules that apply to every agent (read-only).
 const SAFETY_RULES = [
   "Never deploy to production on its own",
   "Never delete data",
@@ -18,12 +18,17 @@ const SAFETY_RULES = [
   "Always ask before doing anything risky",
 ];
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const [feedback, memory] = await Promise.all([
+    getAllFeedback().catch(() => []),
+    getAllMemory().catch(() => []),
+  ]);
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">Settings</h2>
-        <p className="text-xs text-slate-500 dark:text-slate-400">How the AI team behaves and what it remembers. Editing turns on in a later phase.</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Safety rules, your feedback, and what the AI team has learned.</p>
       </div>
 
       {/* Safety rules */}
@@ -42,50 +47,10 @@ export default function SettingsPage() {
         </ul>
       </Card>
 
-      {/* What the team remembers */}
-      <Card>
-        <CardHeader title="What the team remembers" subtitle="Your preferences and the patterns it has learned" right={<Lightbulb className="h-4 w-4 text-slate-300" />} />
-        <div className="p-4">
-          {SAMPLE_MEMORY.length === 0 ? (
-            <EmptyStateCard title="Nothing remembered yet" description="As you approve and reject work, the team builds up preferences here." />
-          ) : (
-            <ul className="space-y-2">
-              {SAMPLE_MEMORY.map((m) => (
-                <li key={m.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{m.title}</p>
-                    <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">{MEMORY_KIND_LABEL[m.kind]}</span>
-                  </div>
-                  {m.content && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{m.content}</p>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </Card>
-
-      {/* Feedback */}
-      <Card>
-        <CardHeader title="Your feedback" subtitle="Notes about confusing screens or wrong recommendations" right={<MessageSquarePlus className="h-4 w-4 text-slate-300" />} />
-        <div className="p-4">
-          {SAMPLE_FEEDBACK.length === 0 ? (
-            <EmptyStateCard title="No feedback yet" description="Tell the team what's confusing or wrong and it shows up here." />
-          ) : (
-            <ul className="space-y-2">
-              {SAMPLE_FEEDBACK.map((f) => (
-                <li key={f.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">{FEEDBACK_CATEGORY_LABEL[f.category]}</span>
-                    <span className="text-[11px] text-slate-400">{relativeTime(f.created_at)}</span>
-                  </div>
-                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{f.message}</p>
-                  {f.screen && <p className="mt-0.5 font-mono text-[11px] text-slate-400">{f.screen}</p>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </Card>
+      {/* Learning loop (Phase 14) */}
+      <FeedbackWidget pageRoute="/admin/dev-command/settings" />
+      <FeedbackList feedback={feedback} />
+      <MemoryManager memory={memory} />
     </div>
   );
 }

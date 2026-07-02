@@ -8,8 +8,23 @@
 import type {
   DevTaskStatus, DevTaskPriority, RiskLevel, ApprovalType, ApprovalStatus,
   AgentRunStatus, DeploymentStatus, TestStatus, SecurityVerdict, ReviewVerdict,
-  ExperiencePerspective, AgentMemoryKind, FeedbackCategory,
+  ExperiencePerspective, AgentMemoryKind, FeedbackCategory, FeedbackType,
+  FileChangeType, FileChangeStatus, ArtifactType, ArtifactStatus,
+  ReviewGateType, ReviewGateStatus, TestType,
 } from "./types";
+
+export const TEST_TYPE_META: Record<TestType, string> = {
+  unit:              "Unit test",
+  component:         "Component test",
+  form_validation:   "Form validation",
+  route_loading:     "Route loading",
+  supabase_query:    "Database query",
+  rls_access:        "Data-access (RLS)",
+  approval_gate:     "Approval gate",
+  agent_workflow:    "Agent workflow",
+  experience_review: "Experience review",
+  audit_log:         "Audit log",
+};
 
 /** Tone of a badge — drives the shared color/shape classes. */
 export type Tone = "neutral" | "info" | "success" | "warn" | "danger" | "violet";
@@ -30,24 +45,27 @@ export const TONE_DOT: Record<Tone, string> = {
 
 interface Meta { label: string; tone: Tone }
 
-// ── Task status (16-state lifecycle) ──────────────────────────────────────────
+// ── Task status (17-stage workflow + 2 off-ramps) ─────────────────────────────
 export const TASK_STATUS_META: Record<DevTaskStatus, Meta> = {
-  intake:              { label: "New — just added",        tone: "neutral" },
-  planning:            { label: "Planning",                tone: "info" },
-  requirements_review: { label: "Checking requirements",   tone: "info" },
-  architecture_review: { label: "Reviewing the design",    tone: "info" },
-  experience_review:   { label: "Reviewing ease of use",   tone: "info" },
-  code_plan:           { label: "Planning the code",       tone: "info" },
-  needs_approval:      { label: "Needs your approval",     tone: "violet" },
-  approved:            { label: "Approved",                tone: "success" },
-  building:            { label: "Building",                tone: "info" },
-  testing:             { label: "Testing",                 tone: "info" },
-  security_review:     { label: "Security review",         tone: "info" },
-  documentation:       { label: "Writing docs",            tone: "info" },
-  ready_for_release:   { label: "Ready to release",        tone: "success" },
-  complete:            { label: "Done",                    tone: "success" },
-  rejected:            { label: "Rejected",                tone: "neutral" },
-  blocked:             { label: "Blocked",                 tone: "warn" },
+  intake:                  { label: "New — just added",        tone: "neutral" },
+  requirements_review:     { label: "Checking requirements",   tone: "info" },
+  architecture_review:     { label: "Planning the design",     tone: "info" },
+  ui_ux_review:            { label: "Designing the screens",   tone: "info" },
+  experience_review:       { label: "Checking ease of use",    tone: "info" },
+  code_plan:               { label: "Planning the code",       tone: "info" },
+  file_change_plan:        { label: "Listing file changes",    tone: "info" },
+  approval_required:       { label: "Needs your approval",     tone: "violet" },
+  approved_for_drafting:   { label: "Approved — ready to build", tone: "success" },
+  code_draft:              { label: "Writing draft code",      tone: "info" },
+  qa_review:               { label: "Testing",                 tone: "info" },
+  security_review:         { label: "Security review",         tone: "info" },
+  experience_final_review: { label: "Final ease-of-use check", tone: "info" },
+  documentation:           { label: "Writing docs",            tone: "info" },
+  release_plan:            { label: "Planning the release",    tone: "info" },
+  human_final_approval:    { label: "Needs your final approval", tone: "violet" },
+  complete:                { label: "Done",                    tone: "success" },
+  rejected:                { label: "Rejected",                tone: "neutral" },
+  blocked:                 { label: "Blocked",                 tone: "warn" },
 };
 
 /** Statuses that count as "closed" (not open work). */
@@ -80,35 +98,46 @@ export const RUN_STATUS_META: Record<AgentRunStatus, Meta> = {
 
 // ── Approval ──────────────────────────────────────────────────────────────────
 export const APPROVAL_TYPE_LABEL: Record<ApprovalType, string> = {
-  database_change:           "Database change",
-  auth_permission_change:    "Login permission change",
-  file_write:                "Save code to a file",
-  github_branch:             "Create a code branch",
-  pull_request:              "Open a pull request",
-  deployment:                "Deploy a preview",
-  production_release:        "Release to production",
-  delete_action:             "Delete something",
-  ai_tool_permission_change: "Change an AI agent's permissions",
+  database_change:             "Database change",
+  auth_permission_change:      "Login permission change",
+  rls_policy_change:           "Data-access rule change",
+  file_write:                  "Save code to a file",
+  file_delete:                 "Delete a file",
+  github_branch:               "Create a code branch",
+  pull_request:                "Open a pull request",
+  deployment:                  "Deploy a preview",
+  production_release:          "Release to production",
+  environment_variable_change: "Change a setting or secret",
+  ai_tool_permission_change:   "Change an AI agent's permissions",
+  delete_action:               "Delete something",
 };
 
 export const APPROVAL_STATUS_META: Record<ApprovalStatus, Meta> = {
-  pending:   { label: "Waiting for you", tone: "violet" },
-  approved:  { label: "Approved",        tone: "success" },
-  rejected:  { label: "Rejected",        tone: "neutral" },
-  expired:   { label: "Expired",         tone: "neutral" },
-  cancelled: { label: "Cancelled",       tone: "neutral" },
+  pending:        { label: "Waiting for you", tone: "violet" },
+  approved:       { label: "Approved",        tone: "success" },
+  rejected:       { label: "Rejected",        tone: "neutral" },
+  needs_revision: { label: "Needs changes",   tone: "warn" },
+  expired:        { label: "Expired",         tone: "neutral" },
+  cancelled:      { label: "Cancelled",       tone: "neutral" },
 };
 
 // ── Deployment ────────────────────────────────────────────────────────────────
 export const DEPLOYMENT_STATUS_META: Record<DeploymentStatus, Meta> = {
-  planned:        { label: "Planned",          tone: "neutral" },
-  branch_created: { label: "Branch created",   tone: "info" },
-  pr_open:        { label: "Pull request open", tone: "info" },
-  preview_ready:  { label: "Preview ready",    tone: "info" },
-  merged:         { label: "Merged",           tone: "success" },
-  released:       { label: "Released",         tone: "success" },
-  failed:         { label: "Failed",           tone: "danger" },
-  rolled_back:    { label: "Rolled back",      tone: "warn" },
+  planned:                 { label: "Planned",                tone: "neutral" },
+  not_started:             { label: "Not started",            tone: "neutral" },
+  branch_created:          { label: "Branch created",         tone: "info" },
+  pr_open:                 { label: "Pull request open",      tone: "info" },
+  pr_created:              { label: "Pull request created",   tone: "info" },
+  preview_pending:         { label: "Preview building",       tone: "info" },
+  preview_ready:           { label: "Preview ready",          tone: "info" },
+  preview_failed:          { label: "Preview failed",         tone: "danger" },
+  approved_for_production: { label: "Approved for production", tone: "success" },
+  production_released:     { label: "Released to production", tone: "success" },
+  merged:                  { label: "Merged",                 tone: "success" },
+  released:                { label: "Released",               tone: "success" },
+  failed:                  { label: "Failed",                 tone: "danger" },
+  rolled_back:             { label: "Rolled back",            tone: "warn" },
+  cancelled:               { label: "Cancelled",              tone: "neutral" },
 };
 
 // ── Test / review verdicts ────────────────────────────────────────────────────
@@ -144,10 +173,36 @@ export const PERSPECTIVE_LABEL: Record<ExperiencePerspective, string> = {
 };
 
 export const MEMORY_KIND_LABEL: Record<AgentMemoryKind, string> = {
-  approved_pattern: "Approved pattern",
-  rejected_pattern: "Rejected pattern",
-  user_preference:  "Your preference",
-  lesson_learned:   "Lesson learned",
+  approved_pattern:   "Approved pattern",
+  rejected_pattern:   "Rejected pattern",
+  user_preference:    "Your preference",
+  lesson_learned:     "Lesson learned",
+  preferred_label:    "Preferred label",
+  workflow_rule:      "Workflow rule",
+  security_rule:      "Security rule",
+  ux_rule:            "Experience rule",
+  performance_rule:   "Performance rule",
+  admin_support_rule: "Admin support rule",
+  platform_standard:  "Platform standard",
+};
+
+/** Tone for a memory kind — rejected patterns warn. */
+export const MEMORY_KIND_TONE: Record<AgentMemoryKind, Tone> = {
+  approved_pattern: "success", rejected_pattern: "danger", user_preference: "info",
+  lesson_learned: "info", preferred_label: "info", workflow_rule: "info",
+  security_rule: "warn", ux_rule: "violet", performance_rule: "warn",
+  admin_support_rule: "neutral", platform_standard: "info",
+};
+
+export const FEEDBACK_TYPE_META: Record<FeedbackType, { label: string; tone: Tone }> = {
+  helpful:              { label: "Was helpful",           tone: "success" },
+  confusing:            { label: "This is confusing",     tone: "warn" },
+  wrong_recommendation: { label: "AI recommendation was wrong", tone: "danger" },
+  feature_request:      { label: "Feature improvement",   tone: "info" },
+  broken_workflow:      { label: "Broken workflow",       tone: "danger" },
+  bad_wording:          { label: "Bad label / wording",   tone: "warn" },
+  too_technical:        { label: "Too technical",         tone: "warn" },
+  too_many_steps:       { label: "Too many steps",        tone: "warn" },
 };
 
 export const FEEDBACK_CATEGORY_LABEL: Record<FeedbackCategory, string> = {
@@ -158,10 +213,105 @@ export const FEEDBACK_CATEGORY_LABEL: Record<FeedbackCategory, string> = {
   other:                "Other",
 };
 
+// ── File change plans (Phase 7) ───────────────────────────────────────────────
+export const FILE_CHANGE_TYPE_META: Record<FileChangeType, Meta> = {
+  create:        { label: "New file",        tone: "info" },
+  modify:        { label: "Edit file",       tone: "info" },
+  delete:        { label: "Delete file",     tone: "danger" },
+  rename:        { label: "Rename file",     tone: "warn" },
+  migration:     { label: "Database change", tone: "danger" },
+  test:          { label: "Tests",           tone: "success" },
+  documentation: { label: "Docs",            tone: "neutral" },
+  config:        { label: "Config change",   tone: "warn" },
+};
+
+export const FILE_PLAN_STATUS_META: Record<FileChangeStatus, Meta> = {
+  planned:        { label: "Planned",             tone: "neutral" },
+  needs_approval: { label: "Needs your approval", tone: "violet" },
+  approved:       { label: "Approved",            tone: "success" },
+  rejected:       { label: "Rejected",            tone: "neutral" },
+  drafted:        { label: "Drafted",             tone: "info" },
+  applied_later:  { label: "Will apply later",    tone: "info" },
+};
+
+// ── Code draft artifacts (Phase 8) ────────────────────────────────────────────
+export const ARTIFACT_TYPE_META: Record<ArtifactType, Meta> = {
+  react_component: { label: "React component",  tone: "info" },
+  nextjs_route:    { label: "Page route",        tone: "info" },
+  server_action:   { label: "Server action",     tone: "info" },
+  api_route:       { label: "API route",         tone: "info" },
+  supabase_sql:    { label: "Database SQL",      tone: "danger" },
+  rls_policy:      { label: "Data-access rule",  tone: "danger" },
+  test_file:       { label: "Test file",         tone: "success" },
+  documentation:   { label: "Documentation",     tone: "neutral" },
+  config_change:   { label: "Config change",     tone: "warn" },
+  release_notes:   { label: "Release notes",     tone: "neutral" },
+};
+
+export const ARTIFACT_STATUS_META: Record<ArtifactStatus, Meta> = {
+  draft:            { label: "Draft",             tone: "neutral" },
+  proposed:         { label: "Proposed",          tone: "info" },
+  approved:         { label: "Approved",          tone: "success" },
+  rejected:         { label: "Rejected",          tone: "neutral" },
+  applied:          { label: "Applied",           tone: "success" },
+  superseded:       { label: "Replaced",          tone: "neutral" },
+  needs_review:     { label: "Needs your review", tone: "violet" },
+  revised:          { label: "Revision requested", tone: "warn" },
+  ready_for_branch: { label: "Ready for a branch", tone: "info" },
+};
+
+// ── Review gates (Phase 9) ────────────────────────────────────────────────────
+export const REVIEW_GATE_META: Record<ReviewGateType, { label: string; agent: string }> = {
+  qa:             { label: "QA review",            agent: "QA/Test Agent" },
+  security:       { label: "Security review",      agent: "Security/Permissions Agent" },
+  experience:     { label: "Experience review",    agent: "Human Experience Agent" },
+  plain_english:  { label: "Plain-English review", agent: "Plain-English Agent" },
+  admin_workflow: { label: "Admin support review", agent: "Admin Support Agent" },
+  documentation:  { label: "Documentation review", agent: "Documentation Agent" },
+  workflow:       { label: "Workflow simplicity",  agent: "Workflow Simplification Agent" },
+  accessibility:  { label: "Accessibility review", agent: "Accessibility Agent" },
+  performance:    { label: "Performance review",   agent: "Performance Agent" },
+};
+
+/** The 6 required experience-layer scores (gate types that carry a 1-10 score). */
+export const SCORE_GATE_TYPES: ReviewGateType[] = [
+  "experience", "plain_english", "workflow", "admin_workflow", "accessibility", "performance",
+];
+
+export const REVIEW_STATUS_META: Record<ReviewGateStatus, Meta> = {
+  pending:        { label: "Not reviewed yet",  tone: "neutral" },
+  passed:         { label: "Passed",            tone: "success" },
+  failed:         { label: "Failed",            tone: "danger" },
+  needs_revision: { label: "Needs changes",     tone: "warn" },
+  waived_by_admin:{ label: "Waived by you",     tone: "info" },
+};
+
+/** The 5 experience checks an admin reads before approving a file plan. */
+export const FILE_PLAN_EXPERIENCE_CHECKS: string[] = [
+  "Will this make the feature easier to use?",
+  "Will this reduce admin confusion?",
+  "Does this add unnecessary complexity?",
+  "Does this need help text or tooltips?",
+  "Does this match the platform style?",
+];
+
 /**
  * Technical-phrase → plain-English translation, per the Phase 2 spec examples.
  * Used when surfacing raw error/log text to the operator.
  */
+/** Technical → plain-English replacement reference (shown as a table). */
+export const PLAIN_ENGLISH_REPLACEMENTS: { technical: string; plain: string }[] = [
+  { technical: "API Route Failure",   plain: "Page Connection Issue" },
+  { technical: "Database Latency",    plain: "Database Running Slow" },
+  { technical: "Auth Policy Error",   plain: "Login Permission Issue" },
+  { technical: "Agent Execution Failed", plain: "AI Task Failed" },
+  { technical: "RLS Conflict",        plain: "Data Access Rule Problem" },
+  { technical: "Migration Pending",   plain: "Database Change Needs Review" },
+  { technical: "Unhandled Exception", plain: "Unexpected System Error" },
+  { technical: "Permission Denied",   plain: "You Do Not Have Access" },
+  { technical: "Validation Failed",   plain: "Required Information Is Missing" },
+];
+
 const PLAIN_ENGLISH: { pattern: RegExp; friendly: string }[] = [
   { pattern: /api route failure|api failure|route handler error/i, friendly: "Page Connection Issue" },
   { pattern: /database latency|db latency|slow quer/i,             friendly: "Database Running Slow" },
@@ -169,6 +319,9 @@ const PLAIN_ENGLISH: { pattern: RegExp; friendly: string }[] = [
   { pattern: /agent execution failed|execution failed/i,           friendly: "AI Task Failed" },
   { pattern: /rls conflict|row level security|row-level security/i, friendly: "Data Access Rule Problem" },
   { pattern: /migration pending|pending migration/i,               friendly: "Database Change Needs Review" },
+  { pattern: /unhandled exception/i,                               friendly: "Unexpected System Error" },
+  { pattern: /permission denied/i,                                 friendly: "You Do Not Have Access" },
+  { pattern: /validation failed/i,                                 friendly: "Required Information Is Missing" },
 ];
 
 /** Translate a raw technical message into a friendlier one when we recognize it. */

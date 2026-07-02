@@ -11,7 +11,7 @@
 import { getDevAgents } from "./repo";
 import type {
   DevAgent, DevTask, DevAgentRun, DevAgentMessage, DevArtifact, DevFileChangePlan,
-  DevCodeReview, DevTestResult, DevSecurityReview, DevExperienceReview,
+  DevCodeReview, DevTestResult, DevSecurityReview, DevExperienceReview, DevReviewGate,
   DevApproval, DevDeployment, DevAuditEntry, DevAgentMemory, DevFeedback,
 } from "./types";
 
@@ -59,8 +59,8 @@ const agentName = (key: string) => SAMPLE_AGENTS.find((a) => a.key === key)?.nam
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────
 export const SAMPLE_TASKS: DevTask[] = [
-  { id: "task-1", title: "Add a CSV export button to the Incidents page", description: "Let safety managers download the incident list as a spreadsheet.", target_area: "HSE Management", priority: "high", status: "building", risk_level: "medium", metadata: { business_goal: "Save safety managers time pulling incident data for reports.", who_uses_it: "Safety managers", success_criteria: "A working Export button that downloads the current incident list as a CSV.", human_approval_required: true, file_changes_allowed: true, database_changes_allowed: false, github_branch_allowed: false, deployment_allowed: false }, created_by: "you", created_at: ago(180), updated_at: ago(12) },
-  { id: "task-2", title: "Fix the login redirect for invited users", description: "Invited users land on the wrong page after setting their password.", target_area: "User Management", priority: "urgent", status: "needs_approval", risk_level: "high", metadata: { business_goal: "Stop new users from getting lost right after they sign up.", who_uses_it: "Newly invited users", success_criteria: "Invited users land on the welcome page after setting a password.", human_approval_required: true, file_changes_allowed: true, database_changes_allowed: false, github_branch_allowed: false, deployment_allowed: false }, created_by: "you", created_at: ago(420), updated_at: ago(8) },
+  { id: "task-1", title: "Add a CSV export button to the Incidents page", description: "Let safety managers download the incident list as a spreadsheet.", target_area: "HSE Management", priority: "high", status: "code_draft", risk_level: "medium", metadata: { business_goal: "Save safety managers time pulling incident data for reports.", who_uses_it: "Safety managers", success_criteria: "A working Export button that downloads the current incident list as a CSV.", human_approval_required: true, file_changes_allowed: true, database_changes_allowed: false, github_branch_allowed: false, deployment_allowed: false }, created_by: "you", created_at: ago(180), updated_at: ago(12) },
+  { id: "task-2", title: "Fix the login redirect for invited users", description: "Invited users land on the wrong page after setting their password.", target_area: "User Management", priority: "urgent", status: "approval_required", risk_level: "high", metadata: { business_goal: "Stop new users from getting lost right after they sign up.", who_uses_it: "Newly invited users", success_criteria: "Invited users land on the welcome page after setting a password.", human_approval_required: true, file_changes_allowed: true, database_changes_allowed: false, github_branch_allowed: false, deployment_allowed: false }, created_by: "you", created_at: ago(420), updated_at: ago(8) },
   { id: "task-3", title: "Make the Chemicals list page load faster", description: "The list is slow when a site has thousands of chemicals.", target_area: "HSE Management", priority: "medium", status: "architecture_review", risk_level: "medium", metadata: { business_goal: "Faster page loads for large sites.", who_uses_it: "EHS coordinators at large facilities", success_criteria: "The Chemicals list loads quickly even with thousands of items." }, created_by: "you", created_at: ago(1500), updated_at: ago(95) },
   { id: "task-4", title: "Add a dark theme to the Reports screens", description: "Match the dark theme used elsewhere in the platform.", target_area: "Document Control", priority: "low", status: "intake", risk_level: "low", metadata: { business_goal: "Consistent look across the platform.", who_uses_it: "All users", success_criteria: "Reports screens support the dark theme." }, created_by: "you", created_at: ago(60), updated_at: ago(60) },
   { id: "task-5", title: "Refresh the empty-state messages on the dashboard", description: "Friendlier wording when there is no data yet.", target_area: "Admin Console", priority: "low", status: "complete", risk_level: "low", metadata: { business_goal: "Make first-run feel welcoming.", who_uses_it: "New customers", success_criteria: "Empty states use friendly, plain-English wording." }, created_by: "you", created_at: ago(4320), updated_at: ago(2880) },
@@ -87,16 +87,16 @@ export const SAMPLE_MESSAGES: DevAgentMessage[] = [
 
 // ── Artifacts (drafts) ────────────────────────────────────────────────────────
 export const SAMPLE_ARTIFACTS: DevArtifact[] = [
-  { id: "art-1", task_id: "task-1", run_id: "run-1", kind: "plan", title: "Plan: CSV export for Incidents", path: null, content: "1. Add a CSV helper\n2. Add an Export button to the toolbar\n3. Add a test", structured: {}, status: "approved", version: 1, created_by: "Platform Architect Agent", created_at: ago(168), updated_at: ago(160) },
-  { id: "art-2", task_id: "task-1", run_id: "run-2", kind: "code_draft", title: "Export button + CSV builder", path: "src/app/(app)/incidents/ExportButton.tsx", content: "// draft code — not yet applied", structured: {}, status: "proposed", version: 1, created_by: "Frontend Agent", created_at: ago(58), updated_at: ago(58) },
-  { id: "art-3", task_id: "task-3", run_id: "run-5", kind: "sql_draft", title: "Add index to chemical_inventory", path: null, content: "-- draft only\ncreate index ... ;", structured: {}, status: "proposed", version: 1, created_by: "Database/Supabase Agent", created_at: ago(98), updated_at: ago(98) },
+  { id: "art-1", task_id: "task-1", run_id: "run-1", kind: "plan", artifact_type: null, title: "Plan: CSV export for Incidents", description: null, path: null, content: "1. Add a CSV helper\n2. Add an Export button to the toolbar\n3. Add a test", language: null, risk_level: null, approval_required: false, structured: {}, status: "approved", version: 1, created_by: "Platform Architect Agent", created_at: ago(168), updated_at: ago(160) },
+  { id: "art-2", task_id: "task-1", run_id: "run-2", kind: "code_draft", artifact_type: "react_component", title: "Export button component", description: "A button that downloads the current incident list as a spreadsheet.", path: "src/app/(app)/incidents/ExportButton.tsx", content: "\"use client\";\nexport function ExportButton({ rows }) {\n  // draft — not applied to the codebase\n  return <button onClick={() => download(rows)}>Export CSV</button>;\n}", language: "tsx", risk_level: "low", approval_required: true, structured: { what_it_does: "Adds an Export button to the Incidents page.", where_it_goes: "src/app/(app)/incidents/ExportButton.tsx", files_affected: ["Incidents page toolbar"], tests_needed: "A test that the CSV includes a header row.", ux_improved: "Saves managers time — one click to download." }, status: "needs_review", version: 1, created_by: "Frontend Agent", created_at: ago(58), updated_at: ago(58) },
+  { id: "art-3", task_id: "task-3", run_id: "run-5", kind: "sql_draft", artifact_type: "supabase_sql", title: "Index for the Chemicals list", description: "A database index so the Chemicals list loads faster.", path: "supabase/migrations/DRAFT_chemicals_index.sql", content: "-- DRAFT (not applied)\ncreate index if not exists chem_tenant_name_idx\n  on chemical_inventory (tenant_id, name);", language: "sql", risk_level: "medium", approval_required: true, structured: { what_it_does: "Speeds up the Chemicals list with an index.", where_it_goes: "A new migration file.", files_affected: ["chemical_inventory table"], tests_needed: "Confirm the list still shows the right rows.", ux_improved: "The page loads faster for big sites." }, status: "needs_review", version: 1, created_by: "Database/Supabase Agent", created_at: ago(98), updated_at: ago(98) },
 ];
 
 // ── File change plans (draft code plans) ──────────────────────────────────────
 export const SAMPLE_FILE_PLANS: DevFileChangePlan[] = [
-  { id: "fcp-1", task_id: "task-1", artifact_id: "art-2", file_path: "src/app/(app)/incidents/ExportButton.tsx", change_type: "create", language: "tsx", diff: "+ export function ExportButton() { /* … */ }", rationale: "New button component for CSV export.", risk_level: "low", status: "proposed", applied_at: null, created_at: ago(58), updated_at: ago(58) },
-  { id: "fcp-2", task_id: "task-1", artifact_id: "art-2", file_path: "src/lib/incidents/csv.ts", change_type: "create", language: "ts", diff: "+ export function incidentsToCsv(rows) { /* … */ }", rationale: "Helper that turns incidents into CSV text.", risk_level: "low", status: "proposed", applied_at: null, created_at: ago(58), updated_at: ago(58) },
-  { id: "fcp-3", task_id: "task-2", artifact_id: null, file_path: "src/middleware.ts", change_type: "modify", language: "ts", diff: "~ adjust post-login redirect for invited users", rationale: "Send invited users to the right page after setting a password.", risk_level: "high", status: "proposed", applied_at: null, created_at: ago(28), updated_at: ago(28) },
+  { id: "fcp-1", task_id: "task-1", artifact_id: "art-2", file_path: "src/app/(app)/incidents/ExportButton.tsx", change_type: "create", language: "tsx", diff: "+ export function ExportButton() { /* … */ }", rationale: "New button component for CSV export.", proposed_summary: "Add an Export button to the Incidents toolbar.", approval_required: true, risk_level: "low", status: "needs_approval", applied_at: null, created_at: ago(58), updated_at: ago(58) },
+  { id: "fcp-2", task_id: "task-1", artifact_id: "art-2", file_path: "src/lib/incidents/csv.ts", change_type: "create", language: "ts", diff: "+ export function incidentsToCsv(rows) { /* … */ }", rationale: "Helper that turns incidents into CSV text.", proposed_summary: "Add a small helper that builds the CSV file.", approval_required: true, risk_level: "low", status: "needs_approval", applied_at: null, created_at: ago(58), updated_at: ago(58) },
+  { id: "fcp-3", task_id: "task-2", artifact_id: null, file_path: "src/middleware.ts", change_type: "modify", language: "ts", diff: "~ adjust post-login redirect for invited users", rationale: "Send invited users to the right page after setting a password.", proposed_summary: "Fix where invited users land after login.", approval_required: true, risk_level: "high", status: "needs_approval", applied_at: null, created_at: ago(28), updated_at: ago(28) },
 ];
 
 // ── Code reviews ──────────────────────────────────────────────────────────────
@@ -105,15 +105,22 @@ export const SAMPLE_CODE_REVIEWS: DevCodeReview[] = [
 ];
 
 // ── Test results ──────────────────────────────────────────────────────────────
+const TR_DEFAULTS = { test_type: null as null, test_name: null as null, expected_result: null as null, actual_result: null as null, recommended_fix: null as null, created_by_agent: "QA/Test Agent" };
 export const SAMPLE_TEST_RESULTS: DevTestResult[] = [
-  { id: "tr-1", task_id: "task-1", run_id: "run-3", kind: "typecheck", status: "passed", summary: "No type errors.", passed: 1, failed: 0, skipped: 0, details: {}, log: null, created_at: ago(10), updated_at: ago(10) },
-  { id: "tr-2", task_id: "task-1", run_id: "run-3", kind: "unit", status: "failed", summary: "1 of 4 checks failed — empty list should export a header row.", passed: 3, failed: 1, skipped: 0, details: {}, log: "expected header row when there are no incidents", created_at: ago(9), updated_at: ago(9) },
-  { id: "tr-3", task_id: "task-3", run_id: "run-5", kind: "lint", status: "passed", summary: "No lint issues.", passed: 1, failed: 0, skipped: 0, details: {}, log: null, created_at: ago(96), updated_at: ago(96) },
+  { id: "tr-1", task_id: "task-1", run_id: "run-3", kind: "qa", ...TR_DEFAULTS, test_type: "agent_workflow", test_name: "Task creation works", expected_result: "A new task saves and opens its detail page.", actual_result: "A new task saves and opens its detail page.", status: "passed", summary: "Task creation works", passed: 1, failed: 0, skipped: 0, details: {}, log: null, created_at: ago(10), updated_at: ago(10) },
+  { id: "tr-2", task_id: "task-1", run_id: "run-3", kind: "qa", ...TR_DEFAULTS, test_type: "form_validation", test_name: "Export with empty list", expected_result: "A header row is exported even when the list is empty.", actual_result: "No header row exported.", recommended_fix: "Always include the header row.", status: "failed", summary: "Export with empty list", passed: 0, failed: 1, skipped: 0, details: {}, log: "expected header row when there are no incidents", created_at: ago(9), updated_at: ago(9) },
+  { id: "tr-3", task_id: "task-3", run_id: "run-5", kind: "qa", ...TR_DEFAULTS, test_type: "rls_access", test_name: "Admin-only access works", expected_result: "Only Reliance admins can reach the module.", actual_result: "Only Reliance admins can reach the module.", status: "passed", summary: "Admin-only access works", passed: 1, failed: 0, skipped: 0, details: {}, log: null, created_at: ago(96), updated_at: ago(96) },
 ];
 
 // ── Security reviews ──────────────────────────────────────────────────────────
 export const SAMPLE_SECURITY_REVIEWS: DevSecurityReview[] = [
-  { id: "sr-1", task_id: "task-2", run_id: "run-4", reviewer_agent_id: "sample-agent-security-permissions", summary: "This change affects login behavior, so it needs your approval before going further.", findings: [{ category: "Login permission issue", severity: "high", note: "Redirect logic runs before the session is confirmed." }], risk_level: "high", verdict: "needs_changes", status: "open", created_at: ago(27), updated_at: ago(27) },
+  { id: "sr-1", task_id: "task-2", run_id: "run-4", reviewer_agent_id: "sample-agent-security-permissions", summary: "A critical security risk needs a person to review it before this can be released.", findings: [
+    { category: "Authentication", severity: "low", ok: true, note: "OK — protected by the platform." },
+    { category: "Authorization", severity: "high", ok: false, note: "Touches logins — verify admin-only access." },
+    { category: "Supabase RLS", severity: "low", ok: true, note: "OK." },
+    { category: "Secret exposure", severity: "low", ok: true, note: "OK — no secrets in client code." },
+    { category: "Unauthorized admin action / data-access risk", severity: "critical", ok: false, note: "This change touches logins — it must be checked by a person before release." },
+  ], risk_level: "critical", verdict: "fail", status: "open", created_at: ago(27), updated_at: ago(27) },
 ];
 
 // ── Experience reviews ────────────────────────────────────────────────────────
@@ -123,11 +130,12 @@ export const SAMPLE_EXPERIENCE_REVIEWS: DevExperienceReview[] = [
 ];
 
 // ── Approvals (the human gate) ────────────────────────────────────────────────
+const APPR_DEFAULTS = { reason: null, plain_english_summary: null, technical_summary: null, experience_impact: null, affected_files: [] as string[], affected_tables: [] as string[], details: {} };
 export const SAMPLE_APPROVALS: DevApproval[] = [
-  { id: "apr-1", task_id: "task-2", approval_type: "auth_permission_change", target_type: "dev_file_change_plans", target_id: "fcp-3", risk_level: "high", summary: "Change how invited users are redirected after login", proposed_change: "Modify src/middleware.ts to redirect invited users to the welcome page once their session is confirmed.", details: {}, status: "pending", requested_by: "Security/Permissions Agent", decided_by: null, decided_at: null, decision_note: null, created_at: ago(26), updated_at: ago(26) },
-  { id: "apr-2", task_id: "task-1", approval_type: "file_write", target_type: "dev_file_change_plans", target_id: "fcp-1", risk_level: "low", summary: "Save the new Export button and CSV helper to files", proposed_change: "Create src/app/(app)/incidents/ExportButton.tsx and src/lib/incidents/csv.ts from the approved drafts.", details: {}, status: "pending", requested_by: "Frontend Agent", decided_by: null, decided_at: null, decision_note: null, created_at: ago(20), updated_at: ago(20) },
-  { id: "apr-3", task_id: "task-3", approval_type: "database_change", target_type: "dev_artifacts", target_id: "art-3", risk_level: "medium", summary: "Add a database index to speed up the Chemicals list", proposed_change: "create index on chemical_inventory (tenant_id, name);", details: {}, status: "pending", requested_by: "Database/Supabase Agent", decided_by: null, decided_at: null, decision_note: null, created_at: ago(15), updated_at: ago(15) },
-  { id: "apr-4", task_id: "task-5", approval_type: "file_write", target_type: "dev_file_change_plans", target_id: null, risk_level: "low", summary: "Save the refreshed empty-state messages", proposed_change: "Update dashboard empty-state copy.", details: {}, status: "approved", requested_by: "Frontend Agent", decided_by: "you", decided_at: ago(2900), decision_note: "Looks good.", created_at: ago(3000), updated_at: ago(2900) },
+  { id: "apr-1", task_id: "task-2", approval_type: "auth_permission_change", target_type: "dev_file_change_plans", target_id: "fcp-3", risk_level: "high", summary: "Change how invited users are redirected after login", proposed_change: "Modify src/middleware.ts to redirect invited users to the welcome page once their session is confirmed.", reason: "This changes login behavior, so it needs your go-ahead.", plain_english_summary: "Send invited users to the right page after they set a password.", technical_summary: "Adjust the post-login redirect in middleware.ts after the session is confirmed.", experience_impact: "New users won't get lost right after signing up.", affected_files: ["src/middleware.ts"], affected_tables: [], details: {}, status: "pending", requested_by: "Security/Permissions Agent", decided_by: null, decided_at: null, decision_note: null, created_at: ago(26), updated_at: ago(26) },
+  { id: "apr-2", task_id: "task-1", approval_type: "file_write", target_type: "dev_file_change_plans", target_id: "fcp-1", risk_level: "low", summary: "Save the new Export button and CSV helper to files", proposed_change: "Create src/app/(app)/incidents/ExportButton.tsx and src/lib/incidents/csv.ts from the approved drafts.", reason: "The team is ready to save the drafted code.", plain_english_summary: "Add the Export button and the helper that builds the spreadsheet.", technical_summary: "Create two new files from the approved drafts.", experience_impact: "Managers get a one-click download.", affected_files: ["src/app/(app)/incidents/ExportButton.tsx", "src/lib/incidents/csv.ts"], affected_tables: [], details: {}, status: "pending", requested_by: "Frontend Agent", decided_by: null, decided_at: null, decision_note: null, created_at: ago(20), updated_at: ago(20) },
+  { id: "apr-3", task_id: "task-3", approval_type: "database_change", target_type: "dev_artifacts", target_id: "art-3", risk_level: "medium", summary: "Add a database index to speed up the Chemicals list", proposed_change: "create index on chemical_inventory (tenant_id, name);", reason: "A database change needs your approval before it runs.", plain_english_summary: "Add an index so the Chemicals list loads faster.", technical_summary: "create index on chemical_inventory (tenant_id, name);", experience_impact: "The page loads faster for big sites.", affected_files: ["supabase/migrations/DRAFT_chemicals_index.sql"], affected_tables: ["chemical_inventory"], details: {}, status: "pending", requested_by: "Database/Supabase Agent", decided_by: null, decided_at: null, decision_note: null, created_at: ago(15), updated_at: ago(15) },
+  { id: "apr-4", task_id: "task-5", approval_type: "file_write", target_type: "dev_file_change_plans", target_id: null, risk_level: "low", summary: "Save the refreshed empty-state messages", proposed_change: "Update dashboard empty-state copy.", ...APPR_DEFAULTS, plain_english_summary: "Save the friendlier empty-state wording.", status: "approved", requested_by: "Frontend Agent", decided_by: "you", decided_at: ago(2900), decision_note: "Looks good.", created_at: ago(3000), updated_at: ago(2900) },
 ];
 
 // ── Deployments (branch / PR / preview / release) ─────────────────────────────
@@ -153,7 +161,15 @@ export const SAMPLE_MEMORY: DevAgentMemory[] = [
 ];
 
 export const SAMPLE_FEEDBACK: DevFeedback[] = [
-  { id: "fb-1", task_id: null, screen: "/admin/dev-command/approvals", category: "improvement", risk_level: "low", message: "Add a one-line summary of what each approval will change.", status: "open", created_by: "you", resolved_by: null, resolved_at: null, created_at: ago(200), updated_at: ago(200) },
+  { id: "fb-1", task_id: null, screen: "/admin/dev-command/approvals", category: "improvement", feedback_type: "feature_request", risk_level: "low", message: "Add a one-line summary of what each approval will change.", status: "open", assigned_to: null, reviewed_by_agent: null, created_by: "you", resolved_by: null, resolved_at: null, created_at: ago(200), updated_at: ago(200) },
+];
+
+// ── Review gates (Phase 9) ────────────────────────────────────────────────────
+const qaItems = ["Acceptance criteria met", "Form validation works", "Empty states", "Loading states", "Error states", "Mobile / tablet layout"].map((label) => ({ label, passed: true }));
+export const SAMPLE_REVIEW_GATES: DevReviewGate[] = [
+  { id: "rg-1", task_id: "task-1", gate_type: "qa", agent_name: "QA/Test Agent", status: "passed", summary: "QA review looks good.", checklist: qaItems, required_fixes: [], score: 100, decided_by: null, decided_at: null, created_at: ago(40), updated_at: ago(40) },
+  { id: "rg-2", task_id: "task-1", gate_type: "experience", agent_name: "Human Experience Agent", status: "passed", summary: "Experience review: 9/10 — good.", checklist: ["Easy to use", "Visually clear", "Plain-English language"].map((label) => ({ label, passed: true })), required_fixes: [], score: 9, decided_by: null, decided_at: null, created_at: ago(38), updated_at: ago(38) },
+  { id: "rg-3", task_id: "task-2", gate_type: "security", agent_name: "Security/Permissions Agent", status: "needs_revision", summary: "A few security items need attention before release.", checklist: [{ label: "Admin-only access", passed: true }, { label: "Authentication", passed: true }, { label: "Data-access (RLS) risk", passed: false, note: "Needs a closer look before release." }, { label: "No unexpected permission changes", passed: false, note: "Needs a closer look before release." }], required_fixes: ["This touches logins/permissions — verify admin-only access.", "The risk level is high — double-check access and data exposure."], score: 50, decided_by: null, decided_at: null, created_at: ago(25), updated_at: ago(25) },
 ];
 
 // ── Lookups + dashboard metrics ───────────────────────────────────────────────
@@ -171,31 +187,34 @@ export interface DashboardMetric {
   href: string;
 }
 
-export function dashboardMetrics(): DashboardMetric[] {
+/** Pass live counts to override sample values; omit any key to keep the sample default. */
+export function dashboardMetrics(live?: Partial<Record<string, number>>): DashboardMetric[] {
   const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
   const isToday = (iso: string) => new Date(iso) >= startOfDay;
-  const openTasks = SAMPLE_TASKS.filter((t) => !["complete", "rejected"].includes(t.status)).length;
-  const needApproval = SAMPLE_APPROVALS.filter((a) => a.status === "pending").length;
-  const runsToday = SAMPLE_RUNS.filter((r) => isToday(r.created_at)).length;
-  const failedRuns = SAMPLE_RUNS.filter((r) => r.status === "failed").length;
-  const securityWarnings = SAMPLE_SECURITY_REVIEWS.filter((s) => s.verdict === "fail" || s.verdict === "needs_changes").length;
-  const xpFailures = SAMPLE_EXPERIENCE_REVIEWS.filter((e) => e.verdict === "changes_requested" || e.verdict === "rejected").length;
-  const draftPlans = SAMPLE_FILE_PLANS.filter((p) => p.status === "proposed").length;
+  const v = (key: string, fallback: number) => live?.[key] ?? fallback;
+
+  const openTasks = v("open_tasks", SAMPLE_TASKS.filter((t) => !["complete", "rejected"].includes(t.status)).length);
+  const needApproval = v("need_approval", SAMPLE_APPROVALS.filter((a) => a.status === "pending").length);
+  const runsToday = v("runs_today", SAMPLE_RUNS.filter((r) => isToday(r.created_at)).length);
+  const failedRuns = v("failed_runs", SAMPLE_RUNS.filter((r) => r.status === "failed").length);
+  const securityWarnings = v("security_warnings", SAMPLE_SECURITY_REVIEWS.filter((s) => s.verdict === "fail" || s.verdict === "needs_changes").length);
+  const xpFailures = v("xp_failures", SAMPLE_EXPERIENCE_REVIEWS.filter((e) => e.verdict === "changes_requested" || e.verdict === "rejected").length);
+  const draftPlans = v("draft_plans", SAMPLE_FILE_PLANS.filter((p) => p.status === "planned" || p.status === "needs_approval").length);
   const activePRs = SAMPLE_DEPLOYMENTS.filter((d) => d.status === "pr_open").length;
   const recentDeploys = SAMPLE_DEPLOYMENTS.length;
   const auditActivity = SAMPLE_AUDIT.filter((a) => isToday(a.created_at)).length;
 
   return [
-    { key: "open_tasks", label: "Open dev tasks", value: openTasks, hint: "Tasks that aren't finished yet", tone: "info", href: "/admin/dev-command/tasks" },
-    { key: "need_approval", label: "Tasks needing approval", value: needApproval, hint: "Waiting for your yes/no", tone: "violet", href: "/admin/dev-command/approvals" },
-    { key: "runs_today", label: "Agent runs today", value: runsToday, hint: "AI work started today", tone: "neutral", href: "/admin/dev-command/audit-log" },
-    { key: "failed_runs", label: "Failed agent runs", value: failedRuns, hint: "AI tasks that errored", tone: failedRuns ? "danger" : "neutral", href: "/admin/dev-command/audit-log" },
-    { key: "security_warnings", label: "Security warnings", value: securityWarnings, hint: "Reviews that need attention", tone: securityWarnings ? "danger" : "success", href: "/admin/dev-command/tasks" },
-    { key: "xp_failures", label: "Experience review issues", value: xpFailures, hint: "Ease-of-use problems found", tone: xpFailures ? "warn" : "success", href: "/admin/dev-command/tasks" },
-    { key: "draft_plans", label: "Draft code plans", value: draftPlans, hint: "Proposed file changes, not yet applied", tone: "info", href: "/admin/dev-command/tasks" },
-    { key: "active_prs", label: "Active pull requests", value: activePRs, hint: "Open code reviews on GitHub", tone: "info", href: "/admin/dev-command/tasks" },
-    { key: "recent_deploys", label: "Recent deployments", value: recentDeploys, hint: "Previews and releases", tone: "neutral", href: "/admin/dev-command/tasks" },
-    { key: "audit_today", label: "Audit log activity today", value: auditActivity, hint: "Actions recorded today", tone: "neutral", href: "/admin/dev-command/audit-log" },
+    { key: "open_tasks", label: "Open tasks", value: openTasks, hint: "Tasks still in progress", tone: "info", href: "/admin/dev-command/tasks" },
+    { key: "need_approval", label: "Need your approval", value: needApproval, hint: "Waiting on your yes/no", tone: needApproval ? "violet" : "neutral", href: "/admin/dev-command/approvals" },
+    { key: "runs_today", label: "Active agents", value: runsToday, hint: "AI agents currently working", tone: "neutral", href: "/admin/dev-command/audit-log" },
+    { key: "failed_runs", label: "Failed reviews", value: failedRuns, hint: "Agent runs that errored", tone: failedRuns ? "danger" : "neutral", href: "/admin/dev-command/audit-log" },
+    { key: "security_warnings", label: "Security blockers", value: securityWarnings, hint: "Critical findings blocking release", tone: securityWarnings ? "danger" : "success", href: "/admin/dev-command/tasks" },
+    { key: "xp_failures", label: "Experience issues", value: xpFailures, hint: "Ease-of-use problems found", tone: xpFailures ? "warn" : "success", href: "/admin/dev-command/tasks" },
+    { key: "draft_plans", label: "Draft artifacts", value: draftPlans, hint: "Code drafts awaiting your review", tone: draftPlans ? "info" : "neutral", href: "/admin/dev-command/tasks" },
+    { key: "active_prs", label: "Open pull requests", value: activePRs, hint: "PRs open on GitHub", tone: "info", href: "/admin/dev-command/tasks" },
+    { key: "recent_deploys", label: "Deployments", value: recentDeploys, hint: "Preview and production releases", tone: "neutral", href: "/admin/dev-command/tasks" },
+    { key: "audit_today", label: "Audit entries today", value: auditActivity, hint: "Actions logged today", tone: "neutral", href: "/admin/dev-command/audit-log" },
   ];
 }
 
@@ -212,8 +231,10 @@ export function taskBundle(taskId: string) {
     testResults: SAMPLE_TEST_RESULTS.filter((t) => t.task_id === taskId),
     securityReviews: SAMPLE_SECURITY_REVIEWS.filter((s) => s.task_id === taskId),
     experienceReviews: SAMPLE_EXPERIENCE_REVIEWS.filter((e) => e.task_id === taskId),
+    reviewGates: SAMPLE_REVIEW_GATES.filter((g) => g.task_id === taskId),
     approvals: SAMPLE_APPROVALS.filter((a) => a.task_id === taskId),
     deployments: SAMPLE_DEPLOYMENTS.filter((d) => d.task_id === taskId),
+    appliedChanges: [],
   };
 }
 

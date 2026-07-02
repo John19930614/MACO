@@ -63,6 +63,21 @@ export function EditChemicalForm({ chemical }: { chemical: Chemical }) {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
+        <Field label="Container Capacity (single container — sets GHS label size)">
+          <Input name="container_capacity" type="number" step="0.001" min="0" defaultValue={chemical.container_capacity ?? ""} placeholder="e.g. 20" />
+        </Field>
+        <Field label="Container Unit">
+          <Select name="container_capacity_unit" defaultValue={chemical.container_capacity_unit ?? "L"}>
+            <option value="mL">mL (millilitres)</option>
+            <option value="L">L (litres)</option>
+            <option value="gal">gal (US gallons)</option>
+            <option value="g">g (grams)</option>
+            <option value="kg">kg (kilograms)</option>
+          </Select>
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
         <Field label="Storage Location">
           <Input name="storage_location" defaultValue={chemical.storage_location ?? ""} placeholder="e.g. Lab 3, Chemical Store Room A" />
         </Field>

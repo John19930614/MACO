@@ -1,0 +1,146 @@
+// Generates src/lib/devcenter/codebaseContext.generated.ts — a real snapshot of
+// the project's structure so the Dev Command's AI agents plan against what
+// actually exists (routes, data layer, enums, deps, test convention) instead of
+// inventing files/routes/patterns. Run automatically on `prebuild`; safe to run
+// by hand: `node scripts/gen-codebase-context.mjs`.
+//
+// Fail-safe: any section that can't be scanned is emitted as "(unavailable)" so
+// a partial scan never breaks the build.
+
+import { readFileSync, readdirSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { join, relative } from "node:path";
+
+const ROOT = process.cwd();
+const SRC = join(ROOT, "src");
+
+function safe(fn, fallback) {
+  try { return fn(); } catch { return fallback; }
+}
+
+// Walk a directory collecting files whose name matches `want`.
+function walk(dir, want, acc = []) {
+  for (const entry of safe(() => readdirSync(dir), [])) {
+    const full = join(dir, entry);
+    const st = safe(() => statSync(full), null);
+    if (!st) continue;
+    if (st.isDirectory()) {
+      if (entry === "node_modules" || entry === ".next") continue;
+      walk(full, want, acc);
+    } else if (want.test(entry)) {
+      acc.push(full);
+    }
+  }
+  return acc;
+}
+
+// ── App routes (src/app) → user-facing paths, stripping (group) segments ──────
+function routes() {
+  const appDir = join(SRC, "app");
+  const pages = walk(appDir, /^page\.tsx?$/);
+  const paths = pages.map((p) => {
+    let rel = relative(appDir, p).replace(/\\/g, "/").replace(/\/page\.tsx?$/, "");
+    rel = rel.replace(/\([^)]+\)\/?/g, ""); // drop route groups like (app)
+    return "/" + rel;
+  });
+  return [...new Set(paths)].filter((p) => !p.startsWith("/api")).sort();
+}
+
+function apiRoutes() {
+  const apiDir = join(SRC, "app", "api");
+  const handlers = walk(apiDir, /^route\.tsx?$/);
+  return [...new Set(handlers.map((p) => {
+    const rel = relative(join(SRC, "app"), p).replace(/\\/g, "/").replace(/\/route\.tsx?$/, "");
+    return "/" + rel;
+  }))].sort();
+}
+
+// ── Exported symbols from a file matching a regex ─────────────────────────────
+function exportsFrom(relPath, re) {
+  const file = join(SRC, relPath);
+  if (!existsSync(file)) return [];
+  const text = safe(() => readFileSync(file, "utf8"), "");
+  const out = new Set();
+  let m;
+  while ((m = re.exec(text))) out.add(m[1]);
+  return [...out].sort();
+}
+
+function deps() {
+  const pkg = safe(() => JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")), {});
+  return Object.keys(pkg.dependencies ?? {}).sort();
+}
+
+function testConvention() {
+  const cfg = safe(() => readFileSync(join(ROOT, "vitest.config.ts"), "utf8"), "");
+  const inc = cfg.match(/include\s*:\s*\[([^\]]*)\]/);
+  const env = cfg.match(/environment\s*:\s*["']([^"']+)["']/);
+  return { include: inc ? inc[1].replace(/\s+/g, " ").trim() : "(unavailable)", environment: env ? env[1] : "node (default)" };
+}
+
+// Curated exemplar files — real, pattern-defining code the agents should mirror.
+// Contents are capped so the injected context stays bounded (the provider caches
+// the system prefix, so this is paid once per job, not per agent).
+const EXEMPLARS = [
+  "src/lib/actions/exportChemicalSummaries.ts", // canonical server action
+  "src/lib/data/ehsRepo.ts",                    // canonical data-layer reads
+  "src/lib/constants.ts",                       // real enums/roles to reuse
+  "test/label-sizing.test.ts",                  // canonical vitest node test
+];
+function referenceFiles() {
+  const CAP = 2400;
+  return EXEMPLARS.map((rel) => {
+    const file = join(ROOT, rel);
+    if (!existsSync(file)) return null;
+    let text = safe(() => readFileSync(file, "utf8"), "");
+    if (!text) return null;
+    const truncated = text.length > CAP;
+    if (truncated) text = text.slice(0, CAP);
+    return `#### ${rel}${truncated ? ` (excerpt — first ${CAP} chars)` : ""}\n\`\`\`ts\n${text}\n\`\`\``;
+  }).filter(Boolean).join("\n\n");
+}
+
+const appRoutes = safe(routes, []);
+const api = safe(apiRoutes, []);
+const dataFns = exportsFrom("lib/data/ehsRepo.ts", /export\s+(?:async\s+)?(?:function|const)\s+(get\w+|add\w+|update\w+|create\w+|delete\w+)/g);
+const authFns = exportsFrom("lib/auth/session.ts", /export\s+(?:async\s+)?function\s+(\w+)/g);
+const constFns = exportsFrom("lib/constants.ts", /export\s+(?:const|type|function)\s+(\w+)/g);
+const dependencies = safe(deps, []);
+const test = safe(testConvention, { include: "(unavailable)", environment: "(unavailable)" });
+const refFiles = safe(referenceFiles, "");
+
+const manifest = `## PROJECT STRUCTURE (auto-generated snapshot — authoritative)
+
+App root: maco-platform/ · Next.js 15 App Router · source under src/ · alias @/ → src/
+
+### Real user-facing routes (src/app/(app), route groups stripped)
+${appRoutes.map((r) => `- ${r}`).join("\n") || "(none found)"}
+
+### Real API routes
+${api.map((r) => `- ${r}`).join("\n") || "(none found)"}
+
+### Data layer — call these; do NOT read files or return [] (src/lib/data/ehsRepo.ts)
+${dataFns.map((f) => `- ${f}()`).join("\n") || "(none found)"}
+
+### Auth / tenant helpers (src/lib/auth/session.ts) — use these, not session.orgId
+${authFns.map((f) => `- ${f}()`).join("\n") || "(none found)"}
+
+### Exported constants / enums / types (src/lib/constants.ts) — reuse, don't redefine
+${constFns.map((c) => `- ${c}`).join("\n") || "(none found)"}
+
+### Production dependencies available (do NOT assume anything not listed)
+${dependencies.map((d) => `- ${d}`).join("\n") || "(none found)"}
+
+### Test convention
+- Runner: vitest · environment: ${test.environment} · include: ${test.include}
+- Tests live in test/**/*.test.ts (node env). @testing-library/react and jsdom are NOT installed.
+
+### REFERENCE FILES (real code — mirror these exact patterns; do not invent alternatives)
+${refFiles || "(unavailable)"}`;
+
+const banner = "// AUTO-GENERATED by scripts/gen-codebase-context.mjs — DO NOT EDIT BY HAND.\n// Regenerated on every `prebuild`. Reflects the real project structure so the\n// Dev Command agents plan against reality.\n";
+
+const body = `${banner}\nexport const CODEBASE_MANIFEST = ${JSON.stringify(manifest)};\n`;
+
+const outPath = join(SRC, "lib", "devcenter", "codebaseContext.generated.ts");
+writeFileSync(outPath, body, "utf8");
+console.log(`[gen-codebase-context] wrote ${relative(ROOT, outPath)} — ${appRoutes.length} routes, ${dataFns.length} data fns, ${constFns.length} constants, ${dependencies.length} deps`);

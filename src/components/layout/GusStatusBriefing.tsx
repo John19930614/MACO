@@ -176,7 +176,6 @@ export function GusStatusBriefing() {
     setPlaying(false);
     const t = setTimeout(() => setVisible(true), 500);
     return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.is_reliance]);
 
   // Try to play MP3
@@ -203,7 +202,7 @@ export function GusStatusBriefing() {
       setLineIndex((i) => i + 1);
     }, lineIndex === 0 ? 200 : 380);
     return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- boot-line ticker is driven solely by visible/lineIndex; muted/getCtx are read imperatively and excluded to avoid re-scheduling the timer
   }, [visible, lineIndex]);
 
   // Stats appear: power-on chord + TTS fallback
@@ -238,7 +237,7 @@ export function GusStatusBriefing() {
     }
     const t = setTimeout(next, 400);
     return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once when statsIn flips true; muted/playing and the speech helpers are read imperatively and excluded to avoid re-speaking
   }, [statsIn]);
 
   function toggleMute() {

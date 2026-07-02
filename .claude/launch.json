@@ -1,1 +1,1 @@
-{"version":"0.0.1","configurations":[{"name":"maco-dev","runtimeExecutable":"npm","runtimeArgs":["run","dev"],"port":3000}]}
+{"version":"0.0.1","configurations":[{"name":"maco-dev","runtimeExecutable":"npm","runtimeArgs":["run","dev"],"port":3000},{"name":"maco-dev-mock","runtimeExecutable":"npx","runtimeArgs":["next","dev","-p","3211"],"port":3211,"env":{"NEXT_PUBLIC_SAFETYIQ_MOCK":"true"}}]}

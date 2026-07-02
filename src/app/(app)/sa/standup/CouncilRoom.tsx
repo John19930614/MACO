@@ -63,7 +63,11 @@ export default function CouncilRoom({ meetings }: { meetings: CspMeeting[] }) {
   }, [playing, step, exchange.length]);
 
   // reset playback when the selected meeting changes
-  useEffect(() => { setStep(exchange.length ? 0 : -1); setPlaying(false); /* eslint-disable-next-line */ }, [selectedId]);
+  useEffect(() => {
+    setStep(exchange.length ? 0 : -1);
+    setPlaying(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset playback to the start when the selected meeting changes; exchange.length is intentionally excluded to avoid re-resetting mid-play
+  }, [selectedId]);
 
   const m = (meeting?.metrics ?? {}) as Metrics;
   const ehs = m.ehs ?? {};

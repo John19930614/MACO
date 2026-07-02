@@ -1,6 +1,7 @@
 import { Card, CardHeader } from "@/components/ui/primitives";
 import { ApprovalStatusBadge, RiskLevelBadge } from "./badges";
 import { EmptyStateCard } from "./states";
+import { ApprovalActions } from "./ApprovalActions";
 import { APPROVAL_TYPE_LABEL } from "@/lib/devcenter/labels";
 import { relativeTime } from "@/lib/utils";
 import { ShieldQuestion, Lock } from "lucide-react";
@@ -17,10 +18,13 @@ export function ApprovalCenter({
   approvals,
   title = "Approvals",
   subtitle = "Risky actions the AI team needs you to approve before it continues",
+  actionable = false,
 }: {
   approvals: DevApproval[];
   title?: string;
   subtitle?: string;
+  /** When true, render real Approve/Reject buttons (live tasks). */
+  actionable?: boolean;
 }) {
   const pending = approvals.filter((a) => a.status === "pending");
   const decided = approvals.filter((a) => a.status !== "pending");
@@ -55,7 +59,7 @@ export function ApprovalCenter({
                       </span>
                       <RiskLevelBadge level={a.risk_level} />
                     </div>
-                    <p className="mt-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">{a.summary}</p>
+                    <p className="mt-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">{a.plain_english_summary || a.summary}</p>
                   </div>
                   <ApprovalStatusBadge status={a.status} />
                 </div>
@@ -67,24 +71,44 @@ export function ApprovalCenter({
                   </div>
                 )}
 
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-[11px] text-slate-400">
-                    {a.requested_by ? `Asked by ${a.requested_by}` : "Requested"} · {relativeTime(a.created_at)}
-                    {a.status !== "pending" && a.decided_by ? ` · decided by ${a.decided_by}` : ""}
-                  </p>
-                  {a.status === "pending" && (
-                    <div className="flex items-center gap-2">
+                {(a.affected_files.length > 0 || a.affected_tables.length > 0) && (
+                  <div className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+                    {a.affected_files.length > 0 && <div><span className="font-semibold text-slate-400">Files: </span><span className="font-mono text-[11px] text-slate-600 dark:text-slate-300">{a.affected_files.join(", ")}</span></div>}
+                    {a.affected_tables.length > 0 && <div><span className="font-semibold text-slate-400">Tables: </span><span className="text-slate-600 dark:text-slate-300">{a.affected_tables.join(", ")}</span></div>}
+                  </div>
+                )}
+
+                {a.experience_impact && (
+                  <div className="mt-2 rounded-md bg-violet-50 px-3 py-1.5 text-xs text-violet-800 dark:bg-violet-950/40 dark:text-violet-300">
+                    <span className="font-semibold">Experience: </span>{a.experience_impact}
+                  </div>
+                )}
+
+                {a.technical_summary && (
+                  <p className="mt-2 text-[11px] text-slate-400"><span className="font-semibold">Technical: </span>{a.technical_summary}</p>
+                )}
+
+                <p className="mt-2 text-[11px] text-slate-400">
+                  {a.requested_by ? `Asked by ${a.requested_by}` : "Requested"} · {relativeTime(a.created_at)}
+                  {a.status !== "pending" && a.decided_by ? ` · decided by ${a.decided_by}` : ""}
+                </p>
+
+                {a.status === "pending" && (
+                  actionable ? (
+                    <ApprovalActions approval={a} />
+                  ) : (
+                    <div className="mt-2 flex items-center justify-end gap-2">
                       <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
-                        <Lock className="h-3 w-3" /> Enabled in a later phase
+                        <Lock className="h-3 w-3" /> Open this task to approve
                       </span>
                       <button type="button" disabled className="cursor-not-allowed rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-400 dark:bg-slate-800">Reject</button>
                       <button type="button" disabled className="cursor-not-allowed rounded-lg bg-emerald-200/60 px-3 py-1.5 text-xs font-semibold text-emerald-700/60 dark:bg-emerald-900/40 dark:text-emerald-300/60">Approve</button>
                     </div>
-                  )}
-                  {a.status !== "pending" && a.decision_note && (
-                    <p className="text-[11px] italic text-slate-400">“{a.decision_note}”</p>
-                  )}
-                </div>
+                  )
+                )}
+                {a.status !== "pending" && a.decision_note && (
+                  <p className="mt-1 text-[11px] italic text-slate-400">“{a.decision_note}”</p>
+                )}
               </div>
             ))}
           </div>

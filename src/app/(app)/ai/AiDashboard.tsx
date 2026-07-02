@@ -1,10 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useTransition } from "react";
+import React from "react";
 import {
   Send, RotateCcw, FlaskConical, GraduationCap, Shield, AlertTriangle,
   ChevronRight, Sparkles, Bot, BarChart3, Clock, CheckCircle2, XCircle,
+  ChevronDown, Wand2,
 } from "lucide-react";
+import { remediateFinding, dismissFinding } from "@/lib/actions/ai-remediate";
 import type {
   Chemical, TrainingCourse, TrainingRecord, Profile, CapaAction,
   Incident, LegalRequirement, Audit, WasteStream, AiFinding, PredictabilityRun,
@@ -762,6 +765,240 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
   );
 }
 
+// ── AI Remediation panel ─────────────────────────────────────────────────────
+
+const PRIORITY_LABEL: Record<string, string> = {
+  immediate:   "Immediate",
+  short_term:  "Short term",
+  medium_term: "Medium term",
+  long_term:   "Long term",
+};
+
+const PRIORITY_COLOR: Record<string, string> = {
+  immediate:   "bg-red-100 text-red-700",
+  short_term:  "bg-amber-100 text-amber-700",
+  medium_term: "bg-blue-100 text-blue-700",
+  long_term:   "bg-slate-100 text-slate-600",
+};
+
+function FindingRemediationPanel({ finding, onDone }: { finding: AiFinding; onDone: () => void }) {
+  const output = finding.output as AiAnalysisOutput | null;
+  const actions = output?.recommended_actions ?? [];
+  const gaps    = output?.gaps ?? [];
+
+  const [selected, setSelected] = useState<Set<number>>(() => new Set(actions.map((_, i) => i)));
+  const [phase, setPhase]       = useState<"idle" | "dismiss" | "done" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [dismissReason, setDismissReason] = useState("");
+  const [isPending, startTransition] = useTransition();
+
+  function toggle(i: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  }
+
+  function handleApply() {
+    const picked = actions.filter((_, i) => selected.has(i));
+    if (!picked.length) return;
+    startTransition(async () => {
+      try {
+        const result = await remediateFinding(finding.id, picked.map((a) => ({
+          action: a.action, priority: a.priority, rationale: a.rationale, capa_kind: a.capa_kind,
+        })));
+        if (!result.ok) { setErrorMsg(result.error ?? "Failed."); setPhase("error"); return; }
+        setPhase("done");
+        setTimeout(onDone, 1400);
+      } catch (e) {
+        setErrorMsg(e instanceof Error ? e.message : "An unexpected error occurred.");
+        setPhase("error");
+      }
+    });
+  }
+
+  function handleDismissConfirm() {
+    if (!dismissReason.trim()) return;
+    startTransition(async () => {
+      try {
+        const result = await dismissFinding(finding.id, dismissReason.trim());
+        if (!result.ok) { setErrorMsg(result.error ?? "Failed."); setPhase("error"); return; }
+        onDone();
+      } catch (e) {
+        setErrorMsg(e instanceof Error ? e.message : "An unexpected error occurred.");
+        setPhase("error");
+      }
+    });
+  }
+
+  if (phase === "done") {
+    return (
+      <div className="flex items-center gap-2 px-5 py-4 bg-emerald-50 border-t border-emerald-100 text-sm text-emerald-700 font-medium">
+        <CheckCircle2 className="h-4 w-4 shrink-0" />
+        {selected.size} CAPA{selected.size !== 1 ? "s" : ""} created and finding accepted.
+      </div>
+    );
+  }
+
+  if (phase === "error") {
+    return (
+      <div className="border-t border-red-100 bg-red-50 px-5 py-4 space-y-3">
+        <div className="flex items-start gap-2">
+          <XCircle className="h-4 w-4 shrink-0 text-red-500 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-red-800">Something went wrong</p>
+            <p className="text-xs text-red-600 mt-0.5">{errorMsg ?? "An unexpected error occurred. Please try again."}</p>
+          </div>
+        </div>
+        <button
+          onClick={() => { setPhase("idle"); setErrorMsg(null); }}
+          className="rounded-lg bg-white border border-red-200 px-4 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 transition"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  if (phase === "dismiss") {
+    return (
+      <div className="border-t border-slate-200 bg-slate-50 px-5 py-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <XCircle className="h-4 w-4 text-slate-500 shrink-0" />
+          <span className="text-sm font-semibold text-slate-800">Dismiss finding — reason required</span>
+        </div>
+        <p className="text-xs text-slate-500">
+          Provide a reason for dismissing this finding. This will be saved to the audit log and displayed on the finding record.
+        </p>
+        <textarea
+          autoFocus
+          value={dismissReason}
+          onChange={(e) => setDismissReason(e.target.value)}
+          placeholder="e.g. Already addressed in last quarter's CAPA #42, risk accepted by management…"
+          rows={3}
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none resize-none"
+        />
+        {errorMsg && (
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{errorMsg}</p>
+        )}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleDismissConfirm}
+            disabled={!dismissReason.trim() || isPending}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-700 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+          >
+            <XCircle className="h-3.5 w-3.5" />
+            {isPending ? "Dismissing…" : "Confirm dismiss"}
+          </button>
+          <button
+            onClick={() => { setPhase("idle"); setDismissReason(""); }}
+            disabled={isPending}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-t border-violet-100 bg-violet-50/60 px-5 py-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-100">
+          <Wand2 className="h-3.5 w-3.5 text-violet-600" />
+        </div>
+        <span className="text-sm font-semibold text-violet-900">AI Recommended Actions</span>
+        <span className="text-xs text-violet-400">· Select which to create as CAPAs</span>
+      </div>
+
+      {/* Identified gaps */}
+      {gaps.length > 0 && (
+        <div className="rounded-lg border border-violet-100 bg-white/70 px-3 py-2.5 space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-400">Gaps identified</p>
+          <ul className="space-y-0.5">
+            {gaps.map((g, i) => (
+              <li key={i} className="flex items-start gap-1.5 text-xs text-slate-600">
+                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                {g}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Action checkboxes */}
+      {actions.length === 0 ? (
+        <p className="text-xs text-slate-500">No recommended actions in this finding.</p>
+      ) : (
+        <div className="space-y-2">
+          {actions.map((a, i) => (
+            <label
+              key={i}
+              className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition ${
+                selected.has(i)
+                  ? "border-violet-200 bg-white shadow-sm"
+                  : "border-slate-200 bg-white/40 opacity-60"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(i)}
+                onChange={() => toggle(i)}
+                className="mt-0.5 h-4 w-4 accent-violet-600 shrink-0"
+              />
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="text-xs font-semibold text-slate-800">{a.action}</p>
+                <p className="text-[11px] text-slate-500 leading-relaxed">{a.rationale}</p>
+                <div className="flex items-center gap-1.5">
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${PRIORITY_COLOR[a.priority] ?? "bg-slate-100 text-slate-600"}`}>
+                    {PRIORITY_LABEL[a.priority] ?? a.priority}
+                  </span>
+                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-500">
+                    {a.capa_kind === "corrective" ? "Corrective action" : "Preventive action"}
+                  </span>
+                </div>
+              </div>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {errorMsg && (
+        <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{errorMsg}</p>
+      )}
+
+      {/* Footer buttons */}
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          onClick={handleApply}
+          disabled={selected.size === 0 || isPending}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50"
+        >
+          <Wand2 className="h-3.5 w-3.5" />
+          {isPending ? "Creating…" : `Create ${selected.size} CAPA${selected.size !== 1 ? "s" : ""} & Accept`}
+        </button>
+        <button
+          onClick={() => setPhase("dismiss")}
+          disabled={isPending}
+          className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+        >
+          Dismiss finding
+        </button>
+        <button
+          onClick={onDone}
+          disabled={isPending}
+          className="ml-auto text-xs text-slate-400 hover:text-slate-600 transition"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── P-Engine / Findings panel (replaces old page content) ────────────────────
 
 const JOB_LABEL: Record<string, string> = {
@@ -786,7 +1023,11 @@ function FindingsPanel({ findings, runs, latestRun }: {
   runs: PredictabilityRun[];
   latestRun: PredictabilityRun | null;
 }) {
-  const pending  = findings.filter((f) => f.review_status === "pending").length;
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Optimistic: hide rows the user has just accepted or dismissed without waiting for a server re-fetch
+  const [actedOn, setActedOn] = useState<Set<string>>(new Set());
+
+  const pending  = findings.filter((f) => f.review_status === "pending" && !actedOn.has(f.id)).length;
   const accepted = findings.filter((f) => f.review_status === "accepted").length;
   const rejected = findings.filter((f) => f.review_status === "rejected").length;
   const sortedRuns = [...runs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -856,29 +1097,70 @@ function FindingsPanel({ findings, runs, latestRun }: {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {findings.map((f) => {
-                const output = f.output as AiAnalysisOutput | null;
+              {findings.filter((f) => !actedOn.has(f.id)).map((f) => {
+                const output   = f.output as AiAnalysisOutput | null;
+                const isPending = f.review_status === "pending";
+                const isExpanded = expandedId === f.id;
                 return (
-                  <tr key={f.id} className="hover:bg-slate-50">
-                    <td className="px-5 py-3 max-w-64">
-                      <div className="text-xs font-medium text-slate-800">{JOB_LABEL[f.job] ?? f.job}</div>
-                      {output?.plain_language_summary && (
-                        <div className="mt-0.5 text-[10px] text-slate-400 line-clamp-2">{output.plain_language_summary}</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Pill className="bg-violet-50 text-violet-700 text-[10px]">{JOB_LABEL[f.job] ?? f.job}</Pill>
-                    </td>
-                    <td className="px-4 py-3">
-                      {output?.risk_level ? <RiskLevelBadge level={output.risk_level as RiskLevel} /> : <span className="text-xs text-slate-400">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-xs tabular-nums text-slate-600">
-                      {output?.risk_score != null ? `${output.risk_score}/100` : "—"}
-                    </td>
-                    <td className="px-4 py-3"><GatewayReviewBadge review={output?.gateway} /></td>
-                    <td className="px-4 py-3 text-xs tabular-nums text-slate-600">{fmt(f.created_at)}</td>
-                    <td className="px-4 py-3"><ReviewStatusBadge status={f.review_status} /></td>
-                  </tr>
+                  <React.Fragment key={f.id}>
+                    <tr
+                      className={`${isPending ? "cursor-pointer" : ""} hover:bg-slate-50 ${isExpanded ? "bg-violet-50/40" : ""}`}
+                      onClick={isPending ? () => setExpandedId(isExpanded ? null : f.id) : undefined}
+                    >
+                      <td className="px-5 py-3 max-w-64">
+                        <div className="text-xs font-medium text-slate-800">{JOB_LABEL[f.job] ?? f.job}</div>
+                        {output?.plain_language_summary && (
+                          <div className="mt-0.5 text-[10px] text-slate-400 line-clamp-2">{output.plain_language_summary}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Pill className="bg-violet-50 text-violet-700 text-[10px]">{JOB_LABEL[f.job] ?? f.job}</Pill>
+                      </td>
+                      <td className="px-4 py-3">
+                        {output?.risk_level ? <RiskLevelBadge level={output.risk_level as RiskLevel} /> : <span className="text-xs text-slate-400">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-xs tabular-nums text-slate-600">
+                        {output?.risk_score != null ? `${output.risk_score}/100` : "—"}
+                      </td>
+                      <td className="px-4 py-3"><GatewayReviewBadge review={output?.gateway} /></td>
+                      <td className="px-4 py-3 text-xs tabular-nums text-slate-600">{fmt(f.created_at)}</td>
+                      <td className="px-4 py-3">
+                        {isPending ? (
+                          <button
+                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold transition ${
+                              isExpanded
+                                ? "border-violet-300 bg-violet-100 text-violet-700"
+                                : "border-violet-200 bg-violet-50 text-violet-600 hover:bg-violet-100"
+                            }`}
+                            onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : f.id); }}
+                          >
+                            <Wand2 className="h-3 w-3" />
+                            AI Fix
+                            <ChevronDown className={`h-3 w-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                          </button>
+                        ) : (
+                          <div className="space-y-1">
+                            <ReviewStatusBadge status={f.review_status} />
+                            {f.review_status === "rejected" && f.rejection_reason && (
+                              <p className="text-[10px] text-slate-400 max-w-48 leading-snug" title={f.rejection_reason}>
+                                {f.rejection_reason.length > 60 ? f.rejection_reason.slice(0, 60) + "…" : f.rejection_reason}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={7} className="p-0">
+                          <FindingRemediationPanel
+                            finding={f}
+                            onDone={() => { setExpandedId(null); setActedOn((prev) => new Set([...prev, f.id])); }}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
               {findings.length === 0 && (

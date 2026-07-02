@@ -13,7 +13,8 @@ import { generateStructuredJson } from "@/lib/ai/provider";
 import type { Severity, IncidentType, CapaStatus, AuditStatus, DocumentStatus } from "@/lib/constants";
 import { COMPLIANCE_STATUS_META, type ComplianceStatus, WASTE_CLASSIFICATIONS } from "@/lib/constants";
 import { STORAGE_CLASSES, PPE_TYPES } from "@/lib/chemicalRefData";
-import type { CapaSourceType, AuditType, Incident, RiskAssessment, WasteStream, Equipment, LegalRequirement, TrainingRecord, OshaCase, AiFinding, Chemical, AiAnalysisOutput, BiosafetyLab, BiohazardAgent, ErgonomicsWorkstation, ErgonomicsJobTask } from "@/lib/types";
+import type { CapaSourceType, AuditType, Incident, RiskAssessment, WasteStream, Equipment, LegalRequirement, TrainingRecord, OshaCase, AiFinding, Chemical, AiAnalysisOutput, BiosafetyLab, BiohazardAgent, ErgonomicsWorkstation, ErgonomicsJobTask, WasteProfileConstituent, WasteProfileAiSuggestions } from "@/lib/types";
+import { rulesDraft } from "@/lib/waste/profileDraft";
 import { analyzeChemical, analyzeComplianceGap, analyzeTraining, buildPredictabilityForecast } from "@/lib/ai/engine";
 import { validateRecordInBackground } from "@/lib/csp/repo";
 import {
@@ -305,6 +306,16 @@ function parsePpeCodes(raw: string | null): string[] {
   )];
 }
 
+// Container-capacity fields (drive EU CLP label sizing). Blank → null so a
+// missing value falls back to the smallest CLP tier at print time.
+function containerCapFields(formData: FormData): { container_capacity: number | null; container_capacity_unit: string | null } {
+  const raw = ((formData.get("container_capacity") as string) ?? "").trim();
+  return {
+    container_capacity: raw === "" ? null : (parseFloat(raw) || null),
+    container_capacity_unit: (formData.get("container_capacity_unit") as string) || null,
+  };
+}
+
 export async function addChemical(_prev: unknown, formData: FormData) {
   const hazards      = parseHazardCodes(formData.get("hazard_codes") as string);
   const precautions  = parsePrecautionCodes(formData.get("precaution_codes") as string);
@@ -327,6 +338,7 @@ export async function addChemical(_prev: unknown, formData: FormData) {
         precautionary_statements: precautions,
         quantity: parseFloat(formData.get("quantity") as string) || 0,
         unit: (formData.get("unit") as string) || "L",
+        ...containerCapFields(formData),
         storage_location: (formData.get("storage_location") as string) || "",
         storage_class: storageClass,
         recommended_ppe: ppe,
@@ -396,6 +408,7 @@ export async function updateChemical(id: string, formData: FormData) {
         cas_number:       (formData.get("cas_number") as string) || null,
         quantity:         parseFloat(formData.get("quantity") as string) || 0,
         unit:             (formData.get("unit") as string) || "L",
+        ...containerCapFields(formData),
         storage_location: (formData.get("storage_location") as string) || "",
         supplier:         (formData.get("supplier") as string) || null,
         ...(hasHazards ? {
@@ -421,6 +434,7 @@ export async function updateChemical(id: string, formData: FormData) {
         cas_number:       (formData.get("cas_number") as string) || null,
         quantity:         parseFloat(formData.get("quantity") as string) || 0,
         unit:             (formData.get("unit") as string) || "L",
+        ...containerCapFields(formData),
         storage_location: (formData.get("storage_location") as string) || "",
         supplier:         (formData.get("supplier") as string) || null,
         ...(hasHazards ? {
@@ -2647,6 +2661,132 @@ export async function transitionWasteProfile(id: string, action: ProfileAction, 
   if (error) return { ok: false as const, error: error.message };
   revalidatePath("/waste");
   return { ok: true as const };
+}
+
+// ── Guided waste-profile wizard (inventory → composition → AI draft → approval) ─
+
+// Drafts a characterization from the SELECTED inventory chemicals + guided
+// answers. Always returns a usable draft: a deterministic rules-based one when
+// no AI key is configured (or the AI call fails), upgraded to a model draft
+// when AI is available. The result is advisory — the profile still goes through
+// mandatory human approval.
+export async function draftWasteProfileFromChemicals(input: {
+  constituents: WasteProfileConstituent[];
+  answers: Record<string, string>;
+}): Promise<{ ok: true; draft: WasteProfileAiSuggestions } | { ok: false; error: string }> {
+  const constituents = Array.isArray(input?.constituents) ? input.constituents : [];
+  if (constituents.length === 0) return { ok: false, error: "Select at least one chemical first." };
+  const answers = input?.answers ?? {};
+
+  // Deterministic baseline (also the fallback).
+  const baseline = rulesDraft(constituents, answers);
+
+  if (MOCK_MODE || !hasLiveAi()) {
+    return { ok: true, draft: baseline };
+  }
+
+  try {
+    const constituentLines = constituents
+      .map(
+        (c) =>
+          `- ${c.name} (CAS ${c.cas_number ?? "n/a"}) — ${c.percentage}% — GHS: ${(c.ghs_classes ?? []).join(", ") || "none"} — H-codes: ${(c.hazard_statements ?? []).join(", ") || "none"}`,
+      )
+      .join("\n");
+    const answerLines = Object.entries(answers)
+      .filter(([, v]) => v)
+      .map(([k, v]) => `- ${k}: ${v}`)
+      .join("\n");
+
+    const result = await generateStructuredJson({
+      system:
+        "You are an EHS hazardous-waste characterization assistant. Given the constituent chemicals of a waste mixture (with CAS numbers, weight percentages, GHS classes and H-codes) and the generator's guided answers, draft a RCRA waste profile. Be conservative: only assign an EPA waste code (D/F/K/P/U) when the data clearly supports it, otherwise return an empty string. Map GHS hazards to characteristic codes (ignitable D001, corrosive D002, reactive D003) where applicable. Keep text concise and factual. This is advisory; a human reviewer approves it.",
+      user: `Constituents:\n${constituentLines}\n\nGuided answers:\n${answerLines || "(none)"}\n\nA rules-based first pass suggested: classification=${baseline.classification}, waste_code=${baseline.waste_code || "(none)"}. Refine or confirm.`,
+      schema: {
+        name: "waste_profile_draft",
+        strict: true,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            classification:      { type: "string", enum: [...WASTE_CLASSIFICATIONS] },
+            waste_code:          { type: "string", description: "EPA waste code(s) or empty string" },
+            physical_state:      { type: "string", enum: ["solid", "liquid", "sludge", "gas"] },
+            process_description: { type: "string" },
+            hazard_summary:      { type: "string" },
+            rationale:           { type: "string", description: "Why these codes/classification were chosen" },
+          },
+          required: ["classification", "waste_code", "physical_state", "process_description", "hazard_summary", "rationale"],
+        },
+      },
+      maxTokens: 900,
+      tier: "deep",
+    });
+    const d = result.data as Omit<WasteProfileAiSuggestions, "codes_considered" | "generated_by">;
+    return {
+      ok: true,
+      draft: {
+        ...d,
+        codes_considered: baseline.codes_considered,
+        generated_by: "ai",
+      },
+    };
+  } catch {
+    // Honest degradation: fall back to the deterministic draft rather than fail.
+    return { ok: true, draft: baseline };
+  }
+}
+
+// Persists a wizard-built profile and submits it straight into EHS review —
+// "mandatory human approval before anything is finalized". Stores the chemical
+// composition, the guided answers, and the AI suggestions alongside the
+// reviewed fields.
+export async function submitWasteProfileFromWizard(input: {
+  name: string;
+  waste_stream_id?: string | null;
+  waste_code?: string | null;
+  classification: string;
+  physical_state?: string | null;
+  process_description?: string | null;
+  hazard_summary?: string | null;
+  composition: WasteProfileConstituent[];
+  questionnaire: Record<string, string>;
+  ai_suggestions: WasteProfileAiSuggestions | null;
+}): Promise<{ ok: true; id: string | null } | { ok: false; error: string }> {
+  if (MOCK_MODE) return { ok: true, id: null };
+  const ctx = await getCtx();
+  if (!ctx) return { ok: false, error: "Session expired — please reload." };
+
+  const name = input?.name?.trim();
+  if (!name) return { ok: false, error: "Profile name is required." };
+  const composition = Array.isArray(input?.composition) ? input.composition : [];
+  if (composition.length === 0) return { ok: false, error: "Add at least one chemical to the profile." };
+
+  const nowIso = new Date().toISOString();
+  const { data, error } = await ctx.client
+    .from("waste_profiles")
+    .insert({
+      tenant_id:           ctx.tenantId,
+      site_id:             ctx.siteId,
+      waste_stream_id:     input.waste_stream_id || null,
+      name,
+      waste_code:          input.waste_code || null,
+      classification:      input.classification || "hazardous",
+      physical_state:      input.physical_state || null,
+      process_description: input.process_description || null,
+      hazard_summary:      input.hazard_summary || null,
+      composition,
+      questionnaire:       input.questionnaire ?? {},
+      ai_suggestions:      input.ai_suggestions ?? null,
+      state:               "ehs_review",   // submitted for mandatory human approval
+      submitted_by:        ctx.profileId,
+      submitted_at:        nowIso,
+      created_by:          ctx.profileId,
+    })
+    .select("id")
+    .single();
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/waste");
+  return { ok: true, id: (data?.id as string) ?? null };
 }
 
 

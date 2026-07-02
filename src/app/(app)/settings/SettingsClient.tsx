@@ -197,7 +197,8 @@ export function SettingsClient({
     } catch {
       // ignore corrupt storage
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- one-time mount hydration from localStorage; intentionally runs once
+
 
   // Re-seed company fields whenever the demo persona switches — MOCK mode only.
   // In live mode the company identity comes from the database, not the persona.
@@ -210,7 +211,8 @@ export function SettingsClient({
       ehsManager:   user.display_name,
       qualifiedEhs: user.display_name,
     }));
-  }, [user.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user.id]); // eslint-disable-line react-hooks/exhaustive-deps -- re-seed derived company fields only when the demo persona (user.id) changes; setData is stable
+
 
   function setField(key: keyof Omit<SettingsData, "notifs">, value: string) {
     setData((d) => ({ ...d, [key]: value }));

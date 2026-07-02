@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, FilePlus2, XCircle, Sparkles } from "lucide-react";
+import { CheckCircle2, FilePlus2, XCircle } from "lucide-react";
 import { Card, CardHeader, Pill } from "@/components/ui/primitives";
-import { Modal, Field, Input, Select, Textarea, SubmitRow } from "@/components/modals/Modal";
-import { createWasteProfile, transitionWasteProfile, draftWasteProfile } from "@/lib/actions/ehs";
-import { playCreateSound } from "@/lib/sounds";
-import { WASTE_CLASSIFICATIONS, type WasteProfileState } from "@/lib/constants";
+import { Modal, Field, Textarea } from "@/components/modals/Modal";
+import { transitionWasteProfile } from "@/lib/actions/ehs";
+import { type WasteProfileState } from "@/lib/constants";
 import type { WasteProfile, WasteStream } from "@/lib/types";
 
 function fmt(d: string | null): string {
@@ -35,7 +35,7 @@ const STATE_LABEL: Record<WasteProfileState, string> = {
 
 const btnBase = "rounded-lg px-2.5 py-1 text-[10px] font-semibold transition disabled:opacity-50";
 
-export function WasteProfilePipeline({ profiles, streams }: { profiles: WasteProfile[]; streams: WasteStream[] }) {
+export function WasteProfilePipeline({ profiles }: { profiles: WasteProfile[]; streams?: WasteStream[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [rejecting, setRejecting] = useState<WasteProfile | null>(null);
@@ -57,7 +57,14 @@ export function WasteProfilePipeline({ profiles, streams }: { profiles: WastePro
       <CardHeader
         title="Waste Profile Review Pipeline"
         subtitle="Draft → EHS Review → Approved → Active · Reviewer approval is required before a profile can be activated for container assignment"
-        right={<CreateProfileButton streams={streams} />}
+        right={
+          <Link
+            href="/waste/profiles/new"
+            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
+          >
+            <FilePlus2 className="h-3.5 w-3.5" /> New Profile
+          </Link>
+        }
       />
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -185,162 +192,5 @@ export function WasteProfilePipeline({ profiles, streams }: { profiles: WastePro
   );
 }
 
-const EMPTY_FORM = {
-  name: "",
-  waste_stream_id: "",
-  waste_code: "",
-  classification: "hazardous",
-  physical_state: "liquid",
-  process_description: "",
-  hazard_summary: "",
-};
-
-function CreateProfileButton({ streams }: { streams: WasteStream[] }) {
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ ...EMPTY_FORM });
-  const [aiDesc, setAiDesc] = useState("");
-  const [aiPending, setAiPending] = useState(false);
-  const [aiNote, setAiNote] = useState<string | null>(null);
-  const router = useRouter();
-
-  function set<K extends keyof typeof form>(key: K, value: string) {
-    setForm((f) => ({ ...f, [key]: value }));
-  }
-  function reset() {
-    setForm({ ...EMPTY_FORM });
-    setAiDesc("");
-    setAiNote(null);
-    setError(null);
-  }
-
-  async function handleDraft() {
-    setAiPending(true);
-    setAiNote(null);
-    const res = await draftWasteProfile({ description: aiDesc });
-    if (res.ok) {
-      const d = res.draft;
-      setForm((f) => ({
-        ...f,
-        name: d.name || f.name,
-        waste_code: d.waste_code || "",
-        classification: d.classification || f.classification,
-        physical_state: d.physical_state || f.physical_state,
-        process_description: d.process_description || "",
-        hazard_summary: d.hazard_summary || "",
-      }));
-      setAiNote("AI draft applied — review every field before submitting.");
-    } else {
-      setAiNote(res.error ?? "AI drafting unavailable.");
-    }
-    setAiPending(false);
-  }
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setPending(true);
-    setError(null);
-    const fd = new FormData();
-    fd.set("name", form.name);
-    fd.set("waste_stream_id", form.waste_stream_id);
-    fd.set("waste_code", form.waste_code);
-    fd.set("classification", form.classification);
-    fd.set("physical_state", form.physical_state);
-    fd.set("process_description", form.process_description);
-    fd.set("hazard_summary", form.hazard_summary);
-    const res = await createWasteProfile(null, fd);
-    if (res.ok) {
-      playCreateSound();
-      setOpen(false);
-      reset();
-      router.refresh();
-    } else {
-      setError(res.error ?? "Could not create profile.");
-    }
-    setPending(false);
-  }
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700"
-      >
-        <FilePlus2 className="h-3.5 w-3.5" /> New Profile
-      </button>
-      <Modal open={open} onClose={() => { setOpen(false); }} title="New Waste Profile">
-        <form onSubmit={handleSubmit}>
-          <div className="flex flex-col gap-4 px-6 py-5">
-            {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
-
-            {/* AI assist */}
-            <div className="rounded-lg border border-violet-200 bg-violet-50/60 p-3">
-              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-violet-700">
-                <Sparkles className="h-3.5 w-3.5" /> AI Draft Assist
-              </div>
-              <Textarea
-                value={aiDesc}
-                onChange={(e) => setAiDesc(e.target.value)}
-                placeholder="Describe the waste in plain language (e.g. 'Spent acetone and methanol from HPLC cleaning in Lab A, flammable, ~20 L/month')…"
-              />
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <span className={`text-[10.5px] ${aiNote && aiNote.startsWith("AI draft applied") ? "text-emerald-600" : "text-slate-500"}`}>
-                  {aiNote ?? "Optional — drafts the fields below for you to review."}
-                </span>
-                <button
-                  type="button"
-                  onClick={handleDraft}
-                  disabled={aiPending || !aiDesc.trim()}
-                  className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50"
-                >
-                  <Sparkles className="h-3.5 w-3.5" /> {aiPending ? "Drafting…" : "Draft with AI"}
-                </button>
-              </div>
-            </div>
-
-            <Field label="Profile Name" required>
-              <Input name="name" required value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Halogenated Solvents Waste" />
-            </Field>
-            <Field label="Link to Waste Stream (optional)">
-              <Select name="waste_stream_id" value={form.waste_stream_id} onChange={(e) => set("waste_stream_id", e.target.value)}>
-                <option value="">— Not linked —</option>
-                {streams.map((s) => (
-                  <option key={s.id} value={s.id}>{s.waste_name}{s.waste_code ? ` (${s.waste_code})` : ""}</option>
-                ))}
-              </Select>
-            </Field>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="EPA / Waste Code">
-                <Input name="waste_code" value={form.waste_code} onChange={(e) => set("waste_code", e.target.value)} placeholder="F001 / D001" />
-              </Field>
-              <Field label="Classification">
-                <Select name="classification" value={form.classification} onChange={(e) => set("classification", e.target.value)}>
-                  {WASTE_CLASSIFICATIONS.map((c) => (
-                    <option key={c} value={c}>{c.replace(/_/g, " ")}</option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
-            <Field label="Physical State">
-              <Select name="physical_state" value={form.physical_state} onChange={(e) => set("physical_state", e.target.value)}>
-                <option value="solid">Solid</option>
-                <option value="liquid">Liquid</option>
-                <option value="sludge">Sludge / Semi-solid</option>
-                <option value="gas">Gas / Aerosol</option>
-              </Select>
-            </Field>
-            <Field label="Process Description">
-              <Textarea name="process_description" value={form.process_description} onChange={(e) => set("process_description", e.target.value)} placeholder="Source process that generates this waste…" />
-            </Field>
-            <Field label="Hazard Summary">
-              <Textarea name="hazard_summary" value={form.hazard_summary} onChange={(e) => set("hazard_summary", e.target.value)} placeholder="Key hazards, constituents, and handling notes…" />
-            </Field>
-          </div>
-          <SubmitRow onClose={() => setOpen(false)} submitting={pending} />
-        </form>
-      </Modal>
-    </>
-  );
-}
+// Profile creation now uses the guided wizard at /waste/profiles/new
+// (inventory selection → composition → guided questions → AI draft → approval).

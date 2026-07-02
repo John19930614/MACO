@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       },
       setAll(cookiesToSet: { name: string; value: string; options?: object }[]) {
         cookiesToSet.forEach(({ name, value, options }) =>
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @supabase/ssr does not export its CookieOptions type here; cast to forward the options to NextResponse.cookies.set
           response.cookies.set(name, value, options as any),
         );
       },

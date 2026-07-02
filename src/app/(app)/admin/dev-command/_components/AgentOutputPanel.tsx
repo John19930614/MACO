@@ -19,11 +19,13 @@ const KIND_META: Record<ArtifactKind, { label: string; icon: typeof FileText }> 
 const STATUS_TONE: Record<ArtifactStatus, Tone> = {
   draft: "neutral", proposed: "info", approved: "success",
   rejected: "neutral", applied: "success", superseded: "neutral",
+  needs_review: "violet", revised: "warn", ready_for_branch: "info",
 };
 
 const STATUS_LABEL: Record<ArtifactStatus, string> = {
   draft: "Draft", proposed: "Proposed", approved: "Approved",
   rejected: "Rejected", applied: "Applied", superseded: "Replaced",
+  needs_review: "Needs review", revised: "Revision requested", ready_for_branch: "Ready for branch",
 };
 
 /**

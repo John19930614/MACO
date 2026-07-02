@@ -7,6 +7,7 @@ import { Card, CardHeader, Pill } from "@/components/ui/primitives";
 import { PrintButton } from "@/components/ui/PrintButton";
 import type { PrintReportData } from "@/components/ui/PrintButton";
 import { ArrowLeft, AlertTriangle, Clock, MapPin, Activity } from "lucide-react";
+import { IncidentRcaPanel } from "./IncidentRcaPanel";
 
 function fmt(d: string) {
   return new Date(d + "T00:00:00").toLocaleDateString("en-US", {
@@ -159,14 +160,17 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
               </Card>
             )}
 
-            {incident.root_cause && (
-              <Card>
-                <CardHeader title="Root Cause Analysis" />
-                <div className="px-4 pb-4 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-                  {incident.root_cause}
-                </div>
-              </Card>
-            )}
+            {/* AI Root Cause Analysis — always visible, auto-detects incident type */}
+            <div>
+              <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Root Cause Analysis</div>
+              <IncidentRcaPanel
+                incidentId={incident.id}
+                incidentType={incident.incident_type ?? ""}
+                title={incident.title}
+                description={incident.description ?? ""}
+                existingRootCause={incident.root_cause ?? null}
+              />
+            </div>
 
             {(incident.injured_party || incident.injuries_description) && (
               <Card>

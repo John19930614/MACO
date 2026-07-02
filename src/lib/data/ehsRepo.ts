@@ -177,6 +177,8 @@ export const getChemicals = cache(async (tenantId = MOCK_TENANT_ID): Promise<Che
     ghs_classes: r.ghs_classes ?? [],
     quantity: Number(r.quantity) || 0,
     unit: r.unit ?? "L",
+    container_capacity: r.container_capacity ?? null,
+    container_capacity_unit: r.container_capacity_unit ?? null,
     storage_location: r.storage_location ?? "",
     sds_url: r.sds_url ?? null,
     sds_expiry: r.sds_expiry ?? null,
@@ -191,6 +193,19 @@ export const getChemicals = cache(async (tenantId = MOCK_TENANT_ID): Promise<Che
     created_by: r.created_by ?? "",
     created_at: r.created_at,
     updated_at: r.updated_at,
+    storage_class: r.storage_class ?? null,
+    recommended_ppe: r.recommended_ppe ?? [],
+    // Concentration hazard fields
+    concentration_pct: r.concentration_pct ?? null,
+    physical_state: (r.physical_state ?? null) as Chemical["physical_state"],
+    flash_point_c: r.flash_point_c ?? null,
+    expiration_date: r.expiration_date ?? null,
+    hazard_band: (r.hazard_band ?? null) as Chemical["hazard_band"],
+    hazard_band_confidence: r.hazard_band_confidence ?? null,
+    hazard_band_reviewed_at: r.hazard_band_reviewed_at ?? null,
+    hazard_band_reason: r.hazard_band_reason ?? null,
+    hazard_review_status: (r.hazard_review_status ?? null) as Chemical["hazard_review_status"],
+    label_code: r.label_code ?? null,
   }));
 });
 
@@ -222,7 +237,7 @@ export async function getWasteReviewFlags(tenantId: string): Promise<WasteReview
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase join select returns an untyped row shape; cast to any[] before mapping to the typed DTO
   return (data as any[]).map((r) => ({
     id: r.id,
     tenant_id: r.tenant_id,
@@ -493,6 +508,10 @@ export const getWasteProfiles = cache(async (tenantId = MOCK_TENANT_ID): Promise
     created_by: r.created_by ?? null,
     created_at: r.created_at,
     updated_at: r.updated_at,
+    // Guided-wizard fields (jsonb). Absent before the migration is applied → safe defaults.
+    composition: Array.isArray(r.composition) ? (r.composition as WasteProfile["composition"]) : [],
+    questionnaire: (r.questionnaire as Record<string, string> | null) ?? null,
+    ai_suggestions: (r.ai_suggestions as WasteProfile["ai_suggestions"]) ?? null,
   }));
 });
 

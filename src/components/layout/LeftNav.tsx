@@ -9,10 +9,20 @@ import { MOCK_MODE } from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
 import type { ServerUser } from "@/lib/auth/types";
 import { ROLE_META, canCoordinate, type Role } from "@/lib/constants";
+import { getActiveKey } from "@/lib/nav/activeKey";
+
+// Re-export the pure route-matching helper (and its generic NavItem shape) so
+// they remain importable from this module — the LeftNav component is their sole
+// production consumer — while the actual logic lives in a React-free lib file
+// that can be unit-tested in a plain Node environment.
+export { getActiveKey } from "@/lib/nav/activeKey";
+export type { NavItem } from "@/lib/nav/activeKey";
 
 // ── Nav types ─────────────────────────────────────────────────────────────────
 
-type NavItem = {
+// Internal, richer nav-entry shape (named NavLink to avoid colliding with the
+// generic NavItem re-exported above). href doubles as the stable key.
+type NavLink = {
   href: string;
   label: string;
   description?: string;
@@ -20,7 +30,7 @@ type NavItem = {
   badge?: string;
   badgeType?: "red" | "info" | "warn";
 };
-type NavSection = { group: string; items: NavItem[]; gold?: boolean };
+type NavSection = { group: string; items: NavLink[]; gold?: boolean };
 
 // ── Customer nav — matches index.html exactly ──────────────────────────────────
 
@@ -53,6 +63,7 @@ const BASE_COMPANY_NAV: NavSection[] = [
       { href: "/ergonomics", label: "Ergonomics & MSD",         description: "Workstation & MSD risk controls",icon: "🪑" },
       { href: "/monitoring", label: "Monitoring & Equipment",  description: "Calibration & inspections",      icon: "📡" },
       { href: "/incidents",  label: "Incident Reporting",      description: "Near-miss & injury reports",     icon: "⚠" },
+      { href: "/emergency", label: "Emergency Action Plan",   description: "Emergency contacts & procedures",icon: "🚨" },
     ],
   },
   {
@@ -253,8 +264,26 @@ export function LeftNav({ openCapas = 0, openRisks = 0, pendingTasks = 0, server
   const pathname = usePathname();
   const sections = getNav(user);
 
+  // Active-link detection flows through the shared getActiveKey helper so the
+  // exact-then-longest-prefix rule is a single, unit-tested source of truth.
+  // Real nav entries have no explicit key, so their href doubles as the key.
+  const activeKey = getActiveKey(
+    pathname,
+    sections.flatMap((section) =>
+      section.items.map((item) => ({ key: item.href, label: item.label, href: item.href })),
+    ),
+  );
+
   return (
-    <nav className="flex h-full w-60 shrink-0 flex-col bg-[#1a2d42] text-slate-200 print:hidden">
+    // role='navigation' is explicit even though <nav> implies it — kept for
+    // maximum assistive-technology compatibility with older screen readers.
+    // aria-label distinguishes this landmark from any secondary <nav> elements
+    // (e.g. breadcrumbs) so users can jump to the primary region quickly.
+    <nav
+      role="navigation"
+      aria-label="Main navigation"
+      className="flex h-full w-60 shrink-0 flex-col bg-[#1a2d42] text-slate-200 print:hidden"
+    >
       <div className="iq-scroll flex-1 overflow-y-auto pb-2 pt-2">
         {sections.map((section) => (
           <div key={section.group}>
@@ -265,14 +294,14 @@ export function LeftNav({ openCapas = 0, openRisks = 0, pendingTasks = 0, server
               {section.group}
             </div>
             {section.items.map((item) => {
-              const active =
-                item.href === "/dashboard"
-                  ? pathname === "/dashboard"
-                  : pathname.startsWith(item.href);
+              const active = item.href === activeKey;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
+                  // aria-current='page' marks the active link for assistive tech;
+                  // undefined (not false) removes the attribute for inactive links.
+                  aria-current={active ? "page" : undefined}
                   className={cn(
                     "mx-2 mt-0.5 flex items-center gap-2.5 rounded-lg px-3 py-[7px] text-[13px] font-medium transition-colors",
                     active
