@@ -124,7 +124,8 @@ export default function LoginPage() {
     type Mote = { x: number; y: number; r: number; vx: number; vy: number; hue: string; a: number };
     type Comet = { x: number; y: number; vx: number; vy: number; life: number; max: number; len: number };
     let W = 0, H = 0, DPR = 1;
-    let stars: Star[] = [], motes: Mote[] = [], comets: Comet[] = [];
+    let stars: Star[] = [], motes: Mote[] = [];
+    const comets: Comet[] = [];
     let t = 0, mx = 0.5, my = 0.5, tmx = 0.5, tmy = 0.5;
     let raf = 0;
 
