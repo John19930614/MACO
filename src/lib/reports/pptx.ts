@@ -8,6 +8,8 @@
 // Built client-side with pptxgenjs (dynamically imported so it stays out of the
 // initial bundle). No server or external service involved.
 
+import type PptxGenJS from "pptxgenjs";
+
 const BRAND = {
   blue:   "2563EB",
   slate:  "1E293B",
@@ -46,10 +48,11 @@ const WIDE_W = 13.33;
 
 // Resolve the pptxgenjs constructor robustly across CJS/ESM bundler interop
 // (some bundlers expose it as the module namespace, others under `.default`).
-async function loadPptxGenJS() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pptxgenjs ships no ESM type for its default export; cast the dynamic-import namespace before resolving the constructor across CJS/ESM interop
-  const mod: any = await import("pptxgenjs");
-  const Ctor = mod?.default ?? mod;
+type PptxGenJSCtor = new () => PptxGenJS;
+
+async function loadPptxGenJS(): Promise<PptxGenJSCtor> {
+  const mod: unknown = await import("pptxgenjs");
+  const Ctor = (mod as { default?: PptxGenJSCtor }).default ?? (mod as PptxGenJSCtor);
   if (typeof Ctor !== "function") throw new Error("pptxgenjs failed to load");
   return Ctor;
 }
@@ -57,10 +60,9 @@ async function loadPptxGenJS() {
 // Browser-reliable save: build a Blob and click an anchor. pptxgenjs's own
 // writeFile() can fail silently in bundled browser builds, so we download the
 // blob ourselves.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- pptxgenjs does not export its presentation instance type; annotate as any for this blob-save helper
-async function savePptx(pptx: any, fileName: string): Promise<void> {
+async function savePptx(pptx: PptxGenJS, fileName: string): Promise<void> {
   const name = fileName.toLowerCase().endsWith(".pptx") ? fileName : `${fileName}.pptx`;
-  const blob = (await pptx.write("blob")) as Blob;
+  const blob = (await pptx.write({ outputType: "blob" })) as Blob;
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

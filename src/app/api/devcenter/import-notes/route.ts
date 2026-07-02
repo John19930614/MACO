@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Message, ToolUseBlock } from "@anthropic-ai/sdk/resources/messages";
 import { isSuperadmin } from "@/lib/auth/session";
 import { serverSecrets, MOCK_MODE } from "@/lib/env";
+import { ImportResultSchema } from "@/lib/devcenter/schemas";
 
 export interface ProposedTask {
   title: string;
@@ -96,15 +98,14 @@ Also output a rawSummary: 2-3 sentences summarizing what the document was about.
 Output ONLY valid JSON: { "tasks": [...], "rawSummary": "..." }`;
 
   try {
-    let response;
+    let response: Message;
 
     if (ext === "pdf") {
       // Anthropic natively supports PDF — send as document block
       const bytes = await file.arrayBuffer();
       const base64 = Buffer.from(bytes).toString("base64");
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Anthropic SDK's create() overload rejects the PDF document block we send at runtime; cast to invoke the runtime-supported path
-      response = await (client.messages.create as any)({
+      response = await client.messages.create({
         model: anthropicModel || "claude-sonnet-4-6",
         max_tokens: 8000,
         system: systemPrompt,
@@ -208,14 +209,13 @@ Output ONLY valid JSON: { "tasks": [...], "rawSummary": "..." }`;
       });
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Anthropic response.content is a discriminated block union; cast to any[] to scan for the tool_use block
-    const toolUse = (response.content as any[]).find((b: any) => b.type === "tool_use");
-    if (!toolUse || toolUse.type !== "tool_use") {
+    const toolUse = response.content.find((b): b is ToolUseBlock => b.type === "tool_use");
+    const parsed = ImportResultSchema.safeParse(toolUse?.input);
+    if (!parsed.success) {
       return NextResponse.json({ error: "AI did not return structured output. Try again." }, { status: 500 });
     }
 
-    const result = toolUse.input as ImportResult;
-    return NextResponse.json<ImportResult>(result);
+    return NextResponse.json<ImportResult>(parsed.data);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Import failed.";
     return NextResponse.json({ error: msg }, { status: 500 });

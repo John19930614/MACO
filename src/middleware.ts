@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
 // Routes that do NOT require authentication.
 // /auth/callback must be public: the invitee has no session yet when they arrive
@@ -45,15 +45,14 @@ export async function middleware(request: NextRequest) {
       getAll() {
         return request.cookies.getAll();
       },
-      setAll(cookiesToSet: { name: string; value: string; options?: object }[]) {
+      setAll(cookiesToSet: { name: string; value: string; options?: CookieOptions }[]) {
         // request.cookies.set only accepts (name, value) — options go on the response
         cookiesToSet.forEach(({ name, value }) =>
           request.cookies.set(name, value),
         );
         response = NextResponse.next({ request: { headers: request.headers } });
         cookiesToSet.forEach(({ name, value, options }) =>
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @supabase/ssr does not export its CookieOptions type here; cast to pass the options straight through to NextResponse.cookies.set
-          response.cookies.set(name, value, options as any),
+          response.cookies.set(name, value, options),
         );
       },
     },
