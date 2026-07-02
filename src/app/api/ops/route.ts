@@ -24,7 +24,11 @@ export async function OPTIONS() {
 export async function GET(req: NextRequest) {
   const auth = await requireSuperadmin(req);
   if (!auth.ok) {
-    return NextResponse.json({ error: auth.reason }, { status: auth.status, headers: CORS });
+    const headers: Record<string, string> =
+      auth.retryAfterSeconds !== undefined
+        ? { ...CORS, "Retry-After": String(auth.retryAfterSeconds) }
+        : CORS;
+    return NextResponse.json({ error: auth.reason }, { status: auth.status, headers });
   }
 
   const out: {

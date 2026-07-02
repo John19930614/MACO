@@ -67,6 +67,8 @@ const PERMISSIONS = [
 
 interface Prefill {
   title?: string;
+  /** Platform Review finding this task originates from — removes it from the review list once created. */
+  source_finding_id?: string;
   business_goal?: string;
   feature_description?: string;
   module_affected?: string;
@@ -137,6 +139,10 @@ export function DevTaskIntakeForm({ prefill }: { prefill?: Prefill }) {
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>{state.error}</p>
         </div>
+      )}
+
+      {prefill?.source_finding_id && (
+        <input type="hidden" name="source_finding_id" value={prefill.source_finding_id} />
       )}
 
       {/* ── Welcome banner ───────────────────────────────────────────── */}
