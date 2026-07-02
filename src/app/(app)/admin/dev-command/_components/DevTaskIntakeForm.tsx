@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card } from "@/components/ui/primitives";
 import { createDevTask, type CreateTaskState } from "@/lib/actions/devcenter";
+import { suggestPermissions, type PermissionSuggestion } from "@/lib/devcenter/permission-suggestions";
 import { MessageSquare, ShieldCheck, Lock, AlertTriangle, Sparkles, CheckCircle2, ImagePlus, X, ChevronDown, ChevronUp } from "lucide-react";
 
 const MODULES = [
@@ -86,6 +87,7 @@ export function DevTaskIntakeForm({ prefill }: { prefill?: Prefill }) {
   const [state, formAction, pending] = useActionState<CreateTaskState, FormData>(createDevTask, {});
   const [preview, setPreview] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [suggestions, setSuggestions] = useState<PermissionSuggestion[] | null>(null);
   const hiddenRef = useRef<HTMLTextAreaElement>(null);
 
   // Navigate when the server action returns a redirect URL (avoids NEXT_REDIRECT
@@ -130,6 +132,37 @@ export function DevTaskIntakeForm({ prefill }: { prefill?: Prefill }) {
     setField("title", qs.title);
     setField("business_goal", qs.goal);
     setField("feature_description", qs.description);
+  }
+
+  // Read the current form values and ask the AI team which permissions this
+  // task will likely need. Suggestions only pre-fill checkboxes — the human
+  // still ticks them and still approves every action later.
+  function askForSuggestions(e: React.MouseEvent<HTMLButtonElement>) {
+    const form = e.currentTarget.closest("form");
+    if (!form) return;
+    const val = (name: string) =>
+      (form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? "";
+    setSuggestions(
+      suggestPermissions({
+        title: val("title"),
+        business_goal: val("business_goal"),
+        feature_description: val("feature_description"),
+        module_affected: val("module_affected"),
+        risk_level: val("risk_level"),
+        data_involved: val("data_involved"),
+        success_criteria: val("success_criteria"),
+        notes: val("notes"),
+      }),
+    );
+  }
+
+  function applySuggestions(e: React.MouseEvent<HTMLButtonElement>) {
+    const form = e.currentTarget.closest("form");
+    if (!form || !suggestions) return;
+    for (const s of suggestions) {
+      const box = form.elements.namedItem(s.name) as HTMLInputElement | null;
+      if (box) box.checked = true;
+    }
   }
 
   return (
@@ -262,6 +295,54 @@ export function DevTaskIntakeForm({ prefill }: { prefill?: Prefill }) {
           </div>
         </div>
         <p className="text-xs text-slate-400">Not sure? Leave everything off — the team will let you know if they need more permissions to complete your request.</p>
+
+        {/* AI-suggested permissions, derived from what's been typed above. */}
+        <div className="rounded-lg border border-violet-200 bg-violet-50/60 p-3 dark:border-violet-900 dark:bg-violet-950/30">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-300" />
+              <span className="text-sm font-semibold text-violet-800 dark:text-violet-300">Not sure what to turn on?</span>
+            </div>
+            <button
+              type="button"
+              onClick={askForSuggestions}
+              className="rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-100 dark:border-violet-800 dark:bg-slate-800 dark:text-violet-300"
+            >
+              Ask the AI team what they&apos;d need
+            </button>
+          </div>
+          {suggestions !== null && (
+            suggestions.length === 0 ? (
+              <p className="mt-2 text-xs text-violet-700 dark:text-violet-400">
+                Describe the task above first — once the team knows what you&apos;re asking for, they can suggest what to turn on.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {suggestions.map((s) => (
+                  <div key={s.name} className="rounded-md bg-white/70 px-3 py-2 dark:bg-slate-800/60">
+                    <p className="text-xs font-semibold text-violet-800 dark:text-violet-300">
+                      {PERMISSIONS.find((p) => p.name === s.name)?.label ?? s.name}
+                    </p>
+                    <p className="text-xs text-violet-700 dark:text-violet-400">{s.reason}</p>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <p className="text-xs text-violet-700 dark:text-violet-400">
+                    These are only suggestions — you still approve every change.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={applySuggestions}
+                    className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-700"
+                  >
+                    Turn these on
+                  </button>
+                </div>
+              </div>
+            )
+          )}
+        </div>
+
         <div className="space-y-2">
           {PERMISSIONS.map((p) => (
             <label key={p.name} className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-3 transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50">
