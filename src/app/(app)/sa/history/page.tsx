@@ -10,7 +10,7 @@ const MOCK_BUILD_LOG = [
   { version: "v0.6.3", date: "2026-06-14", type: "minor", deployed: true,  note: "Enhanced KPI cards with strips, icons, trend indicators",  author: "Build System" },
   { version: "v0.6.2", date: "2026-06-10", type: "patch", deployed: true,  note: "TopBar refactored to full-width, brand removed from nav",  author: "Build System" },
   { version: "v0.6.1", date: "2026-06-05", type: "patch", deployed: true,  note: "Fixed Severity / RiskLevel / CapaStatus type mismatches",  author: "Build System" },
-  { version: "v0.6.0", date: "2026-05-28", type: "minor", deployed: true,  note: "Maco Platform adaptation from Amaya — EHS module suite",   author: "Build System" },
+  { version: "v0.6.0", date: "2026-05-28", type: "minor", deployed: true,  note: "Platform rebrand and EHS module suite adaptation",        author: "Build System" },
   { version: "v0.5.2", date: "2026-05-15", type: "patch", deployed: true,  note: "Waste & Monitoring pages, Chemical Management complete",   author: "Build System" },
   { version: "v0.5.1", date: "2026-05-08", type: "patch", deployed: true,  note: "P-Engine AI integration, AI Findings page",                author: "Build System" },
   { version: "v0.5.0", date: "2026-04-30", type: "major", deployed: true,  note: "Multi-tenant architecture, BioStar demo environment",      author: "Build System" },
