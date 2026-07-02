@@ -11,8 +11,8 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { PROGRAM_DEFS, generateProgram, type SourceBlock } from "@/lib/ai/programBuilder";
 import { KIND_DEFS, extractRows, type RowKind } from "@/lib/ai/extractDocuments";
 import { COMPLIANCE_STATUS_META, type ComplianceStatus } from "@/lib/constants";
-import type { AiFinding, AiAnalysisOutput } from "@/lib/types";
-import { analyzeChemical, analyzeComplianceGap, analyzeTraining, buildPredictabilityForecast } from "@/lib/ai/engine";
+import type { AiFinding, AiAnalysisOutput, WasteStream } from "@/lib/types";
+import { analyzeChemical, analyzeComplianceGap, analyzeTraining, analyzeWaste, buildPredictabilityForecast } from "@/lib/ai/engine";
 import {
   getChemicals, getLegalRequirements, getTrainingRecords, getTrainingCourses, getCapaActions,
   getIncidents, getAudits, getRiskAssessments, getEquipment, getWasteStreams,
@@ -113,6 +113,17 @@ export async function runPredictabilityScan() {
   const worstLegal = legal
     .filter((l) => l.status === "non_compliant" || l.status === "major_gap" || l.status === "minor_gap")
     .slice(0, 3);
+  // Waste streams with classification-integrity signals: an EPA D/F/K/P/U code
+  // on a stream recorded as non-hazardous, quantity over the regulatory limit,
+  // or a high-control classification worth verifying.
+  const wasteSignal = (w: WasteStream) =>
+    (/^[DFKPU]\d{3}/i.test(w.waste_code ?? "") && ["non_hazardous", "general", "recyclable"].includes(w.classification) ? 5 : 0) +
+    (w.regulatory_limit != null && w.quantity > w.regulatory_limit ? 4 : 0) +
+    (["hazardous", "radioactive", "clinical", "scheduled"].includes(w.classification) ? 2 : 0);
+  const topWaste = [...waste]
+    .filter((w) => wasteSignal(w) > 0)
+    .sort((a, b) => wasteSignal(b) - wasteSignal(a))
+    .slice(0, 3);
 
   // Analysis cache: reuse a prior pending finding when a record's inputs are
   // unchanged, so this scan only re-calls the model for what actually changed.
@@ -128,6 +139,9 @@ export async function runPredictabilityScan() {
   }
   for (const l of worstLegal) {
     try { findings.push(await analyzeComplianceGap(l, priorByKey.get(`legal_requirement|${l.id}`))); } catch { /* skip */ }
+  }
+  for (const w of topWaste) {
+    try { findings.push(await analyzeWaste(w, priorByKey.get(`waste_stream|${w.id}`))); } catch { /* skip */ }
   }
   // Training gap analysis — one tenant-level finding over role-based coverage.
   if (courses.length > 0 && profiles.length > 0) {

@@ -25,8 +25,8 @@ import { requiresHumanReview } from "./review-policy";
 import { tierForStakes, type ModelTier } from "./model-routing";
 import { inputHash } from "./cache";
 import { nextId } from "@/lib/data/store";
-import type { Chemical, LegalRequirement, AiFinding, AiAnalysisOutput, CausalityOutput, PredictabilityForecast, SafetyCell, TrainingCourse, TrainingRecord, Profile } from "@/lib/types";
-import { riskLevelFromScore100, COMPLIANCE_STATUS_META } from "@/lib/constants";
+import type { Chemical, LegalRequirement, WasteStream, AiFinding, AiAnalysisOutput, CausalityOutput, PredictabilityForecast, SafetyCell, TrainingCourse, TrainingRecord, Profile } from "@/lib/types";
+import { riskLevelFromScore100, COMPLIANCE_STATUS_META, WASTE_CLASSIFICATIONS } from "@/lib/constants";
 import type { EdgeType } from "@/lib/constants";
 
 const MODEL_TIMEOUT_MS = 30_000;
@@ -192,6 +192,91 @@ function complianceGapHeuristicAnalysis(req: LegalRequirement): AiAnalysisOutput
   };
 }
 
+// EPA RCRA hazardous waste codes: D (characteristic), F/K (source), P/U (listed).
+const EPA_HAZ_CODE_RE = /^[DFKPU]\d{3}/i;
+// Classifications that demand hazardous-waste-grade controls.
+const HIGH_CONTROL_CLASSIFICATIONS = ["hazardous", "radioactive", "clinical", "scheduled"] as const;
+
+function wasteClassificationMismatch(ws: WasteStream): boolean {
+  return EPA_HAZ_CODE_RE.test(ws.waste_code ?? "") &&
+    ["non_hazardous", "general", "recyclable"].includes(ws.classification);
+}
+
+function wasteHeuristicAnalysis(ws: WasteStream): AiAnalysisOutput {
+  const hasEpaCode = EPA_HAZ_CODE_RE.test(ws.waste_code ?? "");
+  const highControl = (HIGH_CONTROL_CLASSIFICATIONS as readonly string[]).includes(ws.classification);
+  const mismatch = wasteClassificationMismatch(ws);
+  const overLimit = ws.regulatory_limit != null && ws.quantity > ws.regulatory_limit;
+  const shipped = ["manifested", "disposed", "reported"].includes(ws.status);
+  const manifestMissing = highControl && shipped && !ws.manifest_number;
+  const landfillHazard = highControl && ws.classification !== "clinical" && /landfill/i.test(ws.disposal_method ?? "");
+
+  const risk_score = Math.min(
+    100,
+    (ws.classification === "radioactive" ? 45 : highControl ? 35 : 10) +
+    (mismatch ? 30 : 0) +
+    (overLimit ? 25 : 0) +
+    (manifestMissing ? 15 : 0) +
+    (landfillHazard ? 10 : 0)
+  );
+
+  const findings: AiAnalysisOutput["findings"] = [];
+  if (mismatch) {
+    findings.push({ category: "classification", description: `${ws.waste_name} carries EPA waste code ${ws.waste_code} but is classified "${ws.classification.replace(/_/g, " ")}". A D/F/K/P/U code makes the stream RCRA hazardous waste — the recorded classification understates the required controls.`, severity: "critical" });
+  }
+  if (highControl && !ws.waste_code) {
+    findings.push({ category: "characterization", description: `${ws.waste_name} is classified "${ws.classification}" but has no waste code assigned. Characterization is incomplete — disposal facilities and manifests require the code.`, severity: "medium" });
+  }
+  if (overLimit) {
+    findings.push({ category: "regulatory", description: `Quantity on hand (${ws.quantity} ${ws.unit}) exceeds the regulatory limit of ${ws.regulatory_limit} ${ws.regulatory_unit ?? ws.unit}. Generator-status thresholds and reporting obligations may be triggered.`, severity: "high" });
+  }
+  if (manifestMissing) {
+    findings.push({ category: "tracking", description: `${ws.waste_name} is ${ws.status} but has no manifest number recorded. Cradle-to-grave tracking evidence is incomplete for a ${ws.classification} stream.`, severity: "high" });
+  }
+  if (landfillHazard) {
+    findings.push({ category: "disposal", description: `Disposal method "${ws.disposal_method}" routes a ${ws.classification} stream to landfill. Land disposal restrictions likely require treatment first.`, severity: "high" });
+  }
+
+  const gaps: string[] = [];
+  if (highControl && !ws.waste_code) gaps.push("No EPA waste code assigned to a high-control stream");
+  if (highControl && !ws.disposal_contractor && !shipped) gaps.push("No licensed disposal contractor recorded");
+  if (manifestMissing) gaps.push("Manifest number missing for a shipped hazardous stream");
+
+  const regulatory_refs: string[] = [];
+  if (highControl || hasEpaCode) regulatory_refs.push("EPA RCRA 40 CFR 262 — generator standards");
+  if (landfillHazard) regulatory_refs.push("EPA RCRA 40 CFR 268 — land disposal restrictions");
+  if (shipped && highControl) regulatory_refs.push("DOT 49 CFR 172 — hazardous materials shipping and manifests");
+  if (ws.classification === "radioactive") regulatory_refs.push("NRC 10 CFR 20 — radioactive waste disposal");
+
+  const recommended_actions: AiAnalysisOutput["recommended_actions"] = [];
+  if (mismatch) {
+    recommended_actions.push({ action: `Re-classify ${ws.waste_name} as hazardous (or correct the waste code) and update storage, labelling, and disposal routing`, priority: "immediate", rationale: "An under-classified RCRA stream exposes the generator to enforcement and improper-disposal liability", capa_kind: "corrective" });
+  }
+  if (overLimit) {
+    recommended_actions.push({ action: "Schedule a pickup to bring on-hand quantity under the regulatory limit and verify generator-status reporting", priority: "immediate", rationale: "Quantities above the threshold change generator category and reporting duties", capa_kind: "corrective" });
+  }
+  if (highControl && !ws.waste_code) {
+    recommended_actions.push({ action: "Complete waste characterization and assign the applicable EPA waste code", priority: "short_term", rationale: "Disposal facilities and manifests require a characterized code", capa_kind: "corrective" });
+  }
+  if (manifestMissing) {
+    recommended_actions.push({ action: "Obtain and record the manifest number from the disposal contractor", priority: "short_term", rationale: "Cradle-to-grave documentation is a RCRA audit requirement", capa_kind: "corrective" });
+  }
+  if (recommended_actions.length === 0) {
+    recommended_actions.push({ action: "Confirm classification and disposal routing at the next periodic waste review", priority: "long_term", rationale: "Stream records are consistent — sustain the review cadence", capa_kind: "preventive" });
+  }
+
+  return {
+    risk_level: riskLevelFromScore100(risk_score),
+    risk_score,
+    findings,
+    gaps,
+    regulatory_refs,
+    recommended_actions,
+    plain_language_summary: `${ws.waste_name} (${ws.quantity} ${ws.unit}, classified ${ws.classification.replace(/_/g, " ")}) — ${findings.length} finding${findings.length !== 1 ? "s" : ""}. ${mismatch ? "The recorded classification conflicts with the EPA waste code and must be corrected first. " : ""}${overLimit ? "On-hand quantity exceeds the regulatory limit. " : ""}${findings.length === 0 ? "Classification, tracking, and disposal routing look consistent." : ""}`,
+    human_review_required: mismatch || overLimit,
+  };
+}
+
 // ── Confidence scoring ────────────────────────────────────────────────────────
 
 export function deriveConfidence(o: AiAnalysisOutput): number {
@@ -292,6 +377,41 @@ Evidence on file: ${req.evidence_url ? "Yes" : "No"}`;
     forceReview: req.status === "non_compliant",
     groundingContext: { knownRegRef: req.regulation_ref },
     tier: tierForStakes(req.status === "non_compliant" || req.status === "major_gap"),
+    prior,
+  });
+}
+
+/** Verify a waste stream's classification against its code, quantity, and disposal routing. */
+export async function analyzeWaste(ws: WasteStream, prior?: AiFinding): Promise<AiFinding> {
+  const stakes = wasteClassificationMismatch(ws) ||
+    (ws.regulatory_limit != null && ws.quantity > ws.regulatory_limit);
+
+  const systemPrompt = `You are a senior EHS advisor specialising in hazardous waste management and RCRA compliance. Analyse the waste stream record provided: verify that the recorded classification is consistent with the EPA waste code, quantity vs regulatory limit, manifest status, and disposal method, and identify gaps and prioritised corrective actions. The only valid classifications are: ${WASTE_CLASSIFICATIONS.join(", ")}. A D/F/K/P/U waste code always means the stream is RCRA hazardous. Reference the actual waste code and CFR citations in findings.`;
+  const userPrompt = `Waste stream record:
+Name: ${ws.waste_name}
+EPA waste code: ${ws.waste_code ?? "not assigned"}
+Recorded classification: ${ws.classification}
+Quantity: ${ws.quantity} ${ws.unit}
+Regulatory limit: ${ws.regulatory_limit != null ? `${ws.regulatory_limit} ${ws.regulatory_unit ?? ws.unit}` : "none recorded"}
+Status: ${ws.status}
+Disposal method: ${ws.disposal_method || "not recorded"}
+Disposal contractor: ${ws.disposal_contractor ?? "not recorded"}
+Manifest number: ${ws.manifest_number ?? "none"}
+Disposal date: ${ws.disposal_date ?? "not disposed"}`;
+
+  return runAnalysis({
+    job: "waste_classification",
+    source_type: "waste_stream",
+    source_id: ws.id,
+    tenant_id: ws.tenant_id,
+    site_id: ws.site_id,
+    input_summary: `${ws.waste_name} — code ${ws.waste_code ?? "none"} — classified ${ws.classification}`,
+    systemPrompt,
+    userPrompt,
+    heuristic: () => wasteHeuristicAnalysis(ws),
+    forceReview: stakes,
+    groundingContext: {},
+    tier: tierForStakes(stakes),
     prior,
   });
 }
