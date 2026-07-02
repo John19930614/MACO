@@ -1,25 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { ToolUseBlock } from "@anthropic-ai/sdk/resources/messages";
 import { MOCK_MODE, serverSecrets } from "@/lib/env";
 import { isSuperadmin } from "@/lib/auth/session";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { TaskIdBodySchema, ImplementationBriefSchema } from "@/lib/devcenter/schemas";
 
 // Set to Vercel Pro max. Also set in vercel.json for belt-and-suspenders.
 export const maxDuration = 300;
-
-// Inline types so we don't import from a "use server" module
-interface GeneratedFile {
-  path: string;
-  operation: "create" | "edit" | "delete";
-  description: string;
-  content: string;
-}
-interface ImplementationBrief {
-  summary: string;
-  files: GeneratedFile[];
-  dbMigration: string | null;
-  testingNotes: string;
-  deployCommand: string;
-}
 
 export async function POST(req: NextRequest) {
   if (MOCK_MODE) {
@@ -44,10 +31,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { taskId } = (await req.json()) as { taskId?: string };
-    if (!taskId || typeof taskId !== "string") {
+    const body = TaskIdBodySchema.safeParse(await req.json());
+    if (!body.success) {
       return NextResponse.json({ ok: false, error: "taskId is required." }, { status: 400 });
     }
+    const { taskId } = body.data;
 
     // Service-role client — bypass RLS entirely (superadmin context, gated above)
     const db = createServiceRoleClient();
@@ -147,13 +135,15 @@ Generate the implementation brief now.`,
       tool_choice: { type: "tool" as const, name: "submit_brief" },
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Anthropic response.content is a block union; cast to any[] to locate the submit_brief tool_use block
-    const toolUse = (response.content as any[]).find((b) => b.type === "tool_use" && b.name === "submit_brief");
-    if (!toolUse?.input) {
+    const toolUse = response.content.find(
+      (b): b is ToolUseBlock => b.type === "tool_use" && b.name === "submit_brief",
+    );
+    const briefResult = ImplementationBriefSchema.safeParse(toolUse?.input);
+    if (!briefResult.success) {
       return NextResponse.json({ ok: false, error: "AI did not return a usable response. Try again." }, { status: 500 });
     }
 
-    const brief = toolUse.input as ImplementationBrief;
+    const brief = briefResult.data;
 
     // Persist (best-effort)
     try {

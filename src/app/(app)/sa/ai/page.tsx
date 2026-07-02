@@ -15,7 +15,7 @@ const JOB_CONFIGS = [
   { job: "training_gap_analysis",      label: "Training Gap Analysis",      trigger: "Training records change",      frequency: "Daily",      model: "claude-sonnet-4-6", enabled: true  },
   { job: "risk_score_prediction",      label: "Risk Score Prediction",      trigger: "P-Engine schedule",            frequency: "Daily",      model: "claude-sonnet-4-6", enabled: true  },
   { job: "incident_pattern_analysis",  label: "Incident Pattern Analysis",  trigger: "After incident report",        frequency: "On change",  model: "claude-sonnet-4-6", enabled: true  },
-  { job: "waste_classification",       label: "Waste Classification",       trigger: "New waste stream added",       frequency: "On change",  model: "claude-sonnet-4-6", enabled: false },
+  { job: "waste_classification",       label: "Waste Classification",       trigger: "P-Engine scan",                frequency: "On scan",    model: "claude-sonnet-4-6", enabled: true  },
 ];
 
 const STATUS_TONE = {

@@ -816,6 +816,7 @@ export type AiJob =
   | "incident_root_cause"
   | "risk_score_prediction"
   | "regulatory_change_impact"
+  | "waste_classification"
   | "analyze_cell";              // Arc per-cell risk analysis job
 
 export interface AiFinding {

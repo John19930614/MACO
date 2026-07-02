@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getServerTenantId } from "@/lib/auth/session";
+import { getStore } from "@/lib/data/store";
 import { MOCK_MODE } from "@/lib/env";
 
 export interface CallChainEntry {
@@ -152,7 +153,7 @@ const MOCK_EAP: EapRecord = {
 };
 
 export async function getEap(): Promise<EapRecord | null> {
-  if (MOCK_MODE) return MOCK_EAP;
+  if (MOCK_MODE) return getStore().eap ?? MOCK_EAP;
   const db = createServiceRoleClient();
   if (!db) return null;
   const tenantId = await getServerTenantId();
@@ -170,7 +171,12 @@ export async function getEap(): Promise<EapRecord | null> {
 export async function saveEap(
   input: Partial<EapRecord>,
 ): Promise<{ ok: boolean; error?: string }> {
-  if (MOCK_MODE) return { ok: true };
+  if (MOCK_MODE) {
+    const store = getStore();
+    store.eap = { ...(store.eap ?? MOCK_EAP), ...input, updated_at: new Date().toISOString() };
+    revalidatePath("/emergency");
+    return { ok: true };
+  }
   const db = createServiceRoleClient();
   if (!db) return { ok: false, error: "Database not available." };
   const tenantId = await getServerTenantId();
