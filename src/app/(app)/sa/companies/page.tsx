@@ -236,7 +236,7 @@ export default function SACompaniesPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [sortKey,      setSortKey]      = useState<SortKey>("name");
   const [sortDir,      setSortDir]      = useState<"asc" | "desc">("asc");
-  const [toast,        setToast]        = useState("");
+  const [toast,        setToast]        = useState<{ msg: string; error: boolean } | null>(null);
   const [tick,         setTick]         = useState(0);
 
   // Load real tenants from Supabase in live mode. Mock mode keeps the fixtures.
@@ -268,9 +268,9 @@ export default function SACompaniesPage() {
       });
   }, [tick]);
 
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(""), 3500);
+  function showToast(msg: string, error = false) {
+    setToast({ msg, error });
+    setTimeout(() => setToast(null), error ? 6000 : 3500);
   }
 
   function refresh() { setTick(t => t + 1); }
@@ -288,10 +288,15 @@ export default function SACompaniesPage() {
       impl_status: c.implStatus, active: c.status === "active",
       contact_name: c.contact || null, contact_email: c.contact_email || null,
     };
-    const result = editing
-      ? await updateTenant(c.id, input)
-      : await addTenant(input);
-    if (!result.ok) { showToast(`Error: ${result.error}`); return false; }
+    try {
+      const result = editing
+        ? await updateTenant(c.id, input)
+        : await addTenant(input);
+      if (!result.ok) { showToast(`Couldn't save ${c.name}: ${result.error}`, true); return false; }
+    } catch {
+      showToast(`Couldn't save ${c.name} — the server didn't respond. Please try again.`, true);
+      return false;
+    }
     showToast(editing ? `${c.name} updated` : `${c.name} added`);
     refresh();
     return true;
@@ -302,12 +307,17 @@ export default function SACompaniesPage() {
     if (!c) return;
     if (!confirm(`Archive "${c.name}"? It will be hidden from the active list.`)) return;
     if (!MOCK_MODE) {
-      const result = await updateTenant(id, {
-        name: c.name, sector: c.industry,
-        impl_status: c.implStatus, active: false,
-        contact_name: c.contact || null, contact_email: c.contact_email || null,
-      });
-      if (!result.ok) { showToast(`Error: ${result.error}`); return; }
+      try {
+        const result = await updateTenant(id, {
+          name: c.name, sector: c.industry,
+          impl_status: c.implStatus, active: false,
+          contact_name: c.contact || null, contact_email: c.contact_email || null,
+        });
+        if (!result.ok) { showToast(`Couldn't archive ${c.name}: ${result.error}`, true); return; }
+      } catch {
+        showToast(`Couldn't archive ${c.name} — the server didn't respond. Please try again.`, true);
+        return;
+      }
       refresh();
     } else {
       setCompanies(prev => prev.map(x => x.id === id ? { ...x, status: "archived" } : x));
@@ -319,12 +329,17 @@ export default function SACompaniesPage() {
     const c = companies.find(x => x.id === id);
     if (!c) return;
     if (!MOCK_MODE) {
-      const result = await updateTenant(id, {
-        name: c.name, sector: c.industry,
-        impl_status: c.implStatus, active: true,
-        contact_name: c.contact || null, contact_email: c.contact_email || null,
-      });
-      if (!result.ok) { showToast(`Error: ${result.error}`); return; }
+      try {
+        const result = await updateTenant(id, {
+          name: c.name, sector: c.industry,
+          impl_status: c.implStatus, active: true,
+          contact_name: c.contact || null, contact_email: c.contact_email || null,
+        });
+        if (!result.ok) { showToast(`Couldn't restore ${c.name}: ${result.error}`, true); return; }
+      } catch {
+        showToast(`Couldn't restore ${c.name} — the server didn't respond. Please try again.`, true);
+        return;
+      }
       refresh();
     } else {
       setCompanies(prev => prev.map(x => x.id === id ? { ...x, status: "prospect" } : x));
@@ -379,8 +394,13 @@ export default function SACompaniesPage() {
         />
       )}
       {toast && (
-        <div className="fixed bottom-5 right-5 z-50 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg">
-          ✓ {toast}
+        <div
+          role={toast.error ? "alert" : "status"}
+          className={`fixed bottom-5 right-5 z-50 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-lg ${
+            toast.error ? "bg-red-600" : "bg-emerald-600"
+          }`}
+        >
+          {toast.error ? "⚠" : "✓"} {toast.msg}
         </div>
       )}
 
