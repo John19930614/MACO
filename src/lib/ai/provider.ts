@@ -4,7 +4,7 @@
  * whichever provider is configured (OpenAI or Anthropic). This lets the engine
  * and EXP extractor stay provider-agnostic: switch SAFETYIQ_AI_PROVIDER (or just
  * the configured keys) to A/B gpt-4o-mini against claude-haiku-4-5 /
- * claude-sonnet-4-6 with no call-site changes.
+ * claude-sonnet-5 with no call-site changes.
  *
  * Structured output is enforced at the provider boundary:
  *   • OpenAI   — response_format json_schema (strict)
@@ -36,6 +36,12 @@ export interface StructuredCall {
   timeoutMs?: number;
   /** Model tier — "triage" routes to a cheaper model, "deep" to the strong one. */
   tier?: ModelTier;
+  /**
+   * Explicit Anthropic model override — takes precedence over tier routing.
+   * Used by the /sa/gateway model benchmark to fan the same prompt out to
+   * candidate models. Ignored by the OpenAI path.
+   */
+  model?: string;
 }
 
 export interface StructuredResult {
@@ -115,8 +121,10 @@ async function viaOpenAI(call: StructuredCall): Promise<StructuredResult> {
 
 async function viaAnthropic(call: StructuredCall): Promise<StructuredResult> {
   const { anthropicKey, anthropicModel } = serverSecrets();
-  // Tier routing: "triage" → cheaper model, "deep"/unset → configured model.
-  const model = call.tier ? anthropicModelForTier(call.tier, anthropicModel) : anthropicModel;
+  // Explicit override (benchmarking) beats tier routing: "triage" → cheaper
+  // model, "deep"/unset → configured model.
+  const model =
+    call.model ?? (call.tier ? anthropicModelForTier(call.tier, anthropicModel) : anthropicModel);
   const client = new Anthropic({ apiKey: anthropicKey, timeout: call.timeoutMs ?? DEFAULT_TIMEOUT_MS, maxRetries: 2 });
   const resp = await client.messages.create({
     model,

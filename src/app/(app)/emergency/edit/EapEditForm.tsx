@@ -146,51 +146,57 @@ export function EapEditForm({ eap }: { eap: EapRecord | null }) {
     setError(null);
     setSaved(false);
     startTransition(async () => {
-      const result = await saveEap({
-        facility_name: facilityName || null,
-        facility_address: facilityAddress || null,
-        site_command_post: siteCommandPost || null,
-        version: version || "1.0",
-        last_reviewed_at: lastReviewed || null,
-        reviewed_by: reviewedBy || null,
-        call_chain: chain.filter(c => c.name || c.role),
-        safety_coordinator: { name: safetyCoordName, phone: safetyCoordPhone },
-        ehs_advisor: { name: ehsAdvisorName, phone: ehsAdvisorPhone },
-        facilities_manager: { name: facilitiesMgrName, phone: facilitiesMgrPhone },
-        aed_location: aedLoc || null,
-        first_aid_location: firstAidLoc || null,
-        fire_extinguisher_location: fireExtLoc || null,
-        spill_kit_location: spillKitLoc || null,
-        eyewash_location: eyewashLoc || null,
-        primary_muster_point: primaryMuster || null,
-        secondary_muster_point: secondaryMuster || null,
-        hospital_name: hospitalName || null,
-        hospital_address: hospitalAddress || null,
-        hospital_phone: hospitalPhone || null,
-        hospital_route: hospitalRoute || null,
-        hospital_distance: hospitalDistance || null,
-        severe_weather_shelter: severeWeather || null,
-        tornado_shelter: tornadoShelter || null,
-        lightning_plan: lightningPlan || null,
-        utility_shutoffs: utilities.filter(u => u.utility),
-        after_hours_contacts: afterHours.filter(a => a.name || a.role),
-        notify_immediately: notifyNow.split("\n").map(s => s.trim()).filter(Boolean),
-        notify_within_1hr: notify1hr.split("\n").map(s => s.trim()).filter(Boolean),
-        notify_before_resuming: notifyResume.split("\n").map(s => s.trim()).filter(Boolean),
-        media_spokesperson_name: mediaNam || null,
-        media_spokesperson_phone: mediaPhn || null,
-        osha_phone: oshaPhone || "(800) 321-6742",
-        regulatory_contact_name: regName || null,
-        regulatory_contact_phone: regPhone || null,
-        backup_contacts: backupContacts.filter(b => b.role || b.primary_name),
-        post_incident_steps: postSteps.filter(Boolean),
-        additional_notes: additionalNotes || null,
-      });
-      if (result.ok) {
-        setSaved(true);
-        setTimeout(() => router.push("/emergency"), 1200);
-      } else {
-        setError(result.error ?? "Save failed.");
+      try {
+        const result = await saveEap({
+          facility_name: facilityName || null,
+          facility_address: facilityAddress || null,
+          site_command_post: siteCommandPost || null,
+          version: version || "1.0",
+          last_reviewed_at: lastReviewed || null,
+          reviewed_by: reviewedBy || null,
+          call_chain: chain.filter(c => c.name || c.role),
+          safety_coordinator: { name: safetyCoordName, phone: safetyCoordPhone },
+          ehs_advisor: { name: ehsAdvisorName, phone: ehsAdvisorPhone },
+          facilities_manager: { name: facilitiesMgrName, phone: facilitiesMgrPhone },
+          aed_location: aedLoc || null,
+          first_aid_location: firstAidLoc || null,
+          fire_extinguisher_location: fireExtLoc || null,
+          spill_kit_location: spillKitLoc || null,
+          eyewash_location: eyewashLoc || null,
+          primary_muster_point: primaryMuster || null,
+          secondary_muster_point: secondaryMuster || null,
+          hospital_name: hospitalName || null,
+          hospital_address: hospitalAddress || null,
+          hospital_phone: hospitalPhone || null,
+          hospital_route: hospitalRoute || null,
+          hospital_distance: hospitalDistance || null,
+          severe_weather_shelter: severeWeather || null,
+          tornado_shelter: tornadoShelter || null,
+          lightning_plan: lightningPlan || null,
+          utility_shutoffs: utilities.filter(u => u.utility),
+          after_hours_contacts: afterHours.filter(a => a.name || a.role),
+          notify_immediately: notifyNow.split("\n").map(s => s.trim()).filter(Boolean),
+          notify_within_1hr: notify1hr.split("\n").map(s => s.trim()).filter(Boolean),
+          notify_before_resuming: notifyResume.split("\n").map(s => s.trim()).filter(Boolean),
+          media_spokesperson_name: mediaNam || null,
+          media_spokesperson_phone: mediaPhn || null,
+          osha_phone: oshaPhone || "(800) 321-6742",
+          regulatory_contact_name: regName || null,
+          regulatory_contact_phone: regPhone || null,
+          backup_contacts: backupContacts.filter(b => b.role || b.primary_name),
+          post_incident_steps: postSteps.filter(Boolean),
+          additional_notes: additionalNotes || null,
+        });
+        if (result.ok) {
+          setSaved(true);
+          setTimeout(() => router.push("/emergency"), 1200);
+        } else {
+          setError(result.error ?? "Save failed.");
+        }
+      } catch {
+        // Server action rejected (network drop / unexpected server error) —
+        // keep the form intact and surface it like any other save failure.
+        setError("We ran into a problem saving your Emergency Action Plan. Please try again.");
       }
     });
   }

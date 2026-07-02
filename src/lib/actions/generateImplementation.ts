@@ -1,9 +1,11 @@
 "use server";
 
+import type { TextBlock, ToolUseBlock } from "@anthropic-ai/sdk/resources/messages";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getServerTenantId } from "@/lib/auth/session";
 import { MOCK_MODE, serverSecrets } from "@/lib/env";
 import { codebaseContextForPrompt } from "@/lib/devcenter/codebaseContext";
+import { ImplementationBriefSchema } from "@/lib/devcenter/schemas";
 
 export interface GeneratedFile {
   path: string;
@@ -127,7 +129,7 @@ Generate the complete implementation brief now.`;
     // Use tool use (structured output) so Claude is forced to return complete,
     // properly-escaped JSON — avoids truncated strings from raw JSON generation.
     const response = await client.messages.create({
-      model: anthropicModel || "claude-sonnet-4-6",
+      model: anthropicModel || "claude-sonnet-5",
       max_tokens: 16000,
       system: `${systemPrompt}\n\n${codebaseContextForPrompt()}`,
       messages: [{ role: "user", content: userMessage }],
@@ -165,27 +167,33 @@ Generate the complete implementation brief now.`;
     });
 
     // Extract the tool call input
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Anthropic SDK types response.content as a block union; we narrow to the tool_use block manually below
-    const contents = response.content as any[];
-    const toolUse = contents.find((b) => b.type === "tool_use" && b.name === "submit_implementation_brief");
+    const toolUse = response.content.find(
+      (b): b is ToolUseBlock => b.type === "tool_use" && b.name === "submit_implementation_brief",
+    );
 
-    let brief: ImplementationBrief;
+    let briefCandidate: unknown;
     if (toolUse?.input) {
-      brief = toolUse.input as ImplementationBrief;
+      briefCandidate = toolUse.input;
     } else {
       // Fallback: try to extract JSON from any text block
-      const textBlock = contents.find((b) => b.type === "text");
+      const textBlock = response.content.find((b): b is TextBlock => b.type === "text");
       const raw = textBlock?.text ?? "";
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         return { ok: false, error: "AI did not return a usable response. Try again." };
       }
       try {
-        brief = JSON.parse(jsonMatch[0]) as ImplementationBrief;
+        briefCandidate = JSON.parse(jsonMatch[0]);
       } catch {
         return { ok: false, error: "AI response could not be parsed. Try again." };
       }
     }
+
+    const briefResult = ImplementationBriefSchema.safeParse(briefCandidate);
+    if (!briefResult.success) {
+      return { ok: false, error: "AI response could not be parsed. Try again." };
+    }
+    const brief: ImplementationBrief = briefResult.data;
 
     // Save as an artifact so it persists (best-effort — don't block response on DB failure)
     let artifactId: string | undefined;

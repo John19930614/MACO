@@ -48,6 +48,7 @@ import type {
   GatewayReject,
   StagedRecord,
 } from "@/lib/types";
+import type { EapRecord } from "@/lib/actions/eap";
 import { EHS_MODULES } from "@/lib/constants";
 
 export interface ModuleState {
@@ -149,6 +150,9 @@ interface SafetyIQStore {
   locations: SafetyLocation[];
   velaInsights: VelaInsight[];
   moduleStates: Record<string, ModuleState>;
+  // Emergency Action Plan — null until first save; readers fall back to the
+  // static fixture in actions/eap.ts.
+  eap: EapRecord | null;
 }
 
 // ── Singleton initialisation ──────────────────────────────────────────────────
@@ -203,6 +207,7 @@ function initStore(): SafetyIQStore {
     staged:       [],
     locations:    [...LOCATIONS],
     velaInsights: [...VELA_INSIGHTS],
+    eap:          null,
     moduleStates: Object.fromEntries(
       EHS_MODULES.map((m) => [m, { enabled: true, maintenanceNote: "", disabledAt: null, disabledBy: "" }])
     ),

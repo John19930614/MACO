@@ -135,7 +135,7 @@ export async function extractSdsData(
     const anthropic = new Anthropic({ apiKey: anthropicKey, timeout: 90_000 });
 
     const resp = await anthropic.messages.create({
-      model: anthropicModel || "claude-sonnet-4-6",
+      model: anthropicModel || "claude-sonnet-5",
       max_tokens: 4096,
       messages: [{
         role: "user",

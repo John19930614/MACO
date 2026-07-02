@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, MOCK_MODE, serverSecrets } from "@/lib/env";
 
@@ -31,11 +31,10 @@ export async function createSupabaseServerClient() {
       getAll() {
         return cookieStore.getAll();
       },
-      setAll(cookiesToSet: { name: string; value: string; options?: object }[]) {
+      setAll(cookiesToSet: { name: string; value: string; options?: CookieOptions }[]) {
         try {
           cookiesToSet.forEach(({ name, value, options }) =>
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @supabase/ssr does not export its CookieOptions type here; cast to forward the options to Next's cookieStore.set
-            cookieStore.set(name, value, options as any),
+            cookieStore.set(name, value, options),
           );
         } catch {
           // Called from a Server Component — cookie writes are ignored there;

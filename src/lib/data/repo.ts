@@ -41,6 +41,15 @@ import { scoreSimilarCells, computeHsl, deriveVelaInsights, type SimilarHit, typ
 
 const now = () => new Date().toISOString();
 
+/**
+ * Row id for a newly constructed record. Mock mode keeps the deterministic
+ * counter ids the fixtures and tests expect; live mode must send a real uuid —
+ * every ARC table has a uuid primary key, and nextId()'s counter resets on
+ * each cold start (the audit_log collision bug), so its "cell-mock-001" ids
+ * are doubly wrong against Postgres.
+ */
+const newId = (prefix: string) => (MOCK_MODE ? nextId(prefix) : crypto.randomUUID());
+
 export interface CellFilter {
   site_id?: string;
   status?: string;
@@ -181,7 +190,7 @@ export class GatewayRejectionError extends Error {
 // the attempted payload so a steward can re-validate it later.
 async function recordRejection(kind: GatewayReject["kind"], summary: string, tenant_id: string, actor_id: string, payload: Record<string, unknown>, rejections: Rejection[]): Promise<void> {
   const row: GatewayReject = {
-    id: nextId("rej"), tenant_id, kind, summary,
+    id: newId("rej"), tenant_id, kind, summary,
     category: [...new Set(rejections.map((r) => r.category))].join(" · ") || "Gateway",
     reason: rejections.map((r) => r.reason).join("; "),
     status: "blocked", payload, actor_id, created_at: now(),
@@ -405,7 +414,7 @@ export async function createCell(
     throw new GatewayRejectionError(gate.rejections);
   }
   const cell: SafetyCell = {
-    id: nextId("cell"),
+    id: newId("cell"),
     tenant_id,
     site_id: input.site_id,
     location_id: input.location_id,
@@ -429,12 +438,12 @@ export async function createCell(
   // the live Cell Database (and therefore the map / graph / 3D web) until a
   // reviewer approves it via approveStaged().
   if (MOCK_MODE) {
-    store.staged.unshift({ id: nextId("stg"), tenant_id, kind: "safety_cell", title: cell.title, submitted_by: userId, submitted_at: now(), payload: cell, evidence: opts.evidence });
+    store.staged.unshift({ id: newId("stg"), tenant_id, kind: "safety_cell", title: cell.title, submitted_by: userId, submitted_at: now(), payload: cell, evidence: opts.evidence });
     await addAudit({ actor_id: userId, action: "cell.stage", entity: "safety_cell", entity_id: cell.id, reason: null });
     return cell;
   }
   const c = await sb();
-  await dbWrite(c!.from("staged_records").insert({ id: nextId("stg"), tenant_id, kind: "safety_cell", title: cell.title, submitted_by: userId, submitted_at: now(), payload: cell, evidence: opts.evidence ?? null }));
+  await dbWrite(c!.from("staged_records").insert({ id: newId("stg"), tenant_id, kind: "safety_cell", title: cell.title, submitted_by: userId, submitted_at: now(), payload: cell, evidence: opts.evidence ?? null }));
   await addAudit({ actor_id: userId, action: "cell.stage", entity: "safety_cell", entity_id: cell.id, reason: null });
   return cell;
 }
@@ -523,7 +532,7 @@ export async function getEvidence(cellId?: string): Promise<EvidenceFile[]> {
   const c = await sb();
   let q = c!.from("evidence_files").select("*");
   if (cellId) q = q.eq("cell_id", cellId);
-  const { data } = await q;
+  const data = await dbRead(q);
   return (data ?? []) as EvidenceFile[];
 }
 
@@ -535,7 +544,7 @@ export async function createEvidence(
   const tenant_id = await resolveWriteTenant(cell?.tenant_id);
   await assertCanWrite(tenant_id, [...WRITE_ROLES]);
   const file: EvidenceFile = {
-    id: nextId("ev"),
+    id: newId("ev"),
     tenant_id,
     cell_id: e.cell_id,
     kind: e.kind,
@@ -577,7 +586,7 @@ export async function createEdge(
   // human-authored path so role enforcement doesn't block automated analysis.
   if (!aiGenerated) await assertCanWrite(await resolveWriteTenant(src?.tenant_id), [...WRITE_ROLES]);
   const edge: CausalEdge = {
-    id: nextId("edge"),
+    id: newId("edge"),
     tenant_id,
     ...e,
     review_status: aiGenerated ? "pending" : "accepted",
@@ -667,7 +676,7 @@ export async function createAction(
   const tenant_id = await resolveWriteTenant(cell?.tenant_id);
   await assertCanWrite(tenant_id, [...SUPERVISOR_ROLES]);
   const action: SafetyAction = {
-    id: nextId("act"),
+    id: newId("act"),
     tenant_id,
     cell_id: a.cell_id,
     title: a.title,
@@ -734,7 +743,7 @@ export async function getComments(cellId?: string): Promise<Comment[]> {
   const c = await sb();
   let q = c!.from("comments").select("*");
   if (cellId) q = q.eq("cell_id", cellId);
-  const { data } = await q;
+  const data = await dbRead(q);
   return (data ?? []) as Comment[];
 }
 
@@ -743,7 +752,7 @@ export async function createComment(cellId: string, body: string, userId: string
   if (!cell) return null;
   await assertCanWrite(cell.tenant_id, [...WRITE_ROLES]);
   const comment: Comment = {
-    id: nextId("cm"),
+    id: newId("cm"),
     tenant_id: cell.tenant_id,
     cell_id: cellId,
     author_id: userId,
@@ -765,7 +774,7 @@ export async function getEvents(siteId?: string): Promise<EventCell[]> {
   const c = await sb();
   let q = c!.from("event_cells").select("*");
   if (siteId) q = q.eq("site_id", siteId);
-  const { data } = await q;
+  const data = await dbRead(q);
   return (data ?? []) as EventCell[];
 }
 
@@ -787,7 +796,7 @@ export async function createEvent(input: EventInput, userId: string, opts: { log
     throw new GatewayRejectionError(gate.rejections);
   }
   const event: EventCell = {
-    id: nextId("evt"),
+    id: newId("evt"),
     tenant_id,
     site_id: input.site_id,
     cell_id: input.cell_id ?? null,
@@ -800,12 +809,12 @@ export async function createEvent(input: EventInput, userId: string, opts: { log
   };
   // Gateway-validated — hold in STAGING for human review (mirrors createCell).
   if (MOCK_MODE) {
-    store.staged.unshift({ id: nextId("stg"), tenant_id, kind: "event_cell", title: event.title, submitted_by: userId, submitted_at: now(), payload: event });
+    store.staged.unshift({ id: newId("stg"), tenant_id, kind: "event_cell", title: event.title, submitted_by: userId, submitted_at: now(), payload: event });
     await addAudit({ actor_id: userId, action: "event.stage", entity: "event_cell", entity_id: event.id, reason: null });
     return event;
   }
   const c = await sb();
-  await dbWrite(c!.from("staged_records").insert({ id: nextId("stg"), tenant_id, kind: "event_cell", title: event.title, submitted_by: userId, submitted_at: now(), payload: event }));
+  await dbWrite(c!.from("staged_records").insert({ id: newId("stg"), tenant_id, kind: "event_cell", title: event.title, submitted_by: userId, submitted_at: now(), payload: event }));
   await addAudit({ actor_id: userId, action: "event.stage", entity: "event_cell", entity_id: event.id, reason: null });
   return event;
 }
@@ -821,7 +830,7 @@ export async function getBehaviors(siteId?: string): Promise<BehaviorCell[]> {
   const c = await sb();
   let q = c!.from("behavior_cells").select("*");
   if (siteId) q = q.eq("site_id", siteId);
-  const { data } = await q;
+  const data = await dbRead(q);
   return (data ?? []) as BehaviorCell[];
 }
 
@@ -905,7 +914,7 @@ export async function createExpCapture(
   const tenant_id = await resolveWriteTenant(sites.find((s) => s.id === input.site_id)?.tenant_id);
   await assertCanWrite(tenant_id, [...WRITE_ROLES]);
   const capture: ExpCapture = {
-    id: nextId("exp"),
+    id: newId("exp"),
     tenant_id,
     site_id: input.site_id,
     source: input.source,
