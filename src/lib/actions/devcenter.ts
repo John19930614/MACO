@@ -41,6 +41,7 @@ const schema = z.object({
   ai_role: z.string().trim().optional().default(""),
   success_criteria: z.string().trim().optional().default(""),
   notes: z.string().trim().optional().default(""),
+  source_finding_id: z.string().trim().optional().default(""),
 });
 
 const bool = (fd: FormData, k: string) => fd.get(k) === "on" || fd.get(k) === "true";
@@ -84,6 +85,9 @@ export async function createDevTask(
     success_criteria: v.success_criteria,
     notes: v.notes,
     visual_reference: (formData.get("visual_reference") as string | null) || undefined,
+    // Links the task back to the Platform Review finding it came from so the
+    // review list can hide findings that already live on the task board.
+    source_finding_id: v.source_finding_id || undefined,
     // Human approval is always required â€” it's the core safety guarantee and is
     // not user-disablable. The four below default OFF and are explicit opt-ins.
     human_approval_required: true,
@@ -135,6 +139,7 @@ export async function createDevTask(
 
   revalidatePath("/admin/dev-command/tasks");
   revalidatePath("/admin/dev-command");
+  revalidatePath("/admin/dev-command/review");
   // Return the redirect URL — client handles navigation so NEXT_REDIRECT
   // doesn't propagate through React's error boundary in Next.js 15 / React 19.
   return { redirectTo: `/admin/dev-command/tasks/${taskId}` };

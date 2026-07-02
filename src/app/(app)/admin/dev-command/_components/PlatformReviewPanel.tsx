@@ -91,9 +91,32 @@ export function PlatformReviewPanel({ result }: { result: PlatformReviewResult }
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
           Findings &amp; suggested tasks
         </h3>
-        {result.findings.map((f) => (
-          <FindingCard key={f.id} f={f} />
-        ))}
+        {result.convertedCount > 0 && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-900 dark:bg-emerald-950/40">
+            <p className="text-xs text-emerald-700 dark:text-emerald-300">
+              <span className="font-semibold">{result.convertedCount}</span> finding(s) already
+              turned into tasks — track them on the task board.
+            </p>
+            <Link
+              href="/admin/dev-command/tasks"
+              className="shrink-0 text-xs font-semibold text-emerald-700 underline-offset-2 hover:underline dark:text-emerald-300"
+            >
+              View tasks
+            </Link>
+          </div>
+        )}
+        {result.findings.length === 0 ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-6 text-center dark:border-slate-700 dark:bg-slate-900">
+            <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+              Every finding has been turned into a task.
+            </p>
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+              New findings will appear here after the next full review.
+            </p>
+          </div>
+        ) : (
+          result.findings.map((f) => <FindingCard key={f.id} f={f} />)
+        )}
       </div>
     </div>
   );

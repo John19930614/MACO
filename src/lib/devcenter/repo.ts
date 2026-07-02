@@ -129,6 +129,26 @@ export async function getDevTasks(opts: { status?: DevTaskStatus; limit?: number
   return (data ?? []) as DevTask[];
 }
 
+/**
+ * Finding ids from the Platform Review that already have a task on the board.
+ * Cancelled tasks don't count — cancelling a task puts its finding back on the
+ * review list, since the underlying issue is still unaddressed.
+ */
+export async function getConvertedFindingIds(): Promise<string[]> {
+  if (MOCK_MODE) return [];
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return [];
+  const { data } = await client
+    .from("dev_tasks")
+    .select("metadata")
+    .not("metadata->>source_finding_id", "is", null)
+    .neq("status", "cancelled");
+  const ids = (data ?? [])
+    .map((row) => (row.metadata as { source_finding_id?: string } | null)?.source_finding_id)
+    .filter((id): id is string => !!id);
+  return [...new Set(ids)];
+}
+
 export async function getDevTask(id: string): Promise<DevTask | null> {
   if (MOCK_MODE) return null;
   const client = createServiceRoleClient() ?? await createSupabaseServerClient();

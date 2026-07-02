@@ -79,6 +79,7 @@ export interface PlatformReviewResult {
   checks: ReviewCheckResult[];
   findings: ReviewFinding[];   // live + curated, most severe first
   liveRan: boolean;            // did the live AI/Gateway check succeed this run
+  convertedCount: number;      // findings already turned into tasks (hidden here)
 }
 
 // ── Curated catalog — seeded from the 2026-07-02 full review ──────────────────
@@ -354,13 +355,19 @@ function gatewayStatusToReview(s: GatewayLiveInput["overall_status"]): ReviewSta
 /**
  * Build the full review result. Pass the live gateway snapshot when available;
  * pass null if it could not run (the AI Engine check then degrades to the
- * curated view and liveRan=false).
+ * curated view and liveRan=false). Findings whose id appears in convertedIds
+ * already live on the task board, so they are dropped from the review list.
  */
 export function buildPlatformReview(
   gateway: GatewayLiveInput | null,
   reviewedAt: string,
+  convertedIds: string[] = [],
 ): PlatformReviewResult {
-  const findings = [...CURATED].sort((a, b) => RANK[a.severity] - RANK[b.severity]);
+  const converted = new Set(convertedIds);
+  const findings = CURATED.filter((f) => !converted.has(f.id)).sort(
+    (a, b) => RANK[a.severity] - RANK[b.severity],
+  );
+  const convertedCount = CURATED.length - findings.length;
 
   const checks: ReviewCheckResult[] = REVIEW_CHECKS.map((c) => {
     const own = findings.filter((f) => f.check === c.key);
@@ -399,6 +406,7 @@ export function buildPlatformReview(
     checks,
     findings,
     liveRan: gateway != null,
+    convertedCount,
   };
 }
 
@@ -451,6 +459,7 @@ export function getFindingPrefill(f: ReviewFinding): Record<string, string> {
 
   return {
     title: f.title,
+    source_finding_id: f.id,
     business_goal: f.recommendation,
     feature_description: `${f.detail}\n\nRecommended fix: ${f.recommendation}`,
     module_affected: f.module,
