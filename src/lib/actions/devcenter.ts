@@ -20,7 +20,8 @@ import { runPlanningAgent } from "@/lib/devcenter/planning-agents";
 import { generateFilePlans } from "@/lib/devcenter/file-plans";
 import { generateCodeDrafts } from "@/lib/devcenter/code-drafts";
 import { generateReviewGate, STAGE_REVIEW_GATES, REQUIRED_FOR_RELEASE, gateCleared } from "@/lib/devcenter/review-gates";
-import { getFindingById } from "@/lib/devcenter/platform-review";
+import { findReviewFinding } from "@/lib/devcenter/review-live";
+import { getGithubSettings, logDevAudit } from "@/lib/devcenter/repo";
 import type { ReviewGateStatus } from "@/lib/devcenter/types";
 
 const nowIso = () => new Date().toISOString();
@@ -967,7 +968,7 @@ export async function setFindingDismissed(
   const client = createServiceRoleClient() ?? await createSupabaseServerClient();
   if (!client) return { ok: false, error: "Your session expired â€” please reload." };
 
-  const finding = getFindingById(findingId);
+  const finding = await findReviewFinding(findingId);
   if (!finding) return { ok: false, error: "That finding no longer exists." };
 
   const by = (await getServerUser())?.display_name ?? "Reliance Admin";
@@ -984,6 +985,45 @@ export async function setFindingDismissed(
 
   revalidatePath("/admin/dev-command/review");
   return { ok: true };
+}
+
+/**
+ * Launch the platform-review GitHub workflow (the automated code scan) from
+ * the review page. Requires GITHUB_REVIEW_DISPATCH_TOKEN (a fine-grained PAT
+ * with Actions read/write on the repo) — without it the button isn't shown.
+ * The scan runs in GitHub Actions and writes dev_review_findings; nothing is
+ * deployed or changed by it.
+ */
+export async function dispatchPlatformReviewScan(): Promise<{ ok: boolean; message: string }> {
+  if (!(await isSuperadmin())) return { ok: false, message: "You don't have permission for this." };
+  const token = process.env.GITHUB_REVIEW_DISPATCH_TOKEN;
+  if (!token) {
+    return { ok: false, message: "Scan launching isn't configured (GITHUB_REVIEW_DISPATCH_TOKEN). The scan still runs nightly." };
+  }
+  const gh = await getGithubSettings();
+  const res = await fetch(
+    `https://api.github.com/repos/${gh.repo_owner}/${gh.repo_name}/actions/workflows/platform-review.yml/dispatches`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      body: JSON.stringify({ ref: gh.default_branch || "master" }),
+    },
+  ).catch(() => null);
+  if (!res || res.status !== 204) {
+    return { ok: false, message: `GitHub did not accept the scan request${res ? ` (HTTP ${res.status})` : ""}. Check the token's Actions permission.` };
+  }
+  await logDevAudit({
+    actor_type: "human",
+    actor_id: (await getServerUser())?.display_name ?? "Reliance Admin",
+    action: "platform_scan_dispatched",
+    entity: "platform_review",
+    detail: { workflow: "platform-review.yml", ref: gh.default_branch || "master" },
+  });
+  return { ok: true, message: "Deep scan started — findings land here in ~3–5 minutes. Refresh to see them." };
 }
 
 /**

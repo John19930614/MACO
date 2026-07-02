@@ -8,6 +8,7 @@ import {
   SOURCE_LABEL,
 } from "@/lib/devcenter/platform-review";
 import { ReRunReviewButton } from "./ReRunReviewButton";
+import { RunDeepScanButton } from "./RunDeepScanButton";
 import { FindingDismissButton } from "./FindingDismissButton";
 
 const PRIORITY_TONE: Record<string, string> = {
@@ -23,8 +24,17 @@ function StatusDot({ status }: { status: "green" | "amber" | "red" }) {
   return <span className={`inline-block h-2.5 w-2.5 rounded-full ${tone}`} />;
 }
 
-export function PlatformReviewPanel({ result }: { result: PlatformReviewResult }) {
+export function PlatformReviewPanel({
+  result,
+  lastPipelineRunAt,
+  canDispatchScan = false,
+}: {
+  result: PlatformReviewResult;
+  lastPipelineRunAt?: string | null;
+  canDispatchScan?: boolean;
+}) {
   const openCount = result.findings.filter((f) => f.severity !== "green").length;
+  const liveCount = result.checks.filter((c) => c.live).length;
 
   return (
     <div className="space-y-5">
@@ -48,12 +58,19 @@ export function PlatformReviewPanel({ result }: { result: PlatformReviewResult }
               </div>
               <p className="max-w-xl text-xs leading-relaxed text-slate-500 dark:text-slate-400">
                 The Dev Manager runs six checks across the platform and turns each finding into a
-                ready-to-approve task. {openCount} open item(s). The AI Engine check runs live; the
-                other five reflect the last full review ({result.lastFullReview}).
+                ready-to-approve task. {openCount} open item(s). {liveCount} of{" "}
+                {result.checks.length} checks ran live this run;{" "}
+                {lastPipelineRunAt
+                  ? `the automated code scan last ran ${lastPipelineRunAt.slice(0, 10)}`
+                  : `the curated catalog was last refreshed ${result.lastFullReview}`}
+                .
               </p>
             </div>
           </div>
-          <ReRunReviewButton />
+          <div className="flex shrink-0 items-start gap-2">
+            {canDispatchScan && <RunDeepScanButton />}
+            <ReRunReviewButton />
+          </div>
         </div>
       </div>
 

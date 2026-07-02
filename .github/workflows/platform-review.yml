@@ -1,0 +1,56 @@
+name: Platform Review
+
+# The automated half of the Platform Review (/admin/dev-command/review):
+# codified audits over the real source + an optional Claude judgment pass,
+# written to dev_review_findings so the review page shows fresh, real findings.
+# Nightly, plus on-demand via the "Run deep scan" button (workflow_dispatch).
+on:
+  schedule:
+    - cron: "0 6 * * *" # nightly, 06:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: platform-review
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: scan · ai-review · publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # The AI pass imports @anthropic-ai/sdk; the writer imports supabase-js.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Codified audit scan
+        run: node scripts/platform-review-scan.mjs --json findings-scan.json
+
+      # No-ops (empty findings, green) when ANTHROPIC_API_KEY is not configured.
+      - name: Claude judgment pass
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node scripts/platform-review-ai.mjs --json findings-ai.json
+
+      # Upserts open findings + auto-resolves fixed ones. No-ops on forks.
+      - name: Publish findings
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/platform-review-write.mjs findings-scan.json findings-ai.json
+
+      - name: Upload findings artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-review-findings
+          path: findings-*.json
+          retention-days: 30
