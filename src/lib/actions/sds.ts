@@ -3,8 +3,21 @@
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import { serverSecrets } from "@/lib/env";
-import { getServerTenantId, getServerProfileId } from "@/lib/auth/session";
+import { getServerTenantId, getServerProfileId, assertTenantOwnership, TenantMismatchError } from "@/lib/auth/session";
 import type { SdsExtracted } from "@/lib/types";
+
+// Every action in this file writes through the service-role client (bypasses
+// RLS), so the resolved tenant must pass assertTenantOwnership before any
+// write. Returns the verified tenant_id, or null if the check failed (the
+// action should return its error shape).
+async function verifyTenant(tenantId: string): Promise<string | null> {
+  try {
+    return await assertTenantOwnership(tenantId);
+  } catch (err) {
+    if (err instanceof TenantMismatchError) return null;
+    throw err;
+  }
+}
 
 function svc() {
   const { serviceRoleKey } = serverSecrets();
@@ -59,9 +72,11 @@ const SDS_EXTRACTION_SCHEMA = {
 export async function uploadSdsDocument(
   formData: FormData,
 ): Promise<{ ok: true; docId: string } | { ok: false; error: string }> {
-  const tenantId = await getServerTenantId();
+  const rawTenantId = await getServerTenantId();
   const profileId = await getServerProfileId();
-  if (!tenantId) return { ok: false, error: "Not authenticated" };
+  if (!rawTenantId) return { ok: false, error: "Not authenticated" };
+  const tenantId = await verifyTenant(rawTenantId);
+  if (!tenantId) return { ok: false, error: "Action blocked: tenant ownership check failed." };
 
   const file = formData.get("file") as File | null;
   if (!file || file.type !== "application/pdf") return { ok: false, error: "Please upload a PDF file" };
@@ -101,8 +116,10 @@ export async function uploadSdsDocument(
 export async function extractSdsData(
   docId: string,
 ): Promise<{ ok: true; extracted: SdsExtracted } | { ok: false; error: string }> {
-  const tenantId = await getServerTenantId();
-  if (!tenantId) return { ok: false, error: "Not authenticated" };
+  const rawTenantId = await getServerTenantId();
+  if (!rawTenantId) return { ok: false, error: "Not authenticated" };
+  const tenantId = await verifyTenant(rawTenantId);
+  if (!tenantId) return { ok: false, error: "Action blocked: tenant ownership check failed." };
 
   const { anthropicKey, anthropicModel } = serverSecrets();
   if (!anthropicKey) return { ok: false, error: "ANTHROPIC_API_KEY not configured" };
@@ -203,9 +220,11 @@ export async function approveSdsExtraction(
   overrides: Partial<SdsExtracted>,
   notes: string,
 ): Promise<{ ok: true; chemicalId: string } | { ok: false; error: string }> {
-  const tenantId = await getServerTenantId();
+  const rawTenantId = await getServerTenantId();
   const profileId = await getServerProfileId();
-  if (!tenantId) return { ok: false, error: "Not authenticated" };
+  if (!rawTenantId) return { ok: false, error: "Not authenticated" };
+  const tenantId = await verifyTenant(rawTenantId);
+  if (!tenantId) return { ok: false, error: "Action blocked: tenant ownership check failed." };
 
   const db = svc();
 
@@ -268,9 +287,11 @@ export async function rejectSdsExtraction(
   docId: string,
   notes: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const tenantId = await getServerTenantId();
+  const rawTenantId = await getServerTenantId();
   const profileId = await getServerProfileId();
-  if (!tenantId) return { ok: false, error: "Not authenticated" };
+  if (!rawTenantId) return { ok: false, error: "Not authenticated" };
+  const tenantId = await verifyTenant(rawTenantId);
+  if (!tenantId) return { ok: false, error: "Action blocked: tenant ownership check failed." };
 
   const { error } = await svc()
     .from("sds_documents")

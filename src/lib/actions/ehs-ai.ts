@@ -13,6 +13,7 @@ import { KIND_DEFS, extractRows, type RowKind } from "@/lib/ai/extractDocuments"
 import { COMPLIANCE_STATUS_META, type ComplianceStatus } from "@/lib/constants";
 import type { AiFinding, AiAnalysisOutput, WasteStream } from "@/lib/types";
 import { analyzeChemical, analyzeComplianceGap, analyzeTraining, analyzeWaste, buildPredictabilityForecast } from "@/lib/ai/engine";
+import { logAnalysisFailure, type AnalysisWarning } from "@/lib/telemetry/logAnalysisFailure";
 import {
   getChemicals, getLegalRequirements, getTrainingRecords, getTrainingCourses, getCapaActions,
   getIncidents, getAudits, getRiskAssessments, getEquipment, getWasteStreams,
@@ -132,22 +133,39 @@ export async function runPredictabilityScan() {
     if (f.review_status === "pending") priorByKey.set(`${f.source_type}|${f.source_id ?? ""}`, f);
   }
 
+  // A failed analysis is no longer swallowed: it becomes a user-safe warning on
+  // the scan result plus a telemetry entry, while the rest of the batch continues.
   const findings: AiFinding[] = [];
+  const warnings: AnalysisWarning[] = [];
   for (const c of topChems) {
     if (c.ghs_classes.length === 0 && !c.is_scheduled) continue;
-    try { findings.push(await analyzeChemical(c, priorByKey.get(`chemical|${c.id}`))); } catch { /* skip */ }
+    try {
+      findings.push(await analyzeChemical(c, priorByKey.get(`chemical|${c.id}`)));
+    } catch (error) {
+      warnings.push(logAnalysisFailure({ module: "chemical", itemId: c.id, error }));
+    }
   }
   for (const l of worstLegal) {
-    try { findings.push(await analyzeComplianceGap(l, priorByKey.get(`legal_requirement|${l.id}`))); } catch { /* skip */ }
+    try {
+      findings.push(await analyzeComplianceGap(l, priorByKey.get(`legal_requirement|${l.id}`)));
+    } catch (error) {
+      warnings.push(logAnalysisFailure({ module: "complianceGap", itemId: l.id, error }));
+    }
   }
   for (const w of topWaste) {
-    try { findings.push(await analyzeWaste(w, priorByKey.get(`waste_stream|${w.id}`))); } catch { /* skip */ }
+    try {
+      findings.push(await analyzeWaste(w, priorByKey.get(`waste_stream|${w.id}`)));
+    } catch (error) {
+      warnings.push(logAnalysisFailure({ module: "waste", itemId: w.id, error }));
+    }
   }
   // Training gap analysis — one tenant-level finding over role-based coverage.
   if (courses.length > 0 && profiles.length > 0) {
     try {
       findings.push(await analyzeTraining({ tenant_id: tenantId, site_id: siteId, courses, records, profiles, now: now.getTime() }, priorByKey.get("training|")));
-    } catch { /* skip */ }
+    } catch (error) {
+      warnings.push(logAnalysisFailure({ module: "training", itemId: tenantId, error }));
+    }
   }
 
   const actionsProposed = findings.reduce((s, f) => s + ((f.output as AiAnalysisOutput)?.recommended_actions?.length ?? 0), 0);
@@ -185,7 +203,7 @@ export async function runPredictabilityScan() {
 
   const { error: runError } = await ctx.client.from("predictability_runs").insert({
     tenant_id: tenantId, site_id: siteId, stage: "forecast",
-    summary: `P-Engine scanned ${itemsScanned} EHS records across ${scoreRows.length} modules. Compliance trend: ${forecast.compliance_trend}; 30-day projection ${forecast.predicted_compliance_score_30d}%. Top risk modules: ${forecast.top_risk_modules.join(", ")}. ${findings.length} findings raised, ${actionsProposed} actions proposed.`,
+    summary: `P-Engine scanned ${itemsScanned} EHS records across ${scoreRows.length} modules. Compliance trend: ${forecast.compliance_trend}; 30-day projection ${forecast.predicted_compliance_score_30d}%. Top risk modules: ${forecast.top_risk_modules.join(", ")}. ${findings.length} findings raised, ${actionsProposed} actions proposed.${warnings.length ? ` ${warnings.length} analyses could not be completed.` : ""}`,
     items_scanned: itemsScanned, signals_found: findings.length, actions_proposed: actionsProposed,
     forecast_data: forecast,
   });
@@ -193,7 +211,7 @@ export async function runPredictabilityScan() {
 
   revalidatePath("/ai");
   revalidatePath("/dashboard");
-  return { ok: true, scanned: itemsScanned, findings: findings.length, modules: scoreRows.length };
+  return { ok: true, scanned: itemsScanned, findings: findings.length, modules: scoreRows.length, warnings };
 }
 
 // ── AI Program Builder ────────────────────────────────────────────────────────

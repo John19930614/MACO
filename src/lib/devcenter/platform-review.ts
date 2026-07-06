@@ -8,12 +8,16 @@
  * signal — AI gateway health — is fetched in the page (a server component) and
  * passed into buildPlatformReview() as an optional snapshot.
  *
- * Checks split two ways, and we are honest about which is which in the UI:
- *   • LIVE     — computed fresh every run from the running app (AI/Gateway).
- *   • CURATED  — code-level findings (typecheck, silent-fails, tenant-writes,
- *                tech debt) that a full Claude Code review authored. The app
- *                cannot run tsc / vitest / grep at runtime, so these are read
- *                from the catalog below and refreshed after each full review.
+ * Findings come from four sources, and the UI labels each honestly:
+ *   • LIVE     — computed fresh every run from the running app: AI/Gateway
+ *                health, the latest CI gate row, migration drift, and the RLS
+ *                probe (see review-live.ts).
+ *   • SCAN     — codified audits over the real source, run by the platform-
+ *                review GitHub workflow (scripts/platform-review-scan.mjs) and
+ *                written to dev_review_findings.
+ *   • AI       — the Claude review pass in the same workflow.
+ *   • CURATED  — judgment findings a full Claude Code review authored, kept in
+ *                the catalog below and refreshed after each deep review.
  */
 
 // ── The date the curated catalog was last refreshed by a full review ─────────
@@ -23,7 +27,7 @@ export type ReviewCheckKey =
   | "build_type" | "security" | "database" | "routes_ux" | "ai_engine" | "tech_debt";
 
 export type ReviewStatus = "green" | "amber" | "red";
-export type ReviewSource = "live" | "curated";
+export type ReviewSource = "live" | "curated" | "scan" | "ai";
 export type FindingPriority = "urgent" | "high" | "medium" | "low";
 export type FindingRisk = "low" | "medium" | "high" | "critical";
 export type FindingEffort = "small" | "medium" | "large";
@@ -334,34 +338,149 @@ function gatewayStatusToReview(s: GatewayLiveInput["overall_status"]): ReviewSta
   return s === "healthy" ? "green" : s === "degraded" ? "amber" : "red";
 }
 
+// ── Live signal shapes (pure types — computed in review-live.ts, server-only) ─
+
+/** Latest CI gate run from ops_gate_status. Values: pass | fail | skip | unknown. */
+export interface GateSignal {
+  typecheck: string | null;
+  test: string | null;
+  build: string | null;
+  system: string | null;
+  sha: string | null;
+  branch: string | null;
+  at: string;
+}
+
+/** Local migration manifest diffed against prod's applied list. */
+export interface MigrationsSignal {
+  localCount: number;
+  appliedCount: number;
+  /** Hand-applied migrations verified by a live schema probe. */
+  probedApplied: number;
+  pending: { filename: string; name: string }[];
+}
+
+/** dev_rls_status() probe — public tables and which have RLS off. */
+export interface RlsSignal {
+  total: number;
+  disabled: string[];
+}
+
+/** Everything the review page computes fresh per run. All optional/null — any
+ * missing signal degrades that check to the curated view. */
+export interface LiveSignals {
+  gateway?: GatewayLiveInput | null;
+  gate?: GateSignal | null;
+  migrations?: MigrationsSignal | null;
+  rls?: RlsSignal | null;
+}
+
+function gateStatusToReview(g: GateSignal): ReviewStatus {
+  const vals = [g.typecheck, g.test, g.build, g.system];
+  if (vals.some((v) => v === "fail")) return "red";
+  if (vals.every((v) => v === "pass")) return "green";
+  return "amber"; // skipped/unknown steps — treat as needs-a-look
+}
+
+// ── Findings synthesized from the live signals ────────────────────────────────
+// These get stable ids so "Turn into a task" and dismissal work exactly like
+// catalog findings, and they disappear on their own once the signal clears.
+
+export function buildLiveFindings(
+  migrations: MigrationsSignal | null,
+  rls: RlsSignal | null,
+): ReviewFinding[] {
+  const findings: ReviewFinding[] = [];
+
+  for (const p of migrations?.pending ?? []) {
+    findings.push({
+      id: `live-pending-migration:${p.name}`,
+      check: "database",
+      title: `Apply pending migration ${p.filename}`,
+      detail: `supabase/migrations/${p.filename} exists locally but is not applied on the safetyiq prod project (no history record and no verifying schema probe).`,
+      recommendation:
+        "Review the migration and apply it to prod (a separate, explicitly approved step), or remove it if it is obsolete. If it was applied by hand under another name, add an alias/probe to scripts/gen-migration-manifest.mjs.",
+      severity: "amber",
+      source: "live",
+      module: "Database",
+      who_uses_it: "Platform Operations",
+      priority: "high",
+      risk_level: "medium",
+      effort: "small",
+      where: `supabase/migrations/${p.filename}`,
+      success_criteria:
+        "The migration is applied on prod (or retired) and this finding clears on the next review run.",
+    });
+  }
+
+  if (rls && rls.disabled.length > 0) {
+    findings.push({
+      id: "live-rls-disabled",
+      check: "security",
+      title: `${rls.disabled.length} public table(s) without row-level security`,
+      detail: `Live probe found RLS disabled on: ${rls.disabled.join(", ")}. Any authenticated client can read/write these tables regardless of tenant.`,
+      recommendation:
+        "Enable RLS and add tenant/superadmin policies for each listed table, mirroring the existing table policies.",
+      severity: "red",
+      source: "live",
+      module: "Platform Operations",
+      who_uses_it: "Platform / all tenants (isolation)",
+      priority: "urgent",
+      risk_level: "critical",
+      effort: "small",
+      where: rls.disabled.map((t) => `public.${t}`).join(", "),
+      success_criteria: "dev_rls_status() reports zero public tables with RLS disabled.",
+    });
+  }
+
+  return findings;
+}
+
 /**
- * Build the full review result. Pass the live gateway snapshot when available;
- * pass null if it could not run (the AI Engine check then degrades to the
- * curated view and liveRan=false). Findings whose id appears in convertedIds
- * already live on the task board, so they are dropped from the review list.
- * Findings in dismissedIds were waved off by the operator — hidden from the
- * open list (and from check statuses) but returned separately so they can be
- * restored.
+ * Build the full review result from whatever ran this request:
+ *   • signals — live signals (gateway health, CI gate, migration drift, RLS
+ *     probe); any that are null degrade that check to the curated/pipeline view.
+ *   • extraFindings — findings from OUTSIDE the curated catalog: rows the
+ *     automated review pipeline wrote to dev_review_findings plus findings
+ *     synthesized from the live signals. Same shape, same task/dismiss flows.
+ * Findings whose id appears in convertedIds already live on the task board, so
+ * they are dropped from the review list. Findings in dismissedIds were waved
+ * off by the operator — hidden from the open list (and from check statuses)
+ * but returned separately so they can be restored.
  */
 export function buildPlatformReview(
-  gateway: GatewayLiveInput | null,
+  signals: LiveSignals | null,
   reviewedAt: string,
   convertedIds: string[] = [],
   dismissedIds: string[] = [],
+  extraFindings: ReviewFinding[] = [],
 ): PlatformReviewResult {
+  const gateway = signals?.gateway ?? null;
+  const gate = signals?.gate ?? null;
+  const migrations = signals?.migrations ?? null;
+  const rls = signals?.rls ?? null;
+
   const converted = new Set(convertedIds);
   const dismissedSet = new Set(dismissedIds);
+  // Curated catalog + pipeline/live findings, deduped by id (pipeline wins —
+  // it is fresher than the hand-authored catalog).
+  const byId = new Map<string, ReviewFinding>();
+  for (const f of CURATED) byId.set(f.id, f);
+  for (const f of extraFindings) byId.set(f.id, f);
+  const all = [...byId.values()];
+
   // Converted wins over dismissed — a finding with a task belongs to the board.
-  const dismissed = CURATED.filter((f) => dismissedSet.has(f.id) && !converted.has(f.id));
-  const findings = CURATED.filter((f) => !converted.has(f.id) && !dismissedSet.has(f.id)).sort(
+  const dismissed = all.filter((f) => dismissedSet.has(f.id) && !converted.has(f.id));
+  const findings = all.filter((f) => !converted.has(f.id) && !dismissedSet.has(f.id)).sort(
     (a, b) => RANK[a.severity] - RANK[b.severity],
   );
-  const convertedCount = CURATED.filter((f) => converted.has(f.id)).length;
+  const convertedCount = all.filter((f) => converted.has(f.id)).length;
 
   const checks: ReviewCheckResult[] = REVIEW_CHECKS.map((c) => {
     const own = findings.filter((f) => f.check === c.key);
     let status: ReviewStatus = own.reduce<ReviewStatus>((acc, f) => worse(acc, f.severity), "green");
     let summary: string;
+    let live = c.live;
 
     if (c.key === "ai_engine" && gateway) {
       // Live signal wins for the AI Engine check.
@@ -373,17 +492,30 @@ export function buildPlatformReview(
           : `Gateway ${gateway.overall_status}. ${gateway.anomaly_count} anomaly(ies), ${pct}% fallback across ${gateway.ai_calls} recent call(s).`;
     } else if (c.key === "ai_engine") {
       summary = "Live gateway check did not run — showing catalog findings only.";
+    } else if (c.key === "build_type" && gate) {
+      live = true;
+      status = worse(status, gateStatusToReview(gate));
+      const when = gate.at.slice(0, 10);
+      summary = `CI gate ${gateStatusToReview(gate) === "green" ? "green" : "not green"} @ ${gate.sha ?? "?"} on ${gate.branch ?? "?"} (${when}): typecheck ${gate.typecheck}, tests ${gate.test}, build ${gate.build}, nav ${gate.system}.`;
     } else if (c.key === "build_type") {
-      // No runtime source; reflect the last full review's verdict.
-      status = "green";
+      // No CI row reachable; reflect the last full review's verdict.
       summary = `Last full review: typecheck clean, unit tests green (${LAST_FULL_REVIEW}).`;
+    } else if (c.key === "database" && migrations) {
+      live = true;
+      status = worse(status, migrations.pending.length ? "amber" : "green");
+      summary = migrations.pending.length
+        ? `${migrations.appliedCount}/${migrations.localCount} local migrations live on prod — ${migrations.pending.length} pending: ${migrations.pending.map((p) => p.name).join(", ")}.`
+        : `All ${migrations.localCount} local migrations verified live on prod (${migrations.probedApplied} via schema probe).`;
+    } else if (c.key === "security" && rls) {
+      live = true;
+      status = worse(status, rls.disabled.length ? "red" : "green");
+      const base = `RLS probe: ${rls.total - rls.disabled.length}/${rls.total} public tables protected.`;
+      summary = own.length ? `${base} ${own.length} open item(s).` : base;
     } else {
-      summary = own.length
-        ? `${own.length} open item(s) from the last full review.`
-        : "No open items.";
+      summary = own.length ? `${own.length} open item(s).` : "No open items.";
     }
 
-    return { ...c, status, summary, findingCount: own.length };
+    return { ...c, live, status, summary, findingCount: own.length };
   });
 
   const overall = checks.reduce<ReviewStatus>((acc, c) => worse(acc, c.status), "green");
@@ -425,6 +557,8 @@ export const STATUS_TONE: Record<ReviewStatus, string> = {
 export const SOURCE_LABEL: Record<ReviewSource, string> = {
   live: "Live",
   curated: "From last review",
+  scan: "Automated scan",
+  ai: "AI review",
 };
 
 const EFFORT_LABEL: Record<FindingEffort, string> = {

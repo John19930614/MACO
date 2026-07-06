@@ -7,6 +7,7 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getServerTenantId, getServerProfileId } from "@/lib/auth/session";
 import { MOCK_MODE } from "@/lib/env";
 import type { CapaSourceType } from "@/lib/types";
+import { logAnalysisFailure, type AnalysisWarning } from "@/lib/telemetry/logAnalysisFailure";
 
 interface RemediationAction {
   action: string;
@@ -105,11 +106,16 @@ export async function remediateFinding(
   return { ok: true, capasCreated: selectedActions.length };
 }
 
-/** Mark a finding as rejected (dismissed) without creating any CAPAs. */
+/**
+ * Mark a finding as rejected (dismissed) without creating any CAPAs.
+ * An audit-log write failure is never silent: the dismiss itself succeeded, but
+ * the result carries `auditWriteFailed: true` plus a user-safe warning so the
+ * caller can never report the action as fully audited when it wasn't.
+ */
 export async function dismissFinding(
   findingId: string,
   reason: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; auditWriteFailed?: boolean; warnings?: AnalysisWarning[] }> {
   if (!MOCK_MODE) {
     const ctx = await getCtx();
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
@@ -119,9 +125,10 @@ export async function dismissFinding(
       .eq("id", findingId)
       .eq("tenant_id", ctx.tenantId);
     if (error) return { ok: false, error: error.message };
-    // Best-effort audit log entry
     try {
-      await ctx.client.from("audit_log").insert({
+      // Supabase reports insert failures via the returned `error`, not by
+      // throwing — check it, so DB-level failures (RLS, FK) surface too.
+      const { error: auditError } = await ctx.client.from("audit_log").insert({
         tenant_id: ctx.tenantId,
         actor_id: ctx.profileId,
         action: "ai_finding_dismissed",
@@ -129,8 +136,16 @@ export async function dismissFinding(
         entity_id: findingId,
         details: { reason },
       });
-    } catch (e) {
-      console.error("audit write failed (non-fatal):", e);
+      if (auditError) throw auditError;
+    } catch (auditError) {
+      const warning = logAnalysisFailure({
+        module: "auditLog",
+        itemId: findingId,
+        error: auditError,
+        context: { action: "ai_finding_dismissed", entity: "ai_finding" },
+      });
+      revalidatePath("/ai");
+      return { ok: true, auditWriteFailed: true, warnings: [warning] };
     }
   } else {
     const store = getStore();

@@ -1,10 +1,10 @@
 # Database Update Status: What's Live in Production
 
-Generated: 2026-07-02T17:52:44.240Z by `scripts/check-migration-status.ts`
+Generated: 2026-07-02T18:37:48.419Z by `scripts/check-migration-status.ts`
 Environment: safetyiq prod
 Prod history snapshot: retrieved 2026-07-02 from project `bjgqjpekhicqlunxbobo` via Supabase MCP list_migrations (supabase_migrations.schema_migrations) + read-only information_schema probes
 
-**43 of 46 local database updates are live in production** — 42 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **3 are NOT applied**, and 3 of those have application code that already depends on them.
+**43 of 47 local database updates are live in production** — 42 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **4 are NOT applied**, and 4 of those have application code that already depends on them.
 
 > Safety note: this only checks, it doesn't change anything. This is a read-only audit — applying any pending migration requires a separate, explicitly approved follow-up.
 
@@ -21,8 +21,8 @@ Prod history snapshot: retrieved 2026-07-02 from project `bjgqjpekhicqlunxbobo` 
   - Referenced in `src/app/(app)/ai/AiDashboard.tsx:1144` — `{f.review_status === "rejected" && f.rejection_reason && (`
   - Referenced in `src/app/(app)/ai/AiDashboard.tsx:1145` — `<p className="text-[10px] text-slate-400 max-w-48 leading-snug" title={f.rejection_reason}>`
   - Referenced in `src/app/(app)/ai/AiDashboard.tsx:1146` — `{f.rejection_reason.length > 60 ? f.rejection_reason.slice(0, 60) + "…" : f.rejection_reason}`
-  - Referenced in `src/lib/actions/ai-remediate.ts:118` — `.update({ review_status: "rejected", rejection_reason: reason })`
-  - Referenced in `src/lib/actions/ai-remediate.ts:138` — `if (idx !== -1) store.findings[idx] = { ...store.findings[idx], review_status: "rejected", rejection_reason: reason };`
+  - Referenced in `src/lib/actions/ai-remediate.ts:124` — `.update({ review_status: "rejected", rejection_reason: reason })`
+  - Referenced in `src/lib/actions/ai-remediate.ts:153` — `if (idx !== -1) store.findings[idx] = { ...store.findings[idx], review_status: "rejected", rejection_reason: reason };`
   - Referenced in `src/lib/types.ts:836` — `rejection_reason?: string | null;`
 - 🚨 **ACTION NEEDED**: `20260702010000_arc_missing_tables.sql` — arc missing tables
   - Referenced in `src/app/api/cells/[id]/comments/route.ts:5` — `// GET /api/cells/[id]/comments — thread for a cell, with author display names.`
@@ -31,6 +31,13 @@ Prod history snapshot: retrieved 2026-07-02 from project `bjgqjpekhicqlunxbobo` 
   - Referenced in `src/app/api/cells/[id]/comments/route.ts:15` — `// POST /api/cells/[id]/comments — add a comment.`
   - Referenced in `src/lib/actions/generateImplementation.ts:101` — `Be specific: include real file paths relative to the project root, real TypeScript/React code, real SQL. Do not use plac`
   - Referenced in `src/lib/data/integrity.ts:53` — `["evidence_files", d.evidence],`
+- 🚨 **ACTION NEEDED**: `20260702020000_dev_review_findings.sql` — dev review findings
+  - Referenced in `src/lib/actions/devcenter.ts:994` — `* The scan runs in GitHub Actions and writes dev_review_findings; nothing is`
+  - Referenced in `src/lib/devcenter/platform-review.ts:17` — `*                written to dev_review_findings.`
+  - Referenced in `src/lib/devcenter/platform-review.ts:444` — `*     automated review pipeline wrote to dev_review_findings plus findings`
+  - Referenced in `src/lib/devcenter/review-live.ts:13` — `*   • findings   — open rows from dev_review_findings, written by the automated`
+  - Referenced in `src/lib/devcenter/review-live.ts:116` — `// ── Pipeline findings (dev_review_findings) ───────────────────────────────────`
+  - Referenced in `src/lib/devcenter/review-live.ts:161` — `.from("dev_review_findings")`
 
 Until these are applied, the code paths above hit a missing table/column at runtime in live mode. Applying them is a separate task requiring explicit approval.
 
@@ -86,6 +93,7 @@ Matching is by migration name (local filename timestamps are synthetic; the prod
 | 20260701010000 | `20260701010000_chemical_concentration_hazard.sql` | Concentration-based chemical hazard classification columns (incl. hazard_review_status) | ✅ Live (tracked) | 20260630125515 (as `add_concentration_hazard_columns_to_chemical_inventory`) |
 | 20260702000000 | `20260702000000_ai_model_benchmarks.sql` | ai model benchmarks | ✅ Live (tracked) | 20260702162243 |
 | 20260702010000 | `20260702010000_arc_missing_tables.sql` | arc missing tables | 🚨 Pending — code depends on it | — |
+| 20260702020000 | `20260702020000_dev_review_findings.sql` | dev review findings | 🚨 Pending — code depends on it | — |
 
 ## Prod-Only History Entries
 
