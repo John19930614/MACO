@@ -39,10 +39,12 @@ jobs:
       - name: Codified audit scan
         run: node scripts/platform-review-scan.mjs --json findings-scan.json
 
-      # COST CAP: the paid Claude call runs at most once a day — only on the
-      # nightly schedule (or a manual dispatch that explicitly opts in via the
-      # run_ai checkbox). Other runs get an empty key and the script no-ops,
-      # so on-demand "Run deep scan" clicks stay free (code audits only).
+      # The paid Claude call (capped at 5 findings, see platform-review-ai.mjs)
+      # runs on the nightly schedule and on every manual dispatch from the
+      # "Run deep scan" button (which always sends run_ai=true) so an
+      # on-demand scan can surface genuinely new findings. A workflow_dispatch
+      # triggered any other way (e.g. the GitHub UI with the box unchecked)
+      # still gets an empty key and the script no-ops for that run.
       - name: Claude judgment pass
         env:
           ANTHROPIC_API_KEY: ${{ (github.event_name == 'schedule' || inputs.run_ai) && secrets.ANTHROPIC_API_KEY || '' }}

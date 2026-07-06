@@ -16,7 +16,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "
 import { basename, join } from "node:path";
 
 const MODEL = process.env.SAFETYIQ_ANTHROPIC_MODEL || "claude-sonnet-5";
-const MAX_FINDINGS = 12;
+const MAX_FINDINGS = 5;
 const MAX_FILE_LINES = 500;
 
 // Deterministic hotspots: the security/infra spine plus the largest action

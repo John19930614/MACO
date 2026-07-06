@@ -21,7 +21,7 @@ import { generateFilePlans } from "@/lib/devcenter/file-plans";
 import { generateCodeDrafts } from "@/lib/devcenter/code-drafts";
 import { generateReviewGate, STAGE_REVIEW_GATES, REQUIRED_FOR_RELEASE, gateCleared } from "@/lib/devcenter/review-gates";
 import { findReviewFinding } from "@/lib/devcenter/review-live";
-import { getGithubSettings, logDevAudit } from "@/lib/devcenter/repo";
+import { getGithubSettings, logDevAudit, getConvertedFindingIds, getDismissedFindingIds } from "@/lib/devcenter/repo";
 import type { ReviewGateStatus } from "@/lib/devcenter/types";
 
 const nowIso = () => new Date().toISOString();
@@ -988,11 +988,15 @@ export async function setFindingDismissed(
 }
 
 /**
- * Launch the platform-review GitHub workflow (the automated code scan) from
- * the review page. Requires GITHUB_REVIEW_DISPATCH_TOKEN (a fine-grained PAT
- * with Actions read/write on the repo) — without it the button isn't shown.
- * The scan runs in GitHub Actions and writes dev_review_findings; nothing is
- * deployed or changed by it.
+ * Launch the platform-review GitHub workflow (codified scan + the Claude
+ * judgment pass, capped at 5 findings) from the review page. Requires
+ * GITHUB_REVIEW_DISPATCH_TOKEN (a fine-grained PAT with Actions read/write on
+ * the repo) — without it the button isn't shown. The scan runs in GitHub
+ * Actions and writes dev_review_findings; nothing is deployed or changed by
+ * it. NOTE: unlike the free nightly-only default, every manual click here
+ * opts into the paid Claude call (~$0.30–$1.50, see platform-review-ai.mjs)
+ * so an on-demand scan can surface genuinely new findings, not just re-detect
+ * the same 3 static codified checks.
  */
 export async function dispatchPlatformReviewScan(): Promise<{ ok: boolean; message: string }> {
   if (!(await isSuperadmin())) return { ok: false, message: "You don't have permission for this." };
@@ -1010,7 +1014,7 @@ export async function dispatchPlatformReviewScan(): Promise<{ ok: boolean; messa
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
       },
-      body: JSON.stringify({ ref: gh.default_branch || "master" }),
+      body: JSON.stringify({ ref: gh.default_branch || "master", inputs: { run_ai: "true" } }),
     },
   ).catch(() => null);
   if (!res || res.status !== 204) {
@@ -1023,7 +1027,73 @@ export async function dispatchPlatformReviewScan(): Promise<{ ok: boolean; messa
     entity: "platform_review",
     detail: { workflow: "platform-review.yml", ref: gh.default_branch || "master" },
   });
-  return { ok: true, message: "Deep scan started — findings land here in ~3–5 minutes. Refresh to see them." };
+  return { ok: true, message: "Deep scan started — checking for results…" };
+}
+
+export interface ScanRunStatus {
+  done: boolean;
+  message: string;
+}
+
+/**
+ * Poll for the outcome of a "Run deep scan" dispatch. The GitHub dispatch API
+ * returns no run id synchronously, so we match the newest workflow_dispatch
+ * run created at/after `dispatchedAt` (a small negative buffer absorbs clock
+ * skew between this server and GitHub's). Once that run completes, findings
+ * are cross-referenced against already-actioned ones (task/dismissed) so the
+ * caller can tell "0 new findings" apart from "nothing ran yet".
+ */
+export async function getScanRunStatus(dispatchedAt: string): Promise<ScanRunStatus> {
+  if (!(await isSuperadmin())) return { done: true, message: "You don't have permission for this." };
+  const token = process.env.GITHUB_REVIEW_DISPATCH_TOKEN;
+  if (!token) return { done: true, message: "Scan status isn't available (GITHUB_REVIEW_DISPATCH_TOKEN not configured)." };
+
+  const gh = await getGithubSettings();
+  const res = await fetch(
+    `https://api.github.com/repos/${gh.repo_owner}/${gh.repo_name}/actions/workflows/platform-review.yml/runs?event=workflow_dispatch&per_page=5`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      cache: "no-store",
+    },
+  ).catch(() => null);
+  if (!res || !res.ok) return { done: false, message: "Waiting for GitHub to register the run…" };
+
+  const body = (await res.json().catch(() => null)) as {
+    workflow_runs?: { created_at: string; status: string; conclusion: string | null; html_url: string }[];
+  } | null;
+  const cutoff = new Date(dispatchedAt).getTime() - 15_000;
+  const run = body?.workflow_runs?.find((r) => new Date(r.created_at).getTime() >= cutoff);
+  if (!run) return { done: false, message: "Waiting for GitHub to register the run…" };
+  if (run.status !== "completed") return { done: false, message: "Scan is running…" };
+  if (run.conclusion !== "success") {
+    return { done: true, message: `Scan failed (${run.conclusion ?? "unknown"}). Check the workflow run in GitHub Actions.` };
+  }
+
+  const client = createServiceRoleClient();
+  const [openRes, convertedIds, dismissedIds] = await Promise.all([
+    client
+      ? client.from("dev_review_findings").select("finding_key").eq("status", "open")
+      : Promise.resolve({ data: [] as { finding_key: string }[] }),
+    getConvertedFindingIds().catch(() => [] as string[]),
+    getDismissedFindingIds().catch(() => [] as string[]),
+  ]);
+  const actioned = new Set([...convertedIds, ...dismissedIds]);
+  const openKeys = ((openRes.data ?? []) as { finding_key: string }[]).map((r) => r.finding_key);
+  const freshCount = openKeys.filter((k) => !actioned.has(k)).length;
+
+  return {
+    done: true,
+    message:
+      freshCount > 0
+        ? `Scan completed — ${freshCount} new finding(s). Refresh to view.`
+        : openKeys.length > 0
+          ? `Scan completed — 0 new findings. ${openKeys.length} known issue(s) re-confirmed (already tracked as tasks/dismissed).`
+          : "Scan completed — 0 findings. Codebase is clean on the codified checks.",
+  };
 }
 
 /**

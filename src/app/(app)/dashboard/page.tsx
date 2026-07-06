@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import {
   getChemicals, getCapaActions, getAiFindings, getTrainingRecords,
   getEquipment, getComplianceScores, getAudits, getIncidents,
@@ -15,12 +16,96 @@ import { ScoreGauge, DonutChart, Legend, TrendArea, type Segment, type TrendPoin
 import { CapaStatusBadge, ReviewStatusBadge } from "@/components/ui/badges";
 import { OnboardingWelcomeBanner } from "@/components/dashboard/OnboardingWelcomeBanner";
 import { PriorityActions, buildPriorityItems } from "@/components/dashboard/PriorityActions";
+import { TrendCard, TrendDemoBanner } from "@/components/dashboard/TrendCard";
+import { getDashboardTrends } from "@/lib/actions/getDashboardTrends";
 import type { AiAnalysisOutput } from "@/lib/types";
 import { formatDate, relativeTime } from "@/lib/utils";
 import {
   FlaskConical, BrainCircuit, Clock,
   AlertTriangle, TrendingUp, TrendingDown, Minus,
+  ClipboardList, FileSearch, Repeat, CalendarClock, Trash2,
 } from "lucide-react";
+
+function SkeletonBlock() {
+  return <div className="h-32 animate-pulse rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800" />;
+}
+
+function TrendSectionsSkeleton() {
+  return (
+    <div className="mt-4 space-y-6">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {[0, 1, 2].map((i) => <SkeletonBlock key={i} />)}
+      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {[0, 1].map((i) => <SkeletonBlock key={i} />)}
+      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {[0, 1].map((i) => <SkeletonBlock key={i} />)}
+      </div>
+    </div>
+  );
+}
+
+async function TrendSections() {
+  let trends;
+  try {
+    trends = await getDashboardTrends();
+  } catch {
+    return (
+      <Card className="mt-4">
+        <div className="px-4 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
+          Something went wrong loading your trends. Please refresh or contact support.
+        </div>
+      </Card>
+    );
+  }
+
+  const { cards, nextComplianceDeadline, isDemoData } = trends;
+
+  return (
+    <div className="mt-4 space-y-6">
+      <section>
+        <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Safety Events</h2>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <TrendCard icon={AlertTriangle} isDemoData={isDemoData} {...cards.injuries} />
+          <TrendCard icon={ClipboardList} isDemoData={isDemoData} {...cards.capas} />
+          <TrendCard icon={FileSearch} isDemoData={isDemoData} {...cards.auditFindings} />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Compliance Health</h2>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <TrendCard icon={Repeat} isDemoData={isDemoData} {...cards.recurringProblems} />
+          <Card className="flex flex-col">
+            {isDemoData && <TrendDemoBanner />}
+            <CardHeader title="Upcoming Compliance Gaps" right={<CalendarClock className="h-4 w-4 text-slate-400" aria-hidden />} />
+            <div className="px-4 py-3">
+              {nextComplianceDeadline ? (
+                <p className="text-sm text-slate-700 dark:text-slate-200">
+                  Next due: <strong>{nextComplianceDeadline.label}</strong> — {nextComplianceDeadline.daysAway} day{nextComplianceDeadline.daysAway === 1 ? "" : "s"}
+                </p>
+              ) : (
+                <p className="flex items-center gap-1.5 text-sm text-emerald-700 dark:text-emerald-400">
+                  <span aria-hidden>✓</span>
+                  No upcoming compliance deadlines in the next 90 days.
+                </p>
+              )}
+            </div>
+          </Card>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Chemical &amp; Waste</h2>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <TrendCard icon={FlaskConical} isDemoData={isDemoData} {...cards.chemicalHazard} />
+          <TrendCard icon={Trash2} isDemoData={isDemoData} {...cards.wasteActivity} />
+        </div>
+      </section>
+    </div>
+  );
+}
 
 export default async function DashboardPage({
   searchParams,
@@ -309,6 +394,11 @@ export default async function DashboardPage({
             />
           </Link>
         </div>
+
+        {/* ── Trend Insights (Safety Events / Compliance Health / Chemical & Waste) ── */}
+        <Suspense fallback={<TrendSectionsSkeleton />}>
+          <TrendSections />
+        </Suspense>
 
         {/* ── Visual analytics row ────────────────────────────────── */}
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-4">
