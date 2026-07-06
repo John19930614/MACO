@@ -10,6 +10,7 @@ import {
 import type { Audit, Profile } from "@/lib/types";
 import { submitAuditConduct, addCapaFromFinding } from "@/lib/actions/ehs";
 import { useDemoUser } from "@/lib/context/demo-user";
+import { rawAuditNotesSchema } from "@/lib/validation/auditNotes";
 import { OSHA_CHECKLISTS } from "./oshaChecklists";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -724,16 +725,18 @@ interface SavedAudit {
 // flat SavedItem[] and a top-level oshaStandard.
 function parseSavedAudit(audit: Audit): SavedAudit {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSON.parse returns an untyped blob of persisted audit notes; typed as any and narrowed field-by-field below
-    const p: any = JSON.parse(audit.notes ?? "{}");
-    if (!p || typeof p !== "object") return {};
+    const parsed = rawAuditNotesSchema.safeParse(JSON.parse(audit.notes ?? "{}"));
+    if (!parsed.success) return {};
+    const p = parsed.data;
     let items: SavedItem[] | undefined;
     let osha = p.oshaStandard ?? null;
-    if (Array.isArray(p.items)) {
-      items = p.items;
-    } else if (p.items && Array.isArray(p.items.items)) {
-      items = p.items.items;
-      osha = osha ?? p.items.oshaStandard ?? null;
+    const rawItems = p.items;
+    if (Array.isArray(rawItems)) {
+      items = rawItems as SavedItem[];
+    } else if (rawItems && typeof rawItems === "object" && Array.isArray((rawItems as { items?: unknown }).items)) {
+      const nested = rawItems as { items: SavedItem[]; oshaStandard?: SavedAudit["oshaStandard"] };
+      items = nested.items;
+      osha = osha ?? nested.oshaStandard ?? null;
     }
     return {
       conductedBy: p.conductedBy,

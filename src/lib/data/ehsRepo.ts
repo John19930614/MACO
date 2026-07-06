@@ -224,6 +224,25 @@ export async function getSdsDocuments(tenantId: string): Promise<SdsDocument[]> 
   return data as SdsDocument[];
 }
 
+// Raw shape of a `chemical_waste_review_flags` row plus the joined chemical
+// name — matches exactly the columns in the `.select()` below.
+interface WasteReviewFlagRow {
+  id: string;
+  tenant_id: string;
+  site_id: string | null;
+  chemical_id: string;
+  trigger_source: string;
+  trigger_value: string;
+  potential_waste_concern: string;
+  suggested_review_area: string | null;
+  status: WasteFlagStatus;
+  reviewer_notes: string | null;
+  final_determination: string | null;
+  created_at: string;
+  updated_at: string;
+  chemical: { name: string | null } | null;
+}
+
 // ── Chemical waste review flags (GHS build 2) ─────────────────────────────────
 // Resilient: returns [] in mock mode and on any error (e.g. before the
 // chemical_waste_review_flags migration is applied).
@@ -237,8 +256,7 @@ export async function getWasteReviewFlags(tenantId: string): Promise<WasteReview
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase join select returns an untyped row shape; cast to any[] before mapping to the typed DTO
-  return (data as any[]).map((r) => ({
+  return (data as WasteReviewFlagRow[]).map((r) => ({
     id: r.id,
     tenant_id: r.tenant_id,
     site_id: r.site_id ?? null,
