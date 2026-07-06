@@ -1,7 +1,7 @@
 {
   "project": "safetyiq",
   "projectRef": "bjgqjpekhicqlunxbobo",
-  "retrievedAt": "2026-07-02",
+  "retrievedAt": "2026-07-06",
   "retrievedVia": "Supabase MCP list_migrations (supabase_migrations.schema_migrations) + read-only information_schema probes",
   "migrations": [
     { "version": "20260618000344", "name": "safetyiq_core_tables" },
@@ -83,7 +83,11 @@
     { "version": "20260629145528", "name": "dev_test_results_phase16" },
     { "version": "20260630125515", "name": "add_concentration_hazard_columns_to_chemical_inventory" },
     { "version": "20260630192750", "name": "waste_profile_composition" },
-    { "version": "20260702162243", "name": "ai_model_benchmarks" }
+    { "version": "20260702162243", "name": "ai_model_benchmarks" },
+    { "version": "20260702181601", "name": "arc_missing_tables" },
+    { "version": "20260702184905", "name": "dev_review_findings" },
+    { "version": "20260706121742", "name": "event_embeddings" },
+    { "version": "20260706121842", "name": "event_embeddings_match_events_search_path" }
   ],
   "schemaProbes": {
     "table:ai_telemetry": false,

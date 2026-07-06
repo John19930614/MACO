@@ -118,6 +118,20 @@ export function buildEventText(e: EventCell): string {
   return [e.title, e.description, `kind: ${e.kind}`, `severity: ${e.severity}`].filter(Boolean).join(". ");
 }
 
+/**
+ * public.event_embeddings ships in migration 20260706000000_event_embeddings.sql.
+ * This flag stays off by default so environments that haven't run that
+ * migration yet (or have it disabled for cost reasons) skip the table
+ * entirely instead of hitting a 42P01 (undefined_table) error. Flip on via
+ * EVENT_EMBEDDINGS_ENABLED=true once the migration is confirmed applied.
+ */
+const EVENT_EMBEDDINGS_ENABLED = process.env.EVENT_EMBEDDINGS_ENABLED === "true";
+
+/** Postgres 42P01 = undefined_table: the migration hasn't landed in this environment. */
+function isUndefinedTableError(error: { code?: string } | null): boolean {
+  return error?.code === "42P01";
+}
+
 export async function embedAndStoreEvent(event: EventCell): Promise<void> {
   await embedAndStoreEvents([event]);
 }
@@ -125,9 +139,24 @@ export async function embedAndStoreEvent(event: EventCell): Promise<void> {
 /** Embed + persist many Event Cells, skipping any whose text is unchanged. */
 export async function embedAndStoreEvents(events: EventCell[]): Promise<{ embedded: number; skipped: number }> {
   if (events.length === 0) return { embedded: 0, skipped: 0 };
+  if (!EVENT_EMBEDDINGS_ENABLED) {
+    console.warn("[embeddings] EVENT_EMBEDDINGS_ENABLED is not set — skipping event embedding, returning empty result.");
+    return { embedded: 0, skipped: events.length };
+  }
+
   const db = admin();
   const desired = events.map((event) => ({ event, content: buildEventText(event) }));
-  const { data: existing } = await db.from("event_embeddings").select("event_id, content").in("event_id", events.map((e) => e.id));
+  const { data: existing, error: readError } = await db
+    .from("event_embeddings")
+    .select("event_id, content")
+    .in("event_id", events.map((e) => e.id));
+  if (readError) {
+    if (isUndefinedTableError(readError)) {
+      console.error("[embeddings] public.event_embeddings does not exist in this environment. Failing soft.");
+      return { embedded: 0, skipped: events.length };
+    }
+    throw readError;
+  }
   const priorContent = new Map((existing ?? []).map((r: { event_id: string; content: string }) => [r.event_id, r.content]));
 
   const stale = desired.filter((d) => priorContent.get(d.event.id) !== d.content);
@@ -142,17 +171,36 @@ export async function embedAndStoreEvents(events: EventCell[]): Promise<{ embedd
     embedding: toVector(vectors[i]),
     updated_at: now,
   }));
-  await db.from("event_embeddings").upsert(rows);
+  const { error: writeError } = await db.from("event_embeddings").upsert(rows);
+  if (writeError) {
+    if (isUndefinedTableError(writeError)) {
+      console.error("[embeddings] public.event_embeddings does not exist in this environment. Failing soft.");
+      return { embedded: 0, skipped: events.length };
+    }
+    throw writeError;
+  }
   return { embedded: stale.length, skipped: events.length - stale.length };
 }
 
 /** Semantic nearest-neighbour outcomes within the event's tenant (excludes self). */
 export async function getSimilarEventIdsByVector(event: EventCell, limit = 5): Promise<{ event_id: string; similarity: number }[]> {
+  if (!EVENT_EMBEDDINGS_ENABLED) {
+    console.warn("[embeddings] EVENT_EMBEDDINGS_ENABLED is not set — skipping similarity lookup, returning empty result.");
+    return [];
+  }
+
   const embedding = await embedText(buildEventText(event));
-  const { data } = await admin().rpc("match_events", {
+  const { data, error } = await admin().rpc("match_events", {
     query_embedding: toVector(embedding),
     match_tenant: event.tenant_id,
     match_count: limit + 1,
   });
+  if (error) {
+    if (isUndefinedTableError(error) || error.code === "42883") {
+      console.error("[embeddings] public.event_embeddings/match_events not available in this environment. Failing soft.");
+      return [];
+    }
+    throw error;
+  }
   return ((data ?? []) as { event_id: string; similarity: number }[]).filter((r) => r.event_id !== event.id).slice(0, limit);
 }

@@ -1,19 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { PageHeader, Card, CardHeader, Stat, Pill } from "@/components/ui/primitives";
 import { X, Download, AlertTriangle, Printer, ChevronDown, ChevronUp, ExternalLink, Plus } from "lucide-react";
 import type { OshaCase, OshaClassification, OshaInjuryType, Incident } from "@/lib/types";
 import { addOshaCaseToStore } from "@/lib/actions/ehs";
 import { OSHA_FTE, OSHA_HOURS_WORKED, OSHA_DART_BENCHMARK } from "@/lib/osha";
+import { computeOsha300ASummary, type Osha300ASummary } from "@/lib/osha/osha300a";
 
 // OSHA recordkeeping rate constants are real; establishment identity comes from the
 // live tenant/onboarding profile. Fields with no live source render blank (user fills).
 type EstInfo = {
   name: string; ein: string; street: string; city: string; state: string; zip: string;
   naics: string; industry: string; employees: number; hours: number; benchDart: number;
-  ehsContact: string;
+  ehsContact: string; employeesConfigured: boolean; hoursConfigured: boolean;
 };
 interface EstablishmentProp {
   name: string; industry: string | null; siteName: string | null; state: string | null;
@@ -559,369 +560,191 @@ function exportITA(cases: OshaCase[], EST: EstInfo) {
   a.click();
 }
 
-function print300A(cases: OshaCase[], EST: EstInfo) {
-  const daysAwayCases   = cases.filter(c => c.classification === "days_away").length;
-  const restrictedCases = cases.filter(c => c.classification === "restricted").length;
-  const otherCases      = cases.filter(c => c.classification === "other_recordable").length;
-  const fatalities      = cases.filter(c => c.classification === "fatality").length;
-  const totalDaysAway   = cases.reduce((s, c) => s + c.daysAway, 0);
-  const totalDaysRestr  = cases.reduce((s, c) => s + c.daysRestricted, 0);
-  const trir = ((cases.length / EST.hours) * 200000).toFixed(2);
-  const dart = (((daysAwayCases + restrictedCases) / EST.hours) * 200000).toFixed(2);
-  const genDate = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+async function downloadOsha300APdf(EST: EstInfo, summary: Osha300ASummary) {
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const marginX = 40;
+  const contentW = pageW - marginX * 2;
+  let y = 44;
 
-  const injuries     = cases.filter(c => c.injuryType === "injury").length;
-  const skin         = cases.filter(c => c.injuryType === "skin_disorder").length;
-  const respiratory  = cases.filter(c => c.injuryType === "respiratory").length;
-  const poisoning    = cases.filter(c => c.injuryType === "poisoning").length;
-  const hearing      = cases.filter(c => c.injuryType === "hearing_loss").length;
-  const otherIllness = cases.filter(c => c.injuryType === "other_illness").length;
-
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>OSHA Form 300A — ${EST.name} — 2026</title>
-<style>
-  @page { size: letter portrait; margin: 0.45in 0.5in; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 8.5pt; color: #000; background: #fff; }
-  .page { max-width: 7.5in; margin: 0 auto; }
-
-  /* ── Header ── */
-  .form-header { border: 2px solid #000; padding: 6px 8px; margin-bottom: 6px; }
-  .form-header-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-  .form-title-block .agency { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.04em; color: #444; }
-  .form-title-block .main-title { font-size: 13pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.03em; line-height: 1.1; margin: 2px 0; }
-  .form-title-block .sub-title { font-size: 8pt; font-weight: bold; }
-  .form-title-block .cfr { font-size: 7.5pt; color: #333; margin-top: 3px; }
-  .form-num-block { text-align: right; min-width: 120px; }
-  .form-num-block .form-num { font-size: 10pt; font-weight: 900; border: 2px solid #000; padding: 3px 8px; display: inline-block; }
-  .form-num-block .year-label { font-size: 7pt; margin-top: 3px; color: #333; }
-  .posting-notice { background: #fffde7; border: 1.5px solid #f59e0b; padding: 4px 8px; margin-top: 5px; font-size: 7.5pt; font-weight: bold; color: #92400e; text-align: center; }
-
-  /* ── Sections ── */
-  .section { border: 1.5px solid #000; margin-bottom: 5px; }
-  .section-title { background: #1a1a1a; color: #fff; font-size: 7.5pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 8px; }
-  .section-body { padding: 6px 8px; }
-
-  /* ── Field grid ── */
-  .field-grid { display: grid; gap: 4px 12px; }
-  .field-grid-2 { grid-template-columns: 1fr 1fr; }
-  .field-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
-  .field-grid-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
-  .field { display: flex; flex-direction: column; }
-  .field-label { font-size: 6.5pt; text-transform: uppercase; letter-spacing: 0.06em; color: #555; margin-bottom: 1px; }
-  .field-value { font-size: 9pt; font-weight: bold; border-bottom: 1.5px solid #000; padding-bottom: 1px; min-height: 14px; }
-  .field-value.large { font-size: 14pt; font-weight: 900; text-align: center; }
-  .field-hint { font-size: 6pt; color: #666; margin-top: 1px; }
-
-  /* ── Cases table ── */
-  .cases-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: #000; border: 1.5px solid #000; }
-  .cases-cell { background: #fff; padding: 5px 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-  .cases-cell .col-letter { font-size: 8pt; font-weight: 900; color: #1a1a1a; }
-  .cases-cell .col-name { font-size: 6.5pt; color: #444; margin: 1px 0 3px; line-height: 1.2; }
-  .cases-cell .col-value { font-size: 20pt; font-weight: 900; line-height: 1; }
-  .cases-cell .col-cfr { font-size: 5.5pt; color: #777; margin-top: 2px; }
-
-  /* ── Days table ── */
-  .days-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: #000; border: 1.5px solid #000; }
-  .days-cell { background: #fff; padding: 5px 8px; }
-  .days-cell .col-letter { font-size: 8pt; font-weight: 900; }
-  .days-cell .col-name { font-size: 7pt; color: #444; margin-bottom: 3px; line-height: 1.2; }
-  .days-cell .col-value { font-size: 20pt; font-weight: 900; line-height: 1; }
-
-  /* ── Illness types ── */
-  .illness-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px; background: #000; border: 1.5px solid #000; }
-  .illness-cell { background: #fff; padding: 5px 4px; display: flex; flex-direction: column; align-items: center; text-align: center; }
-  .illness-cell .col-letter { font-size: 8pt; font-weight: 900; }
-  .illness-cell .col-name { font-size: 6pt; color: #444; margin: 1px 0 3px; line-height: 1.2; }
-  .illness-cell .col-value { font-size: 18pt; font-weight: 900; line-height: 1; }
-
-  /* ── Rates ── */
-  .rates-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
-  .rate-box { border: 1.5px solid #000; padding: 5px 8px; }
-  .rate-box .rate-label { font-size: 6.5pt; text-transform: uppercase; letter-spacing: 0.06em; color: #444; }
-  .rate-box .rate-value { font-size: 18pt; font-weight: 900; }
-  .rate-box .rate-formula { font-size: 6pt; color: #666; }
-
-  /* ── Certification ── */
-  .cert-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
-  .sig-line { border-bottom: 1.5px solid #000; height: 22px; margin-top: 3px; }
-  .cert-text { font-size: 6.5pt; color: #444; line-height: 1.4; margin-top: 4px; }
-
-  /* ── Footer ── */
-  .form-footer { margin-top: 5px; font-size: 6.5pt; color: #555; display: flex; justify-content: space-between; }
-
-  /* ── Print button (screen only) ── */
-  @media screen {
-    body { background: #e5e7eb; padding: 20px; }
-    .page { background: #fff; padding: 0.45in 0.5in; box-shadow: 0 4px 24px rgba(0,0,0,0.18); }
-    .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #1e293b; color: #fff; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; font-family: Arial, sans-serif; font-size: 13px; }
-    .print-bar button { background: #ef4444; color: #fff; border: none; border-radius: 6px; padding: 7px 20px; font-size: 13px; font-weight: bold; cursor: pointer; }
-    .print-bar button:hover { background: #dc2626; }
-    body { padding-top: 60px; }
+  function sectionTitle(label: string) {
+    y += 4;
+    doc.setFillColor(26, 26, 26);
+    doc.rect(marginX, y, contentW, 16, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text(label.toUpperCase(), marginX + 6, y + 11);
+    doc.setTextColor(0, 0, 0);
+    y += 16 + 12;
   }
-  @media print {
-    .print-bar { display: none; }
-    body { background: #fff; padding: 0; }
-    .page { box-shadow: none; padding: 0; }
+  function field(label: string, value: string, x: number, w: number) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.5);
+    doc.setTextColor(90, 90, 90);
+    doc.text(label.toUpperCase(), x, y);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text(value || "—", x, y + 12);
+    doc.setDrawColor(0);
+    doc.setLineWidth(0.75);
+    doc.line(x, y + 15, x + w, y + 15);
   }
-</style>
-</head>
-<body>
-<div class="print-bar">
-  <span>OSHA Form 300A — ${EST.name} — Year 2026 &nbsp;·&nbsp; Generated ${genDate}</span>
-  <button onclick="window.print()">⬇ Print / Save as PDF</button>
-</div>
-
-<div class="page">
-
-  <!-- Header -->
-  <div class="form-header">
-    <div class="form-header-top">
-      <div class="form-title-block">
-        <div class="agency">U.S. Department of Labor — Occupational Safety and Health Administration</div>
-        <div class="main-title">OSHA's Form 300A</div>
-        <div class="sub-title">Summary of Work-Related Injuries and Illnesses</div>
-        <div class="cfr">Year 2026 &nbsp;·&nbsp; 29 CFR Part 1904 &nbsp;·&nbsp; Must be posted Feb 1 – Apr 30 of the following year</div>
-      </div>
-      <div class="form-num-block">
-        <div class="form-num">Form 300A</div>
-        <div class="year-label">Reporting Year: 2026</div>
-        <div class="year-label">Generated: ${genDate}</div>
-      </div>
-    </div>
-    <div class="posting-notice">
-      ⚠ POST THIS FORM FROM FEBRUARY 1 TO APRIL 30, 2027 — In a conspicuous location where notices to employees are customarily posted
-    </div>
-  </div>
-
-  <!-- Establishment Info -->
-  <div class="section">
-    <div class="section-title">Establishment Information</div>
-    <div class="section-body">
-      <div class="field-grid field-grid-2" style="margin-bottom:6px;">
-        <div class="field">
-          <div class="field-label">Establishment Name</div>
-          <div class="field-value">${EST.name}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Employer Identification Number (EIN)</div>
-          <div class="field-value">${EST.ein}</div>
-        </div>
-      </div>
-      <div class="field-grid field-grid-4">
-        <div class="field">
-          <div class="field-label">Street Address</div>
-          <div class="field-value">${EST.street}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">City</div>
-          <div class="field-value">${EST.city}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">State</div>
-          <div class="field-value">${EST.state}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">ZIP</div>
-          <div class="field-value">${EST.zip}</div>
-        </div>
-      </div>
-      <div class="field-grid field-grid-3" style="margin-top:6px;">
-        <div class="field">
-          <div class="field-label">Industry Description</div>
-          <div class="field-value">${EST.industry}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Standard Industrial Classification (SIC)</div>
-          <div class="field-value">2836</div>
-        </div>
-        <div class="field">
-          <div class="field-label">NAICS Code</div>
-          <div class="field-value">${EST.naics}</div>
-        </div>
-      </div>
-      <div class="field-grid field-grid-2" style="margin-top:6px;">
-        <div class="field">
-          <div class="field-label">Annual Average Number of Employees</div>
-          <div class="field-value">${EST.employees}</div>
-        </div>
-        <div class="field">
-          <div class="field-label">Total Hours Worked by All Employees Last Year</div>
-          <div class="field-value">${EST.hours.toLocaleString()} hours</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Number of Cases -->
-  <div class="section">
-    <div class="section-title">Number of Cases</div>
-    <div class="section-body" style="padding:0;">
-      <div class="cases-grid">
-        <div class="cases-cell">
-          <div class="col-letter">G</div>
-          <div class="col-name">Total number of<br>deaths</div>
-          <div class="col-value">${fatalities}</div>
-          <div class="col-cfr">1904.7(a)(1)</div>
-        </div>
-        <div class="cases-cell">
-          <div class="col-letter">H</div>
-          <div class="col-name">Total number of cases<br>with days away from work</div>
-          <div class="col-value">${daysAwayCases}</div>
-          <div class="col-cfr">1904.7(a)(2)</div>
-        </div>
-        <div class="cases-cell">
-          <div class="col-letter">I</div>
-          <div class="col-name">Total number of cases<br>with job transfer or restriction</div>
-          <div class="col-value">${restrictedCases}</div>
-          <div class="col-cfr">1904.7(a)(3)</div>
-        </div>
-        <div class="cases-cell">
-          <div class="col-letter">J</div>
-          <div class="col-name">Total number of<br>other recordable cases</div>
-          <div class="col-value">${otherCases}</div>
-          <div class="col-cfr">1904.7(a)(4)</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Number of Days -->
-  <div class="section">
-    <div class="section-title">Number of Days</div>
-    <div class="section-body" style="padding:0;">
-      <div class="days-grid">
-        <div class="days-cell">
-          <div class="col-letter">K</div>
-          <div class="col-name">Total number of days away from work</div>
-          <div class="col-value">${totalDaysAway}</div>
-        </div>
-        <div class="days-cell">
-          <div class="col-letter">L</div>
-          <div class="col-name">Total number of days of job transfer or restriction</div>
-          <div class="col-value">${totalDaysRestr}</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Injury and Illness Types -->
-  <div class="section">
-    <div class="section-title">Injury and Illness Types — Total number of …</div>
-    <div class="section-body" style="padding:0;">
-      <div class="illness-grid">
-        <div class="illness-cell">
-          <div class="col-letter">M</div>
-          <div class="col-name">Injuries</div>
-          <div class="col-value">${injuries}</div>
-        </div>
-        <div class="illness-cell">
-          <div class="col-letter">N</div>
-          <div class="col-name">Skin<br>Disorders</div>
-          <div class="col-value">${skin}</div>
-        </div>
-        <div class="illness-cell">
-          <div class="col-letter">O</div>
-          <div class="col-name">Respiratory<br>Conditions</div>
-          <div class="col-value">${respiratory}</div>
-        </div>
-        <div class="illness-cell">
-          <div class="col-letter">P</div>
-          <div class="col-name">Poisonings</div>
-          <div class="col-value">${poisoning}</div>
-        </div>
-        <div class="illness-cell">
-          <div class="col-letter">Q</div>
-          <div class="col-name">Hearing<br>Loss</div>
-          <div class="col-value">${hearing}</div>
-        </div>
-        <div class="illness-cell">
-          <div class="col-letter">R</div>
-          <div class="col-name">All Other<br>Illnesses</div>
-          <div class="col-value">${otherIllness}</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Rates -->
-  <div class="section">
-    <div class="section-title">Incidence Rates (per 100 full-time workers)</div>
-    <div class="section-body">
-      <div class="rates-grid">
-        <div class="rate-box">
-          <div class="rate-label">Total Recordable Incident Rate (TRIR)</div>
-          <div class="rate-value">${trir}</div>
-          <div class="rate-formula">(${cases.length} cases × 200,000) ÷ ${EST.hours.toLocaleString()} hrs</div>
-        </div>
-        <div class="rate-box">
-          <div class="rate-label">DART Rate (Days Away, Restricted, Transfer)</div>
-          <div class="rate-value">${dart}</div>
-          <div class="rate-formula">(${daysAwayCases + restrictedCases} cases × 200,000) ÷ ${EST.hours.toLocaleString()} hrs</div>
-        </div>
-        <div class="rate-box">
-          <div class="rate-label">Industry Benchmark DART</div>
-          <div class="rate-value">${EST.benchDart}</div>
-          <div class="rate-formula">NAICS ${EST.naics} — R&D Biotechnology</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Certification -->
-  <div class="section">
-    <div class="section-title">Certification — Knowingly falsifying this document may result in a fine</div>
-    <div class="section-body">
-      <div class="cert-text" style="margin-bottom:8px;">
-        "I certify that I have examined this document and that to the best of my knowledge the entries are true, accurate, and complete."
-        — 29 CFR 1904.32(b)(3)
-      </div>
-      <div class="cert-grid">
-        <div>
-          <div class="field-label">Company Executive — Signature</div>
-          <div class="sig-line"></div>
-          <div class="field-label" style="margin-top:8px;">Title</div>
-          <div class="sig-line"></div>
-        </div>
-        <div>
-          <div class="field-label">Phone</div>
-          <div class="sig-line"></div>
-          <div class="field-label" style="margin-top:8px;">Date</div>
-          <div class="sig-line"></div>
-        </div>
-      </div>
-      <div class="cert-text" style="margin-top:8px;">
-        The "company executive" who certifies must be: (a) an owner of the company; (b) an officer of the corporation; (c) the highest ranking company official working at the establishment; or (d) the immediate supervisor of the highest ranking company official at the establishment.
-      </div>
-    </div>
-  </div>
-
-  <div class="form-footer">
-    <span>OSHA Form 300A (Rev. 01/2004) &nbsp;·&nbsp; 29 CFR Part 1904</span>
-    <span>Generated by SafetyIQ · Reliance Predictive Safety Technologies &nbsp;·&nbsp; ${genDate}</span>
-  </div>
-
-</div>
-<script>
-  // Auto-print when opened directly (not from print bar click)
-  if (window.opener) {
-    // Opened by the app — wait for layout then print
-    window.addEventListener('load', function() {
-      setTimeout(function() { window.print(); }, 400);
+  function statRow(cols: { letter: string; label: string; value: string | number }[], boxH = 46) {
+    const colW = contentW / cols.length;
+    doc.setDrawColor(0);
+    doc.setLineWidth(1);
+    doc.rect(marginX, y, contentW, boxH);
+    cols.forEach((c, i) => {
+      const cx = marginX + i * colW;
+      if (i > 0) doc.line(cx, y, cx, y + boxH);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.text(c.letter, cx + colW / 2, y + 12, { align: "center" });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      const labelLines = doc.splitTextToSize(c.label, colW - 8);
+      doc.text(labelLines, cx + colW / 2, y + 22, { align: "center" });
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text(String(c.value), cx + colW / 2, y + boxH - 8, { align: "center" });
     });
+    y += boxH + 12;
   }
-</script>
-</body>
-</html>`;
 
-  const win = window.open("", "_blank", "width=900,height=1100");
-  if (win) {
-    win.document.write(html);
-    win.document.close();
+  // ── Header ──
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(80, 80, 80);
+  doc.text("U.S. Department of Labor — Occupational Safety and Health Administration", marginX, y);
+  y += 14;
+  doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.text("OSHA's Form 300A", marginX, y);
+  y += 14;
+  doc.setFontSize(9);
+  doc.text("Summary of Work-Related Injuries and Illnesses", marginX, y);
+  y += 12;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(60, 60, 60);
+  doc.text(`Year ${summary.year}  ·  29 CFR Part 1904  ·  Must be posted Feb 1 – Apr 30 of the following year`, marginX, y);
+  y += 14;
+  doc.setTextColor(0, 0, 0);
+  doc.setFillColor(255, 251, 235);
+  doc.setDrawColor(245, 158, 11);
+  doc.rect(marginX, y, contentW, 18, "FD");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(146, 64, 14);
+  doc.text(
+    `POST THIS FORM FROM FEBRUARY 1 TO APRIL 30, ${summary.year + 1} — in a conspicuous location`,
+    marginX + contentW / 2, y + 12, { align: "center" }
+  );
+  doc.setTextColor(0, 0, 0);
+  y += 18 + 18;
+
+  // ── Establishment info ──
+  sectionTitle("Establishment Information");
+  field("Establishment Name", EST.name, marginX, contentW / 2 - 10);
+  field("Employer ID Number (EIN)", EST.ein, marginX + contentW / 2 + 10, contentW / 2 - 10);
+  y += 26;
+  const thirdW = contentW / 3 - 10;
+  field("Industry Description", EST.industry, marginX, thirdW);
+  field("NAICS Code", EST.naics, marginX + thirdW + 15, thirdW);
+  field("State", EST.state, marginX + (thirdW + 15) * 2, thirdW);
+  y += 26;
+  field("Annual Average Number of Employees", String(EST.employees), marginX, contentW / 2 - 10);
+  field("Total Hours Worked by All Employees", `${EST.hours.toLocaleString()} hrs`, marginX + contentW / 2 + 10, contentW / 2 - 10);
+  y += 30;
+
+  // ── Number of cases ──
+  sectionTitle("Number of Cases");
+  statRow([
+    { letter: "G", label: "Total deaths", value: summary.totals.deaths },
+    { letter: "H", label: "Cases with days away from work", value: summary.totals.daysAwayCases },
+    { letter: "I", label: "Cases with job transfer or restriction", value: summary.totals.restrictedTransferCases },
+    { letter: "J", label: "Other recordable cases", value: summary.totals.otherRecordableCases },
+  ]);
+
+  // ── Number of days ──
+  sectionTitle("Number of Days");
+  statRow([
+    { letter: "K", label: "Total days away from work", value: summary.totals.totalDaysAway },
+    { letter: "L", label: "Total days of job transfer or restriction", value: summary.totals.totalDaysRestricted },
+  ]);
+
+  // ── Injury and illness types ──
+  sectionTitle("Injury and Illness Types");
+  statRow([
+    { letter: "M", label: "Injuries", value: summary.totals.injuryTypeCounts.injury },
+    { letter: "N", label: "Skin disorders", value: summary.totals.injuryTypeCounts.skin_disorder },
+    { letter: "O", label: "Respiratory conditions", value: summary.totals.injuryTypeCounts.respiratory },
+    { letter: "P", label: "Poisonings", value: summary.totals.injuryTypeCounts.poisoning },
+    { letter: "Q", label: "Hearing loss", value: summary.totals.injuryTypeCounts.hearing_loss },
+    { letter: "R", label: "All other illnesses", value: summary.totals.injuryTypeCounts.other_illness },
+  ], 44);
+
+  // ── No-cases checkbox ──
+  doc.setDrawColor(0);
+  doc.setLineWidth(1);
+  doc.rect(marginX, y, 9, 9);
+  if (summary.noCasesToReport) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("X", marginX + 1.5, y + 8);
   }
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(`No injuries or illnesses to report for ${summary.year}`, marginX + 14, y + 8);
+  y += 24;
+
+  // ── Rates ──
+  sectionTitle("Incidence Rates (per 100 full-time workers)");
+  const rateW = contentW / 2 - 10;
+  field("Total Recordable Incident Rate (TRIR)", summary.totals.trir === null ? "—" : String(summary.totals.trir), marginX, rateW);
+  field("DART Rate (Days Away, Restricted, Transfer)", summary.totals.dartRate === null ? "—" : String(summary.totals.dartRate), marginX + rateW + 20, rateW);
+  y += 30;
+
+  // ── Certification ──
+  sectionTitle("Certification — Knowingly falsifying this document may result in a fine");
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(7);
+  doc.setTextColor(60, 60, 60);
+  const certLines = doc.splitTextToSize(
+    `"I certify that I have examined this document and that to the best of my knowledge the entries are true, accurate, and complete." — 29 CFR 1904.32(b)(3)`,
+    contentW
+  );
+  doc.text(certLines, marginX, y);
+  doc.setTextColor(0, 0, 0);
+  y += certLines.length * 9 + 16;
+
+  field("Company Executive — Signature", "", marginX, contentW / 2 - 10);
+  field("Title", "", marginX + contentW / 2 + 10, contentW / 2 - 10);
+  y += 26;
+  field("Phone", "", marginX, contentW / 2 - 10);
+  field("Date", "", marginX + contentW / 2 + 10, contentW / 2 - 10);
+  y += 20;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.setTextColor(90, 90, 90);
+  doc.text(
+    "The \"company executive\" who certifies must be an owner, a corporate officer, the highest-ranking official at the establishment, or that official's immediate supervisor.",
+    marginX, y
+  );
+
+  // ── Footer ──
+  const genDate = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  doc.setFontSize(6.5);
+  doc.setTextColor(90, 90, 90);
+  doc.text("OSHA Form 300A (Rev. 01/2004) · 29 CFR Part 1904", marginX, 780);
+  doc.text(`Generated by SafetyIQ · Reliance Predictive Safety Technologies · ${genDate}`, pageW - marginX, 780, { align: "right" });
+
+  doc.save(`OSHA-300A-${EST.name.replace(/[^a-z0-9]+/gi, "-")}-${summary.year}.pdf`);
 }
 
 function exportCSV(cases: OshaCase[], EST: EstInfo) {
@@ -1196,7 +1019,7 @@ function TrendsTab({ cases, incidents, oshaHours = OSHA_HOURS_WORKED }: { cases:
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function OshaClient({ initialCases, incidents = [], establishment, tenantId, oshaHours = OSHA_HOURS_WORKED, oshaEstablishment }: { initialCases: OshaCase[]; incidents?: Incident[]; establishment: EstablishmentProp; tenantId: string; oshaHours?: number; oshaEstablishment?: { ein: string; naics: string; employees: number } }) {
+export function OshaClient({ initialCases, incidents = [], establishment, tenantId, oshaHours = OSHA_HOURS_WORKED, oshaEstablishment }: { initialCases: OshaCase[]; incidents?: Incident[]; establishment: EstablishmentProp; tenantId: string; oshaHours?: number; oshaEstablishment?: { ein: string; naics: string; employees: number; employeesConfigured?: boolean; hoursConfigured?: boolean } }) {
   const EST: EstInfo = {
     name:      establishment.name,
     ein:       oshaEstablishment?.ein ?? "",
@@ -1210,6 +1033,8 @@ export function OshaClient({ initialCases, incidents = [], establishment, tenant
     hours:     oshaHours,
     benchDart: OSHA_DART_BENCHMARK,
     ehsContact: [establishment.contactName, establishment.contactTitle].filter(Boolean).join(", ") || "—",
+    employeesConfigured: oshaEstablishment?.employeesConfigured ?? false,
+    hoursConfigured:     oshaEstablishment?.hoursConfigured ?? false,
   };
 
   const [cases, setCases]           = useState(initialCases);
@@ -1218,11 +1043,25 @@ export function OshaClient({ initialCases, incidents = [], establishment, tenant
   const [tab, setTab]               = useState<"log300" | "summary300a" | "report301" | "trends">("log300");
   const [viewing301, setViewing301] = useState<OshaCase | null>(null);
   const [guideOpen, setGuideOpen]   = useState(false);
+  const [summaryGuideOpen, setSummaryGuideOpen] = useState(true);
+  const [pdfBusy, setPdfBusy]       = useState(false);
+
+  const summaryYear = new Date().getFullYear();
+  const summary: Osha300ASummary = useMemo(
+    () => computeOsha300ASummary({
+      cases,
+      year: summaryYear,
+      oshaHours: EST.hours,
+      avgEmployees: EST.employees,
+      hoursConfigured: EST.hoursConfigured,
+      employeesConfigured: EST.employeesConfigured,
+    }),
+    [cases, summaryYear, EST.hours, EST.employees, EST.hoursConfigured, EST.employeesConfigured]
+  );
 
   const daysAwayCases    = cases.filter(c => c.classification === "days_away");
   const restrictedCases  = cases.filter(c => c.classification === "restricted");
   const totalDaysAway    = cases.reduce((s, c) => s + c.daysAway, 0);
-  const totalDaysRestr   = cases.reduce((s, c) => s + c.daysRestricted, 0);
   const severeCases      = cases.filter(c => c.isSevereInjury || c.classification === "fatality");
 
   async function handleAdd(c: OshaCase) {
@@ -1424,28 +1263,104 @@ export function OshaClient({ initialCases, incidents = [], establishment, tenant
         {/* OSHA 300A */}
         {tab === "summary300a" && (
           <div className="space-y-5">
+            {/* First-time explainer */}
+            <div className="rounded-xl border border-blue-200 bg-blue-50 print:hidden">
+              <button
+                type="button"
+                onClick={() => setSummaryGuideOpen(o => !o)}
+                className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-blue-800"
+              >
+                <span>What is Form 300A, and when is it due?</span>
+                {summaryGuideOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </button>
+              {summaryGuideOpen && (
+                <div className="border-t border-blue-200 px-4 py-3 text-xs leading-relaxed text-blue-800">
+                  <p>
+                    Form 300A summarizes every recordable work-related injury and illness for the year — it doesn&apos;t list
+                    individual cases, just the totals. Every covered employer must post it where employees can see it from
+                    {" "}<strong>February 1 through April 30</strong> of the following year, even if nothing happened all year.
+                  </p>
+                  <p className="mt-2">
+                    These numbers are calculated automatically from your OSHA 300 Log below — if a total looks wrong, fix the
+                    case on the{" "}
+                    <button type="button" onClick={() => setTab("log300")} className="font-semibold underline">
+                      OSHA 300 Log
+                    </button>{" "}
+                    tab rather than editing this summary directly.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Missing establishment data */}
+            {summary.missingFields.length > 0 && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 print:hidden">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <div className="text-xs text-amber-800">
+                    <div className="font-semibold">We&apos;re missing some site details, so these totals may not be complete.</div>
+                    <div className="mt-1">Missing: {summary.missingFields.join(", ")}.</div>
+                    <Link href="/settings" className="mt-1 inline-flex items-center gap-1 font-semibold underline">
+                      Add them in Settings <ExternalLink className="h-3 w-3" />
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Reconciliation / anomaly warning */}
+            {summary.anomalies.length > 0 && (
+              <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 print:hidden">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                  <div className="text-xs text-red-800">
+                    <div className="font-semibold">Some numbers don&apos;t add up.</div>
+                    {summary.anomalies.map((a) => (
+                      <div key={a} className="mt-1">{a}</div>
+                    ))}
+                    <button type="button" onClick={() => setTab("log300")} className="mt-1 font-semibold underline">
+                      Review OSHA 300 Log entries
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <Card>
               <CardHeader
                 title="OSHA Form 300A — Annual Summary"
-                subtitle={`Year 2026 · ${EST.name}`}
+                subtitle={`Year ${summary.year} · ${EST.name}`}
                 right={
-                  <button
-                    onClick={() => print300A(cases, EST)}
-                    className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
-                  >
-                    <Printer className="h-3.5 w-3.5" /> Print 300A / Save as PDF
-                  </button>
+                  <div className="flex flex-col items-end gap-1">
+                    <button
+                      disabled={summary.missingFields.length > 0 || pdfBusy}
+                      onClick={async () => {
+                        setPdfBusy(true);
+                        try {
+                          await downloadOsha300APdf(EST, summary);
+                        } finally {
+                          setPdfBusy(false);
+                        }
+                      }}
+                      className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      <Download className="h-3.5 w-3.5" /> {pdfBusy ? "Generating…" : "Download printable summary (PDF)"}
+                    </button>
+                    {summary.missingFields.length > 0 && (
+                      <span className="text-[10px] text-amber-700">Add missing site details to enable download</span>
+                    )}
+                  </div>
                 }
               />
               <div className="px-4 pb-4">
                 <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
                   {[
                     { label: "Establishment Name", value: EST.name },
-                    { label: "NAICS Code", value: `${EST.naics} — ${EST.industry}` },
+                    { label: "NAICS Code", value: `${EST.naics || "—"} — ${EST.industry || "—"}` },
                     { label: "Annual Avg. Employees", value: String(EST.employees) },
                     { label: "Total Hours Worked", value: `${EST.hours.toLocaleString()} hrs` },
                     { label: "SIC Code", value: "2836" },
-                    { label: "Covered Period", value: "Jan 1 – Dec 31, 2026" },
+                    { label: "Covered Period", value: `Jan 1 – Dec 31, ${summary.year}` },
                   ].map(f => (
                     <div key={f.label}>
                       <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{f.label}</div>
@@ -1453,17 +1368,21 @@ export function OshaClient({ initialCases, incidents = [], establishment, tenant
                     </div>
                   ))}
                 </div>
+                <label className="mt-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
+                  <input type="checkbox" checked={summary.noCasesToReport} readOnly className="h-3.5 w-3.5" />
+                  No injuries or illnesses to report for {summary.year}
+                </label>
               </div>
             </Card>
 
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
               {[
-                { label: "Total Deaths", value: String(cases.filter(c => c.classification === "fatality").length), sub: "Column G — fatalities", color: "" },
-                { label: "Days-Away Cases", value: String(daysAwayCases.length), sub: "Column H", color: "text-red-600" },
-                { label: "Restricted/Transfer Cases", value: String(restrictedCases.length), sub: "Column I", color: "text-amber-600" },
-                { label: "Other Recordable Cases", value: String(cases.filter(c => c.classification === "other_recordable").length), sub: "Column J", color: "text-blue-600" },
-                { label: "Total Days Away", value: String(totalDaysAway), sub: "Column K", color: "" },
-                { label: "Total Days Restricted", value: String(totalDaysRestr), sub: "Column L", color: "" },
+                { label: "Total Deaths", value: String(summary.totals.deaths), sub: "Column G — fatalities", color: "" },
+                { label: "Days-Away Cases", value: String(summary.totals.daysAwayCases), sub: "Column H", color: "text-red-600" },
+                { label: "Restricted/Transfer Cases", value: String(summary.totals.restrictedTransferCases), sub: "Column I", color: "text-amber-600" },
+                { label: "Other Recordable Cases", value: String(summary.totals.otherRecordableCases), sub: "Column J", color: "text-blue-600" },
+                { label: "Total Days Away", value: String(summary.totals.totalDaysAway), sub: "Column K", color: "" },
+                { label: "Total Days Restricted", value: String(summary.totals.totalDaysRestricted), sub: "Column L", color: "" },
               ].map(s => (
                 <Card key={s.label}>
                   <div className="px-4 py-4">
@@ -1478,15 +1397,12 @@ export function OshaClient({ initialCases, incidents = [], establishment, tenant
             <Card>
               <CardHeader title="Injury & Illness Type Breakdown" subtitle="Columns M–R" />
               <div className="grid grid-cols-3 gap-4 px-4 pb-4 sm:grid-cols-6">
-                {INJURY_TYPES.map(t => {
-                  const count = cases.filter(c => c.injuryType === t).length;
-                  return (
-                    <div key={t} className="text-center">
-                      <div className="text-xl font-black text-slate-800">{count}</div>
-                      <div className="text-[10px] text-slate-400 mt-0.5">{INJURY_LABEL[t]}</div>
-                    </div>
-                  );
-                })}
+                {INJURY_TYPES.map(t => (
+                  <div key={t} className="text-center">
+                    <div className="text-xl font-black text-slate-800">{summary.totals.injuryTypeCounts[t]}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">{INJURY_LABEL[t]}</div>
+                  </div>
+                ))}
               </div>
             </Card>
 
@@ -1495,7 +1411,7 @@ export function OshaClient({ initialCases, incidents = [], establishment, tenant
               <div className="px-4 pb-4">
                 <div className="flex items-baseline gap-3">
                   <div className="text-4xl font-black text-slate-800">
-                    {(((daysAwayCases.length + restrictedCases.length) / EST.hours) * 200000).toFixed(1)}
+                    {summary.totals.dartRate === null ? "—" : summary.totals.dartRate.toFixed(1)}
                   </div>
                   <div className="text-sm text-slate-500">per 100 FTE · industry avg {EST.benchDart}</div>
                 </div>

@@ -1,7 +1,7 @@
 {
   "project": "safetyiq",
   "projectRef": "bjgqjpekhicqlunxbobo",
-  "retrievedAt": "2026-07-02",
+  "retrievedAt": "2026-07-06",
   "retrievedVia": "Supabase MCP list_tables (public schema)",
   "note": "Refresh with the Supabase MCP list_tables tool when tables are added outside local migration files.",
   "tables": [
@@ -77,6 +77,7 @@
     "ergonomics_job_tasks",
     "ergonomics_workstations",
     "event_cells",
+    "event_embeddings",
     "evidence_files",
     "exp_captures",
     "exposure_readings",

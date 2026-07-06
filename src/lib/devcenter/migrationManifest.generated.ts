@@ -298,6 +298,12 @@ export const LOCAL_MIGRATIONS: LocalMigrationEntry[] = [
     "filename": "20260702020000_dev_review_findings.sql",
     "name": "dev_review_findings",
     "prodName": "dev_review_findings"
+  },
+  {
+    "version": "20260706000000",
+    "filename": "20260706000000_event_embeddings.sql",
+    "name": "event_embeddings",
+    "prodName": "event_embeddings"
   }
 ];
 
