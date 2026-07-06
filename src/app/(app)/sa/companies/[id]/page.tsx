@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getTenantDetail } from "@/lib/data/saRepo";
+import { getTenantModuleAccess } from "@/lib/modules/moduleAccess";
 import CompanyDetailClient from "./CompanyDetailClient";
 
 // Server component: load the real tenant detail (RLS-gated to Reliance
@@ -11,8 +12,11 @@ export default async function CompanyDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const detail = await getTenantDetail(id);
+  const [detail, moduleAccess] = await Promise.all([
+    getTenantDetail(id),
+    getTenantModuleAccess(id),
+  ]);
   if (!detail) notFound();
 
-  return <CompanyDetailClient detail={detail} />;
+  return <CompanyDetailClient detail={detail} moduleAccess={moduleAccess} />;
 }

@@ -1,10 +1,10 @@
 # Database Update Status: What's Live in Production
 
-Generated: 2026-07-06T12:22:26.040Z by `scripts/check-migration-status.ts`
+Generated: 2026-07-06T17:39:21.805Z by `scripts/check-migration-status.ts`
 Environment: safetyiq prod
 Prod history snapshot: retrieved 2026-07-06 from project `bjgqjpekhicqlunxbobo` via Supabase MCP list_migrations (supabase_migrations.schema_migrations) + read-only information_schema probes
 
-**46 of 48 local database updates are live in production** — 45 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **2 are NOT applied**, and 2 of those have application code that already depends on them.
+**46 of 49 local database updates are live in production** — 45 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **3 are NOT applied**, and 3 of those have application code that already depends on them.
 
 > Safety note: this only checks, it doesn't change anything. This is a read-only audit — applying any pending migration requires a separate, explicitly approved follow-up.
 
@@ -24,6 +24,13 @@ Prod history snapshot: retrieved 2026-07-06 from project `bjgqjpekhicqlunxbobo` 
   - Referenced in `src/lib/actions/ai-remediate.ts:124` — `.update({ review_status: "rejected", rejection_reason: reason })`
   - Referenced in `src/lib/actions/ai-remediate.ts:153` — `if (idx !== -1) store.findings[idx] = { ...store.findings[idx], review_status: "rejected", rejection_reason: reason };`
   - Referenced in `src/lib/types.ts:836` — `rejection_reason?: string | null;`
+- 🚨 **ACTION NEEDED**: `20260706010000_tenant_module_access.sql` — tenant module access
+  - Referenced in `src/app/(app)/sa/companies/[id]/CompanyDetailClient.tsx:56` — `// the per-company tenant_module_access toggle (see `statuses` below), not this.`
+  - Referenced in `src/app/api/tenant/modules/route.ts:11` — `* status (RLS additionally scopes tenant_module_access reads the same way).`
+  - Referenced in `src/lib/actions/tenant-module-access.ts:54` — `.from("tenant_module_access")`
+  - Referenced in `src/lib/actions/tenant-module-access.ts:63` — `.from("tenant_module_access")`
+  - Referenced in `src/lib/actions/tenant-module-access.ts:81` — `const { error: auditError } = await ctx.client.from("tenant_module_access_audit").insert({`
+  - Referenced in `src/lib/actions/tenant-module-access.ts:89` — `console.error("tenant_module_access_audit insert failed:", auditError.message);`
 
 Until these are applied, the code paths above hit a missing table/column at runtime in live mode. Applying them is a separate task requiring explicit approval.
 
@@ -81,6 +88,7 @@ Matching is by migration name (local filename timestamps are synthetic; the prod
 | 20260702010000 | `20260702010000_arc_missing_tables.sql` | arc missing tables | ✅ Live (tracked) | 20260702181601 |
 | 20260702020000 | `20260702020000_dev_review_findings.sql` | dev review findings | ✅ Live (tracked) | 20260702184905 |
 | 20260706000000 | `20260706000000_event_embeddings.sql` | event embeddings | ✅ Live (tracked) | 20260706121742 |
+| 20260706010000 | `20260706010000_tenant_module_access.sql` | tenant module access | 🚨 Pending — code depends on it | — |
 
 ## Prod-Only History Entries
 
