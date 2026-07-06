@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
@@ -8,8 +9,24 @@ import { useDemoUser, type DemoProfile } from "@/lib/context/demo-user";
 import { MOCK_MODE } from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
 import type { ServerUser } from "@/lib/auth/types";
-import { ROLE_META, canCoordinate, type Role } from "@/lib/constants";
+import { ROLE_META, canCoordinate, type Role, type EhsModule } from "@/lib/constants";
 import { getActiveKey } from "@/lib/nav/activeKey";
+
+// Maps a nav item's href to the EHS module that gates it (mirrors
+// ModuleGateClient's PATH_TO_MODULE — kept in sync there). Items with no entry
+// here (Dashboard, Settings, Reports, etc.) are never hidden by module access.
+const NAV_HREF_TO_MODULE: Record<string, EhsModule> = {
+  "/legal":      "legal",
+  "/risk":       "risk",
+  "/audits":     "audits",
+  "/capa":       "capa",
+  "/training":   "training",
+  "/documents":  "documents",
+  "/chemicals":  "chemical",
+  "/waste":      "waste",
+  "/monitoring": "equipment",
+  "/incidents":  "incidents",
+};
 
 // Re-export the pure route-matching helper (and its generic NavItem shape) so
 // they remain importable from this module — the LeftNav component is their sole
@@ -262,7 +279,37 @@ interface LeftNavProps {
 export function LeftNav({ openCapas = 0, openRisks = 0, pendingTasks = 0, serverUser }: LeftNavProps) {
   const { user } = useDemoUser();
   const pathname = usePathname();
-  const sections = getNav(user);
+  const allSections = getNav(user);
+
+  // Disabled modules (per-company toggle OFF, or under platform-wide
+  // maintenance) never show in the nav. Fetched once per mount; fails open
+  // (nothing hidden) if the request errors so a network blip never hides a
+  // module a user is actually entitled to.
+  const [disabledModules, setDisabledModules] = useState<Set<EhsModule>>(new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/tenant/modules")
+      .then((r) => r.json())
+      .then((statuses: Array<{ moduleKey: EhsModule; effectiveAccess: boolean }>) => {
+        if (cancelled) return;
+        setDisabledModules(new Set(statuses.filter((s) => !s.effectiveAccess).map((s) => s.moduleKey)));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const sections = allSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        const moduleKey = NAV_HREF_TO_MODULE[item.href];
+        return !moduleKey || !disabledModules.has(moduleKey);
+      }),
+    }))
+    .filter((section) => section.items.length > 0);
 
   // Active-link detection flows through the shared getActiveKey helper so the
   // exact-then-longest-prefix rule is a single, unit-tested source of truth.

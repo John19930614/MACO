@@ -6,11 +6,14 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft, Building2, Users, LayoutGrid, Activity,
   Pencil, MapPin, Calendar, Shield, Globe, X,
+  CheckCircle2, XCircle, Lock, ExternalLink,
 } from "lucide-react";
 import { DarkCard, DarkCardHeader, DarkStat, Pill } from "@/components/ui/primitives";
 import { EHS_MODULES, MODULE_META } from "@/lib/constants";
 import { updateTenantImplStage, upsertSubscription } from "@/lib/actions/sa";
+import { setTenantModuleAccess } from "@/lib/actions/tenant-module-access";
 import type { TenantDetail } from "@/lib/types";
+import type { ModuleEffectiveStatus } from "@/lib/modules/moduleAccess";
 
 // ── Style / label helpers ──────────────────────────────────────────────────────
 
@@ -48,8 +51,9 @@ function titleCase(s: string) {
   return s.replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// Module access is derived from the subscription plan — there is no per-tenant
-// module backend yet, so this is shown read-only and honestly labelled.
+// What the subscription PLAN nominally includes — shown as secondary context
+// ("Not in {plan} plan") next to each module card. The real on/off authority is
+// the per-company tenant_module_access toggle (see `statuses` below), not this.
 function modulesForPlan(plan: string | null | undefined): Set<string> {
   const p = (plan ?? "starter").toLowerCase();
   const starter = ["incidents", "training", "documents", "risk"];
@@ -195,7 +199,13 @@ function SubscriptionModal({
 
 // ── Page ────────────────────────────────────────────────────────────────────────
 
-export default function CompanyDetailClient({ detail }: { detail: TenantDetail }) {
+export default function CompanyDetailClient({
+  detail,
+  moduleAccess,
+}: {
+  detail: TenantDetail;
+  moduleAccess: ModuleEffectiveStatus[];
+}) {
   const router = useRouter();
   const { tenant, profiles, subscription, counts } = detail;
 
@@ -203,13 +213,41 @@ export default function CompanyDetailClient({ detail }: { detail: TenantDetail }
   const [editingSub, setEditingSub] = useState(false);
   const [stageError, setStageError] = useState("");
   const [pending, startTransition]  = useTransition();
+  const [statuses, setStatuses]     = useState(moduleAccess);
+  const [moduleError, setModuleError] = useState("");
 
   const implStatus = tenant.impl_status ?? "prospect";
   const implIdx    = IMPL_STEPS.indexOf(implStatus as typeof IMPL_STEPS[number]);
   const planKey    = (subscription?.plan ?? "starter").toLowerCase();
-  const enabledModules = modulesForPlan(subscription?.plan);
-  const enabledCount   = enabledModules.size;
+  const planModules = modulesForPlan(subscription?.plan);
+  // "Modules included" reflects the real per-company toggle (Company > Modules
+  // tab) — the actual source of truth for access, independent of plan.
+  const moduleEnabledCount = statuses.filter((s) => s.tenantEnabled).length;
   const activeUsers    = profiles.filter((p) => p.active).length;
+
+  function handleModuleToggle(moduleKey: string, nextValue: boolean) {
+    setModuleError("");
+    const prevStatuses = statuses;
+    // Optimistic update — non-destructive, so no confirmation dialog.
+    setStatuses((prev) =>
+      prev.map((s) =>
+        s.moduleKey === moduleKey
+          ? { ...s, tenantEnabled: nextValue, effectiveAccess: nextValue && !s.platformUnderMaintenance }
+          : s,
+      ),
+    );
+    startTransition(async () => {
+      const res = await setTenantModuleAccess({
+        tenantId: tenant.id,
+        moduleKey: moduleKey as ModuleEffectiveStatus["moduleKey"],
+        isEnabled: nextValue,
+      });
+      if (!res.ok) {
+        setModuleError(res.error ?? "Something went wrong. Please try again.");
+        setStatuses(prevStatuses);
+      }
+    });
+  }
 
   function setStage(stage: string) {
     setStageError("");
@@ -263,7 +301,7 @@ export default function CompanyDetailClient({ detail }: { detail: TenantDetail }
         <div className="mt-4 flex border-b border-white/8">
           <TabButton label="Overview" active={tab === "overview"} onClick={() => setTab("overview")} />
           <TabButton label="Users"    active={tab === "users"}    onClick={() => setTab("users")}    count={profiles.length} />
-          <TabButton label="Modules"  active={tab === "modules"}  onClick={() => setTab("modules")}  count={enabledCount} />
+          <TabButton label="Modules"  active={tab === "modules"}  onClick={() => setTab("modules")}  count={moduleEnabledCount} />
           <TabButton label="Activity" active={tab === "activity"} onClick={() => setTab("activity")} />
         </div>
       </div>
@@ -276,7 +314,7 @@ export default function CompanyDetailClient({ detail }: { detail: TenantDetail }
           <div className="space-y-5">
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <DarkStat label="Users"           value={profiles.length}                                           strip="#10b981" accent="#10b981" icon={<Users className="h-5 w-5" />} />
-              <DarkStat label="Enabled Modules" value={enabledCount}                                              strip="#3b82f6" accent="#3b82f6" icon={<LayoutGrid className="h-5 w-5" />} />
+              <DarkStat label="Enabled Modules" value={moduleEnabledCount}                                        strip="#3b82f6" accent="#3b82f6" icon={<LayoutGrid className="h-5 w-5" />} />
               <DarkStat label="Monthly MRR"     value={subscription?.mrr ? `$${subscription.mrr.toLocaleString()}` : "—"} strip="#8b5cf6" accent="#8b5cf6" icon={<Activity className="h-5 w-5" />} />
               <DarkStat label="Days on Platform" value={daysSince(tenant.created_at)}                             strip="#f59e0b" accent="#f59e0b" icon={<Calendar className="h-5 w-5" />} />
             </div>
@@ -421,41 +459,107 @@ export default function CompanyDetailClient({ detail }: { detail: TenantDetail }
         {/* ── Modules ── */}
         {tab === "modules" && (
           <div className="space-y-4">
-            <div className="rounded-xl border border-white/8 bg-slate-900/40 px-4 py-3 text-xs text-slate-400">
-              <span className="font-semibold text-slate-200">Module Access — {tenant.name}</span>
-              {" · "}
-              Access is derived from the {subscription ? titleCase(subscription.plan) : "current"} plan.
-              Per-tenant module overrides aren&apos;t available yet; platform-wide maintenance toggles live in the Module Control Panel.
-            </div>
+            {/* Prominent count + explainer */}
+            <DarkCard>
+              <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Modules included</div>
+                  <div className="mt-1 text-2xl font-black text-white">
+                    {moduleEnabledCount} of {statuses.length} modules included
+                  </div>
+                </div>
+                <Link
+                  href="/sa/modules"
+                  className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/6"
+                >
+                  Module Control Panel <ExternalLink className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+              <div className="border-t border-white/5 px-5 py-3 text-xs leading-relaxed text-slate-400">
+                These switches control access for <strong className="text-slate-200">{tenant.name}</strong> only —
+                no other company is affected, and turning a module off never deletes its data. Platform-wide
+                maintenance is managed separately in the Module Control Panel; if a module is under platform
+                maintenance, it stays unavailable here even when switched ON.
+              </div>
+            </DarkCard>
+
+            {moduleError && (
+              <div className="rounded-xl border border-red-800/50 bg-red-900/30 px-4 py-3 text-xs text-red-300">
+                {moduleError}
+              </div>
+            )}
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {EHS_MODULES.map((mod) => {
-                const meta    = MODULE_META[mod];
-                const enabled = enabledModules.has(mod);
+              {statuses.map((status) => {
+                const meta        = MODULE_META[status.moduleKey];
+                const locked      = status.platformUnderMaintenance;
+                const includedInPlan = planModules.has(status.moduleKey);
                 return (
-                  <div key={mod} className={`rounded-xl border transition ${enabled ? "border-white/8 bg-slate-900/60" : "border-slate-800/60 bg-slate-900/30"}`}>
+                  <div
+                    key={status.moduleKey}
+                    className={`rounded-xl border transition ${status.tenantEnabled ? "border-white/8 bg-slate-900/60" : "border-slate-800/60 bg-slate-900/30"}`}
+                  >
                     <div className="flex items-start gap-3 p-4">
-                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl ${enabled ? "bg-slate-800" : "bg-slate-900"}`}>
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl ${status.tenantEnabled ? "bg-slate-800" : "bg-slate-900"}`}>
                         {meta.icon}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className={`truncate text-sm font-semibold ${enabled ? "text-white" : "text-slate-500"}`}>{meta.label}</span>
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${enabled ? "bg-emerald-900/50 text-emerald-400" : "bg-slate-800 text-slate-500"}`}>
-                            {enabled ? "On" : "Off"}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`truncate text-sm font-semibold ${status.tenantEnabled ? "text-white" : "text-slate-500"}`}>
+                            {meta.label}
                           </span>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={status.tenantEnabled}
+                            aria-label={`Toggle ${meta.label} for ${tenant.name}`}
+                            disabled={locked || pending}
+                            title={locked ? "Under platform-wide maintenance — locked until maintenance ends" : undefined}
+                            onClick={() => handleModuleToggle(status.moduleKey, !status.tenantEnabled)}
+                            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                              status.tenantEnabled ? "bg-emerald-600" : "bg-slate-700"
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                                status.tenantEnabled ? "translate-x-5" : "translate-x-0.5"
+                              }`}
+                            />
+                          </button>
                         </div>
-                        <p className={`mt-0.5 text-xs leading-snug ${enabled ? "text-slate-500" : "text-slate-600"}`}>{meta.description}</p>
+
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {status.tenantEnabled ? (
+                            <span className="flex items-center gap-1 rounded-full bg-emerald-900/50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-400">
+                              <CheckCircle2 className="h-3 w-3" /> On
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                              <XCircle className="h-3 w-3" /> Off
+                            </span>
+                          )}
+                          {!includedInPlan && (
+                            <span className="rounded-full bg-slate-800/60 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                              Not in {subscription ? titleCase(subscription.plan) : "current"} plan
+                            </span>
+                          )}
+                        </div>
+
+                        <p className={`mt-1 text-xs leading-snug ${status.tenantEnabled ? "text-slate-500" : "text-slate-600"}`}>
+                          {meta.description}
+                        </p>
+
+                        {locked && (
+                          <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-900/20 px-2.5 py-1.5 text-[11px] leading-snug text-amber-400">
+                            <Lock className="mt-0.5 h-3 w-3 shrink-0" />
+                            Under platform-wide maintenance — unavailable to every company regardless of this setting.
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
                 );
               })}
-            </div>
-
-            <div className="rounded-xl border border-white/8 bg-slate-900/40 p-4 text-xs text-slate-500">
-              <div className="mb-1 font-semibold text-slate-400">{enabledCount} of {EHS_MODULES.length} modules included in plan</div>
-              Change the plan via Edit Subscription to adjust module access.
             </div>
           </div>
         )}

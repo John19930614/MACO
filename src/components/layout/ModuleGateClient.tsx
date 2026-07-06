@@ -2,18 +2,13 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { AlertTriangle, Wrench } from "lucide-react";
+import { AlertTriangle, Wrench, Lock } from "lucide-react";
 import { MODULE_META } from "@/lib/constants";
 import type { EhsModule } from "@/lib/constants";
+import type { ModuleEffectiveStatus } from "@/lib/modules/moduleAccess";
 
-interface ModuleState {
-  enabled: boolean;
-  maintenanceNote: string;
-  disabledAt: string | null;
-  disabledBy: string;
-}
-
-// Map URL path segments to module keys
+// Map URL path segments to module keys. Note: the Equipment module's route is
+// /monitoring (see LeftNav "Monitoring & Equipment"), not /equipment.
 const PATH_TO_MODULE: Record<string, EhsModule> = {
   incidents:  "incidents",
   capa:       "capa",
@@ -24,7 +19,7 @@ const PATH_TO_MODULE: Record<string, EhsModule> = {
   documents:  "documents",
   chemicals:  "chemical",
   waste:      "waste",
-  equipment:  "equipment",
+  monitoring: "equipment",
 };
 
 function pathToModuleKey(pathname: string): EhsModule | null {
@@ -34,27 +29,53 @@ function pathToModuleKey(pathname: string): EhsModule | null {
 
 export function ModuleGateClient({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const [states, setStates] = useState<Record<string, ModuleState> | null>(null);
+  const [statuses, setStatuses] = useState<ModuleEffectiveStatus[] | null>(null);
 
   const moduleKey = pathToModuleKey(pathname);
 
   useEffect(() => {
     // Only fetch if we're on a module page
     if (!moduleKey) return;
-    fetch("/api/platform/modules")
+    fetch("/api/tenant/modules")
       .then((r) => r.json())
-      .then(setStates)
+      .then(setStatuses)
       .catch(() => {}); // fail open — never block users due to fetch failure
   }, [moduleKey, pathname]);
 
-  // If not a module page, or states not loaded yet, render normally
-  if (!moduleKey || !states) return <>{children}</>;
+  // If not a module page, or statuses not loaded yet, render normally
+  if (!moduleKey || !statuses) return <>{children}</>;
 
-  const state = states[moduleKey];
-  if (!state || state.enabled) return <>{children}</>;
+  const status = statuses.find((s) => s.moduleKey === moduleKey);
+  if (!status || status.effectiveAccess) return <>{children}</>;
 
-  // Module is offline — show maintenance screen
   const meta = MODULE_META[moduleKey];
+
+  // Platform-wide maintenance takes precedence and keeps the existing
+  // "Temporarily Offline" screen. A tenant-level toggle-off (this company's
+  // plan doesn't include the module) gets its own friendly message instead of
+  // a technical error or blank page.
+  if (!status.platformUnderMaintenance) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center bg-slate-50 px-6 dark:bg-slate-950">
+        <div className="w-full max-w-md text-center">
+          <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-200 text-5xl dark:bg-slate-800">
+            {meta.icon}
+          </div>
+          <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            <Lock className="h-3.5 w-3.5" />
+            Not Included
+          </div>
+          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">
+            This module isn&apos;t included in your plan
+          </h1>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            {meta.label} isn&apos;t currently available for your company. If you think this is a
+            mistake, please contact your account manager or platform administrator.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col items-center justify-center bg-slate-50 px-6 dark:bg-slate-950">
@@ -78,21 +99,21 @@ export function ModuleGateClient({ children }: { children: ReactNode }) {
         </p>
 
         {/* Maintenance note from SA admin */}
-        {state.maintenanceNote && (
+        {status.maintenanceNote && (
           <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-left dark:border-amber-800/40 dark:bg-amber-900/20">
             <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-500">
               <AlertTriangle className="h-3 w-3" />
               From your platform team
             </div>
-            <p className="text-sm text-amber-800 dark:text-amber-300">{state.maintenanceNote}</p>
+            <p className="text-sm text-amber-800 dark:text-amber-300">{status.maintenanceNote}</p>
           </div>
         )}
 
         {/* Timestamp */}
-        {state.disabledAt && (
+        {status.disabledAt && (
           <p className="mt-4 text-xs text-slate-400 dark:text-slate-600">
             Offline since{" "}
-            {new Date(state.disabledAt).toLocaleString("en-US", {
+            {new Date(status.disabledAt).toLocaleString("en-US", {
               month: "short",
               day: "numeric",
               hour: "numeric",
