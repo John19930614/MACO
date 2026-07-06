@@ -29,7 +29,16 @@ export async function triggerVercelDeploy(taskId?: string): Promise<DeployResult
     const data = await response.json().catch(() => ({}));
     const jobId = (data as { job?: { id?: string } }).job?.id ?? undefined;
 
-    // Log to dev_audit_log if a task is linked
+    // TENANT-INDEPENDENT WRITE: dev_audit_log and dev_tasks have no tenant_id
+    // column (see supabase/migrations/20260627010000_dev_command_center.sql) —
+    // both are Reliance-superadmin-only, RLS-gated by is_reliance_admin(), not
+    // by tenant. The only caller of triggerVercelDeploy (DeployButton.tsx under
+    // admin/dev-command) is itself reachable only by superadmins: middleware.ts
+    // blocks all of /admin/* unless profiles.tenant_id IS NULL, and the route's
+    // layout additionally calls requireDevCommandAccess(). There is no caller
+    // tenant_id anywhere in this function to validate against. See
+    // docs/security/deployToVercel-tenant-ownership.md for the reviewed
+    // justification. No tenant check required.
     if (taskId) {
       const db = createServiceRoleClient();
       if (db) {

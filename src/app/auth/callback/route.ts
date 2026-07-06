@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, MOCK_MODE, serverSecrets } from "@/lib/env";
@@ -30,10 +30,9 @@ export async function GET(request: NextRequest) {
       getAll() {
         return request.cookies.getAll();
       },
-      setAll(cookiesToSet: { name: string; value: string; options?: object }[]) {
+      setAll(cookiesToSet: { name: string; value: string; options?: CookieOptions }[]) {
         cookiesToSet.forEach(({ name, value, options }) =>
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- @supabase/ssr does not export its CookieOptions type here; cast to forward the options to NextResponse.cookies.set
-          response.cookies.set(name, value, options as any),
+          response.cookies.set(name, value, options),
         );
       },
     },

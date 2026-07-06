@@ -74,6 +74,13 @@ describe("platform-review scanner rules", () => {
     expect(findings[0].title).toContain("1 eslint-disable");
   });
 
+  it("skips the review catalog itself when it merely describes the convention in prose", () => {
+    const findings = scanUnexplainedDisables([
+      file("src/lib/devcenter/platform-review.ts", 'success_criteria: "Every eslint-disable has a one-line reason."'),
+    ]);
+    expect(findings).toHaveLength(0);
+  });
+
   it("reports oversized files above the threshold", () => {
     const findings = scanOversizedFiles([file("src/big.ts", "x\n".repeat(50))], 40);
     expect(findings).toHaveLength(1);

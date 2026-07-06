@@ -35,6 +35,7 @@ export function PlatformReviewPanel({
 }) {
   const openCount = result.findings.filter((f) => f.severity !== "green").length;
   const liveCount = result.checks.filter((c) => c.live).length;
+  const checkedAt = new Date(result.reviewedAt).toLocaleTimeString();
 
   return (
     <div className="space-y-5">
@@ -67,9 +68,12 @@ export function PlatformReviewPanel({
               </p>
             </div>
           </div>
-          <div className="flex shrink-0 items-start gap-2">
-            {canDispatchScan && <RunDeepScanButton />}
-            <ReRunReviewButton />
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <div className="flex items-start gap-2">
+              {canDispatchScan && <RunDeepScanButton />}
+              <ReRunReviewButton />
+            </div>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500">Checked at {checkedAt}</p>
           </div>
         </div>
       </div>

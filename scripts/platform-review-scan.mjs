@@ -113,6 +113,8 @@ export function scanUnexplainedDisables(files) {
   const hits = [];
   for (const { path, content } of files) {
     if (path.includes(".test.")) continue;
+    // The review catalog legitimately DESCRIBES this convention in prose/success-criteria strings.
+    if (path.endsWith("devcenter/platform-review.ts")) continue;
     content.split("\n").forEach((line, i) => {
       if (line.includes("eslint-disable") && !line.includes(" -- ")) {
         hits.push(`${path}:${i + 1}`);
