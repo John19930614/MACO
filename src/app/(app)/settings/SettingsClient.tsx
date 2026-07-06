@@ -126,6 +126,11 @@ function fromSavedSettings(saved?: Record<string, unknown> | null): Partial<Sett
   return out;
 }
 
+export function formatSaveError(err: unknown): string {
+  console.error("[SettingsClient:save] failed to persist settings", err);
+  return "Couldn't save your changes. Please try again.";
+}
+
 export function SettingsClient({
   serverProfiles = [],
   serverSites    = [],
@@ -227,7 +232,14 @@ export function SettingsClient({
   function toggleSounds() {
     const next = !soundsMuted;
     setSoundsMuted(next);
-    try { localStorage.setItem("safetyiq_sounds_muted", next ? "true" : "false"); } catch {}
+    try {
+      localStorage.setItem("safetyiq_sounds_muted", next ? "true" : "false");
+    } catch (err) {
+      // Safe to ignore: `soundsMuted` UI state is already updated above; a failed
+      // write here only means the mute preference won't survive a reload, which
+      // self-corrects the next time the user toggles it. Logged for visibility only.
+      console.error("[SettingsClient:sounds] failed to persist sound preference", err);
+    }
   }
 
   async function handleReset() {
@@ -252,10 +264,15 @@ export function SettingsClient({
     if (MOCK_MODE) {
       // Mock mode: persist to localStorage only (no backend tenant to write to).
       await new Promise((r) => setTimeout(r, 600));
-      try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch {}
-      setSaving(false);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify(data));
+        setSaving(false);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      } catch (err) {
+        setSaving(false);
+        setSaveError(formatSaveError(err));
+      }
       return;
     }
 
@@ -271,7 +288,14 @@ export function SettingsClient({
       const res = await saveSettings(null, fd);
       if (res.ok) {
         // Mirror to localStorage so the UI stays consistent if the server read lags.
-        try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch {}
+        try {
+          localStorage.setItem(LS_KEY, JSON.stringify(data));
+        } catch (err) {
+          // Safe to ignore: the settings already saved successfully server-side
+          // (res.ok above). This is only a local cache mirror so the UI doesn't lag
+          // behind a slow refetch — losing it doesn't lose data. Logged for visibility.
+          console.error("[SettingsClient:save] failed to mirror saved settings to localStorage (non-critical)", err);
+        }
         setSaved(true);
         setTimeout(() => setSaved(false), 3000);
       } else {
