@@ -18,7 +18,8 @@ import { OnboardingWelcomeBanner } from "@/components/dashboard/OnboardingWelcom
 import { PriorityActions, buildPriorityItems } from "@/components/dashboard/PriorityActions";
 import { TrendCard, TrendDemoBanner } from "@/components/dashboard/TrendCard";
 import { getDashboardTrends } from "@/lib/actions/getDashboardTrends";
-import type { AiAnalysisOutput } from "@/lib/types";
+import { getSdsStatus } from "@/lib/sds/sdsStatus";
+import type { AiAnalysisOutput, Chemical } from "@/lib/types";
 import { formatDate, relativeTime } from "@/lib/utils";
 import {
   FlaskConical, BrainCircuit, Clock,
@@ -46,7 +47,7 @@ function TrendSectionsSkeleton() {
   );
 }
 
-async function TrendSections() {
+async function TrendSections({ chemicals }: { chemicals: Chemical[] }) {
   let trends;
   try {
     trends = await getDashboardTrends();
@@ -62,6 +63,13 @@ async function TrendSections() {
 
   const { cards, nextComplianceDeadline, isDemoData } = trends;
 
+  // SDS review status — routes through the shared utility so this tile always
+  // agrees with the Chemicals table's SDS Status column.
+  const sdsOverdue = chemicals.filter((c) => getSdsStatus({ sdsUrl: c.sds_url, reviewDueDate: c.sds_expiry }).status === "overdue").length;
+  const sdsDueSoon = chemicals.filter((c) => getSdsStatus({ sdsUrl: c.sds_url, reviewDueDate: c.sds_expiry }).status === "due_soon").length;
+  const sdsMissing = chemicals.filter((c) => getSdsStatus({ sdsUrl: c.sds_url, reviewDueDate: c.sds_expiry }).status === "missing").length;
+  const sdsNeedsAttention = sdsOverdue + sdsDueSoon + sdsMissing;
+
   return (
     <div className="mt-4 space-y-6">
       <section>
@@ -75,7 +83,7 @@ async function TrendSections() {
 
       <section>
         <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Compliance Health</h2>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <TrendCard icon={Repeat} isDemoData={isDemoData} {...cards.recurringProblems} />
           <Card className="flex flex-col">
             {isDemoData && <TrendDemoBanner />}
@@ -93,6 +101,28 @@ async function TrendSections() {
               )}
             </div>
           </Card>
+          <Link href="/chemicals?sdsStatus=overdue,due_soon,missing" className="block">
+            <Card className={`flex h-full flex-col transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60 ${sdsNeedsAttention > 0 ? "border-red-200 dark:border-red-900" : ""}`}>
+              <CardHeader title="SDS Review Status" right={<FlaskConical className="h-4 w-4 text-slate-400" aria-hidden />} />
+              <div className="px-4 py-3">
+                {sdsNeedsAttention > 0 ? (
+                  <>
+                    <p className="text-sm font-semibold text-red-700 dark:text-red-400">
+                      {sdsNeedsAttention} chemical{sdsNeedsAttention === 1 ? "" : "s"} need SDS review
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      {sdsOverdue} overdue · {sdsDueSoon} due in 90 days · {sdsMissing} missing
+                    </p>
+                  </>
+                ) : (
+                  <p className="flex items-center gap-1.5 text-sm text-emerald-700 dark:text-emerald-400">
+                    <span aria-hidden>✓</span>
+                    All chemical SDS reviews are current.
+                  </p>
+                )}
+              </div>
+            </Card>
+          </Link>
         </div>
       </section>
 
@@ -397,7 +427,7 @@ export default async function DashboardPage({
 
         {/* ── Trend Insights (Safety Events / Compliance Health / Chemical & Waste) ── */}
         <Suspense fallback={<TrendSectionsSkeleton />}>
-          <TrendSections />
+          <TrendSections chemicals={chemicals} />
         </Suspense>
 
         {/* ── Visual analytics row ────────────────────────────────── */}

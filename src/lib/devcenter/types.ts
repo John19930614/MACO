@@ -186,6 +186,7 @@ export interface DevTask {
   status: DevTaskStatus;
   risk_level: RiskLevel;
   metadata: Json;
+  source_suggestion_id?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

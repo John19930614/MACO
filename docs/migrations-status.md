@@ -1,10 +1,10 @@
 # Database Update Status: What's Live in Production
 
-Generated: 2026-07-07T12:47:58.706Z by `scripts/check-migration-status.ts`
+Generated: 2026-07-07T14:47:02.235Z by `scripts/check-migration-status.ts`
 Environment: safetyiq prod
 Prod history snapshot: retrieved 2026-07-07 from project `bjgqjpekhicqlunxbobo` via Supabase MCP list_migrations (supabase_migrations.schema_migrations) + read-only information_schema probes
 
-**49 of 50 local database updates are live in production** — 48 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **1 are NOT applied**, and 1 of those have application code that already depends on them.
+**51 of 52 local database updates are live in production** — 50 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **1 are NOT applied**, and 1 of those have application code that already depends on them.
 
 > Safety note: this only checks, it doesn't change anything. This is a read-only audit — applying any pending migration requires a separate, explicitly approved follow-up.
 
@@ -76,6 +76,8 @@ Matching is by migration name (local filename timestamps are synthetic; the prod
 | 20260706000000 | `20260706000000_event_embeddings.sql` | event embeddings | ✅ Live (tracked) | 20260706121742 |
 | 20260706010000 | `20260706010000_tenant_module_access.sql` | tenant module access | ✅ Live (tracked) | 20260706175857 |
 | 20260707000000 | `20260707000000_chemical_container_label.sql` | chemical container label | ✅ Live (tracked) | 20260707121225 |
+| 20260707010000 | `20260707010000_sds_review_due_date.sql` | sds review due date | ✅ Live (tracked) | 20260707134446 |
+| 20260707020000 | `20260707020000_daily_suggestion_dismiss_rotation.sql` | daily suggestion dismiss rotation | ✅ Live (tracked) | 20260707144410 |
 
 ## Prod-Only History Entries
 
@@ -126,6 +128,7 @@ Matching is by migration name (local filename timestamps are synthetic; the prod
 ## Draft Files (not migrations)
 
 - `DRAFT_build-smart-chemical-passport.sql` — draft without a version prefix; never applied and not counted above.
+- `DRAFT_predictive_risk_engine.sql` — draft without a version prefix; never applied and not counted above.
 
 ## How to Refresh This Document
 

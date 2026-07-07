@@ -9,17 +9,14 @@ import { ChemicalExportButton } from "./ChemicalExportButton";
 import { ChemicalsDashboard } from "./ChemicalsDashboard";
 import { SdsUploadButton } from "./SdsUploadButton";
 import { SdsQueue } from "./SdsQueue";
+import { getSdsStatus, type SdsStatus } from "@/lib/sds/sdsStatus";
 
 export const maxDuration = 60;
 
-function sdsStatus(c: { sds_url: string | null; sds_expiry: string | null }): "on_file" | "expiring" | "expired" | "missing" {
-  if (!c.sds_url) return "missing";
-  if (!c.sds_expiry) return "on_file";
-  const exp = new Date(c.sds_expiry);
-  const now = new Date();
-  if (exp < now) return "expired";
-  if (exp.getTime() - now.getTime() < 90 * 24 * 60 * 60 * 1000) return "expiring";
-  return "on_file";
+const SDS_STATUS_VALUES: SdsStatus[] = ["overdue", "due_soon", "missing", "ok"];
+
+function sdsStatus(c: { sds_url: string | null; sds_expiry: string | null }): SdsStatus {
+  return getSdsStatus({ sdsUrl: c.sds_url, reviewDueDate: c.sds_expiry }).status;
 }
 
 // GHS hazard class grouping from H-statement codes
@@ -41,7 +38,16 @@ function hazardClassLabel(h: string): string | null {
   return null;
 }
 
-export default async function ChemicalsPage() {
+export default async function ChemicalsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sdsStatus?: string }>;
+}) {
+  const params = await searchParams;
+  const initialSdsStatusFilter = (params.sdsStatus?.split(",") ?? []).filter(
+    (s): s is SdsStatus => SDS_STATUS_VALUES.includes(s as SdsStatus),
+  );
+
   const tenantId = await getEffectiveTenantId();
   const [chemicals, courses, sdsDocs, wasteFlags] = await Promise.all([
     getChemicals(tenantId),
@@ -69,15 +75,16 @@ export default async function ChemicalsPage() {
   const hazardRows = Object.entries(hazardCounts).sort((a, b) => b[1] - a[1]);
   const maxHazard = Math.max(...hazardRows.map((r) => r[1]), 1);
 
-  // SDS coverage breakdown
+  // SDS coverage breakdown — uses the shared status utility so this card
+  // always agrees with the Chemicals table column and dashboard tile.
   const sdsBuckets = [
     { label: "Missing",         count: active.filter((c) => sdsStatus(c) === "missing").length,  cls: "bg-red-500",     txt: "text-red-700" },
-    { label: "Expired",         count: active.filter((c) => sdsStatus(c) === "expired").length,  cls: "bg-orange-500",  txt: "text-orange-700" },
-    { label: "Expiring < 90d",  count: active.filter((c) => sdsStatus(c) === "expiring").length, cls: "bg-amber-400",   txt: "text-amber-700" },
-    { label: "Current",         count: active.filter((c) => sdsStatus(c) === "on_file").length,  cls: "bg-emerald-400", txt: "text-emerald-700" },
+    { label: "Overdue",         count: active.filter((c) => sdsStatus(c) === "overdue").length,  cls: "bg-orange-500",  txt: "text-orange-700" },
+    { label: "Due Soon (90d)",  count: active.filter((c) => sdsStatus(c) === "due_soon").length, cls: "bg-amber-400",   txt: "text-amber-700" },
+    { label: "OK",              count: active.filter((c) => sdsStatus(c) === "ok").length,       cls: "bg-emerald-400", txt: "text-emerald-700" },
   ];
   const totalSds = active.length;
-  const sdsOk = sdsBuckets.find((b) => b.label === "Current")?.count ?? 0;
+  const sdsOk = sdsBuckets.find((b) => b.label === "OK")?.count ?? 0;
   const sdsCovPct = totalSds > 0 ? Math.round((sdsOk / totalSds) * 100) : 0;
 
   // Scheduled / controlled substances
@@ -196,7 +203,12 @@ export default async function ChemicalsPage() {
 
         </div>
 
-        <ChemicalsDashboard chemicals={chemicals} courses={courses} wasteFlags={wasteFlags} />
+        <ChemicalsDashboard
+          chemicals={chemicals}
+          courses={courses}
+          wasteFlags={wasteFlags}
+          initialSdsStatusFilter={initialSdsStatusFilter}
+        />
           </>
         )}
       </div>

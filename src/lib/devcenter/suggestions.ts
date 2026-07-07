@@ -379,6 +379,40 @@ export function getDailySuggestion(dateStr?: string): PlatformSuggestion {
   return SUGGESTIONS[hash % SUGGESTIONS.length];
 }
 
+/** The full suggestion pool, in stable order — used for filtering and rotation. */
+export function getAllSuggestions(): PlatformSuggestion[] {
+  return SUGGESTIONS;
+}
+
+/**
+ * The next eligible suggestion after `currentId` in the pool (wrapping around),
+ * skipping any id in `excludeIds` (dismissed or already turned into a task).
+ * Returns null when nothing is eligible.
+ */
+export function getNextEligibleSuggestion(
+  excludeIds: Set<string>,
+  currentId?: string,
+): PlatformSuggestion | null {
+  const eligible = SUGGESTIONS.filter((s) => !excludeIds.has(s.id));
+  if (!eligible.length) return null;
+  const currentIndex = currentId ? eligible.findIndex((s) => s.id === currentId) : -1;
+  return eligible[(currentIndex + 1) % eligible.length];
+}
+
+/**
+ * Today's suggestion, unless it's been dismissed or already turned into a
+ * task — in which case the next eligible suggestion is shown instead. Returns
+ * null only when every suggestion in the pool has been excluded.
+ */
+export function getEligibleDailySuggestion(
+  excludeIds: Set<string>,
+  dateStr?: string,
+): PlatformSuggestion | null {
+  const today = getDailySuggestion(dateStr);
+  if (!excludeIds.has(today.id)) return today;
+  return getNextEligibleSuggestion(excludeIds, today.id);
+}
+
 export const SUGGESTION_TYPE_LABEL: Record<SuggestionType, string> = {
   add: "New feature",
   change: "Change",
@@ -435,6 +469,9 @@ export function getSuggestionPrefill(s: PlatformSuggestion): Record<string, stri
 
   return {
     title: s.title,
+    // Links the task back to the suggestion it came from so the Daily
+    // Suggestion card can hide it once it's on the task board.
+    source_suggestion_id: s.id,
     business_goal: s.business_goal,
     feature_description: s.feature_description,
     module_affected: s.module,

@@ -304,6 +304,30 @@ export const LOCAL_MIGRATIONS: LocalMigrationEntry[] = [
     "filename": "20260706000000_event_embeddings.sql",
     "name": "event_embeddings",
     "prodName": "event_embeddings"
+  },
+  {
+    "version": "20260706010000",
+    "filename": "20260706010000_tenant_module_access.sql",
+    "name": "tenant_module_access",
+    "prodName": "tenant_module_access"
+  },
+  {
+    "version": "20260707000000",
+    "filename": "20260707000000_chemical_container_label.sql",
+    "name": "chemical_container_label",
+    "prodName": "chemical_container_label"
+  },
+  {
+    "version": "20260707010000",
+    "filename": "20260707010000_sds_review_due_date.sql",
+    "name": "sds_review_due_date",
+    "prodName": "sds_review_due_date"
+  },
+  {
+    "version": "20260707020000",
+    "filename": "20260707020000_daily_suggestion_dismiss_rotation.sql",
+    "name": "daily_suggestion_dismiss_rotation",
+    "prodName": "daily_suggestion_dismiss_rotation"
   }
 ];
 

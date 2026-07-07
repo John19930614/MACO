@@ -24,6 +24,7 @@ import type {
   DevCodeReview, DevTestResult, DevSecurityReview, DevExperienceReview, DevDeployment,
   DevReviewGate, DevAppliedChange,
 } from "./types";
+import type { TaskStatusFilterKey } from "./task-status-filters";
 
 /** Everything the task detail page needs, read from the live dev_* tables. */
 export interface TaskDetail {
@@ -183,6 +184,34 @@ export async function getDismissedFindingIds(): Promise<string[]> {
   return [...state.entries()].filter(([, dismissed]) => dismissed).map(([id]) => id);
 }
 
+/**
+ * Daily Suggestion ids that already have a task on the board. Cancelled tasks
+ * don't count — cancelling a task puts the suggestion back in rotation.
+ */
+export async function getConvertedSuggestionIds(): Promise<string[]> {
+  if (MOCK_MODE) return [];
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return [];
+  const { data } = await client
+    .from("dev_tasks")
+    .select("source_suggestion_id")
+    .not("source_suggestion_id", "is", null)
+    .neq("status", "cancelled");
+  return [...new Set((data ?? []).map((r) => r.source_suggestion_id as string).filter(Boolean))];
+}
+
+/** Daily Suggestion ids this admin profile has dismissed. */
+export async function getDismissedSuggestionIds(profileId: string): Promise<string[]> {
+  if (MOCK_MODE) return [];
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return [];
+  const { data } = await client
+    .from("dismissed_suggestions")
+    .select("suggestion_id")
+    .eq("profile_id", profileId);
+  return (data ?? []).map((r) => r.suggestion_id as string);
+}
+
 export async function getDevTask(id: string): Promise<DevTask | null> {
   if (MOCK_MODE) return null;
   const client = createServiceRoleClient() ?? await createSupabaseServerClient();
@@ -340,6 +369,44 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
   } catch {
     return EMPTY_DASHBOARD;
   }
+}
+
+const EMPTY_TASK_FILTER_BUCKETS: Record<TaskStatusFilterKey, string[]> = {
+  draft_plans: [], active_prs: [], security_warnings: [], xp_failures: [],
+};
+
+/**
+ * Task ids behind each Overview stat-card filter, for pre-filtering the Tasks
+ * page. Mirrors the same predicates `getLiveDashboardData()` already uses for
+ * its counts (security_warnings, xp_failures), plus the dev_artifacts query
+ * used for draft_plans there. Does NOT touch getLiveDashboardData or its
+ * counts — this is a separate, additive read for the Tasks page only.
+ *
+ * active_prs has no existing live query anywhere else in the app (this card
+ * is not wired to live data today, see docs/dev-command-overview-stat-windows.md) —
+ * added here so its filter link isn't permanently empty in production.
+ */
+export async function getTaskFilterBucketIds(): Promise<Record<TaskStatusFilterKey, string[]>> {
+  if (MOCK_MODE) return EMPTY_TASK_FILTER_BUCKETS;
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return EMPTY_TASK_FILTER_BUCKETS;
+
+  const dedupe = (rows: { task_id: string | null }[]) =>
+    [...new Set(rows.map((r) => r.task_id).filter((id): id is string => !!id))];
+
+  const [artifactsRes, deploymentsRes, secRes, gatesRes] = await Promise.all([
+    client.from("dev_artifacts").select("task_id").eq("status", "needs_review"),
+    client.from("dev_deployments").select("task_id").eq("status", "pr_open"),
+    client.from("dev_security_reviews").select("task_id").eq("verdict", "fail").eq("status", "open"),
+    client.from("dev_review_gates").select("task_id").eq("passed", false).neq("status", "resolved"),
+  ]);
+
+  return {
+    draft_plans: dedupe((artifactsRes.data ?? []) as { task_id: string | null }[]),
+    active_prs: dedupe((deploymentsRes.data ?? []) as { task_id: string | null }[]),
+    security_warnings: dedupe((secRes.data ?? []) as { task_id: string | null }[]),
+    xp_failures: dedupe((gatesRes.data ?? []) as { task_id: string | null }[]),
+  };
 }
 
 export async function createDevTask(input: {

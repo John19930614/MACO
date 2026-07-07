@@ -70,6 +70,8 @@ interface Prefill {
   title?: string;
   /** Platform Review finding this task originates from — removes it from the review list once created. */
   source_finding_id?: string;
+  /** Daily Suggestion this task originates from — removes it from the suggestion card once created. */
+  source_suggestion_id?: string;
   business_goal?: string;
   feature_description?: string;
   module_affected?: string;
@@ -176,6 +178,10 @@ export function DevTaskIntakeForm({ prefill }: { prefill?: Prefill }) {
 
       {prefill?.source_finding_id && (
         <input type="hidden" name="source_finding_id" value={prefill.source_finding_id} />
+      )}
+
+      {prefill?.source_suggestion_id && (
+        <input type="hidden" name="source_suggestion_id" value={prefill.source_suggestion_id} />
       )}
 
       {/* ── Welcome banner ───────────────────────────────────────────── */}

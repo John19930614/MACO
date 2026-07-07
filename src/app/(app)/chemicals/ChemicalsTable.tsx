@@ -1,12 +1,16 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Chemical } from "@/lib/types";
 import { Pill } from "@/components/ui/primitives";
 import { getStorageClassName } from "@/lib/chemicalRefData";
 import { updateSdsUrl } from "@/lib/actions/ehs";
-import { X, ExternalLink, ChevronDown, ChevronRight, Printer } from "lucide-react";
+import { setSdsReviewDate } from "@/lib/actions/sdsReview";
+import { getSdsStatus, SDS_STATUS_RANK, type SdsStatus, type SdsStatusResult } from "@/lib/sds/sdsStatus";
+import { SdsStatusBadge, SdsStatusPill } from "@/components/chemicals/SdsStatusBadge";
+import { X, ExternalLink, ChevronDown, ChevronRight, Printer, ArrowUpDown, RotateCcw } from "lucide-react";
 import { GhsLabelButton } from "./GhsLabelButton";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -32,6 +36,13 @@ const CATEGORIES: { key: CategoryKey; label: string; color: string }[] = [
 const INACTIVE_CAT = "rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 whitespace-nowrap";
 const ACTIVE_CAT   = (color: string) => `rounded-full px-3 py-1 text-xs font-semibold whitespace-nowrap ${color}`;
 
+const SDS_FILTER_OPTIONS: { key: SdsStatus; label: string }[] = [
+  { key: "overdue",  label: "Overdue" },
+  { key: "due_soon", label: "Due Soon" },
+  { key: "missing",  label: "Missing" },
+  { key: "ok",       label: "OK" },
+];
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function deriveCategory(c: Chemical): CategoryKey {
@@ -48,14 +59,22 @@ function deriveCategory(c: Chemical): CategoryKey {
   return "other";
 }
 
-function sdsStatus(c: Chemical): "on_file" | "expiring" | "expired" | "missing" {
-  if (!c.sds_url) return "missing";
-  if (!c.sds_expiry) return "on_file";
-  const exp = new Date(c.sds_expiry);
-  const now = new Date();
-  if (exp < now) return "expired";
-  if (exp.getTime() - now.getTime() < 90 * 24 * 60 * 60 * 1000) return "expiring";
-  return "on_file";
+// Chemical.sds_expiry doubles as the SDS review due date. This is the single
+// call site every row/group in this table routes through — no more duplicate
+// on_file/expiring/expired/missing logic living separately from the dashboard.
+function chemicalSdsStatus(c: Chemical): SdsStatusResult {
+  return getSdsStatus({ sdsUrl: c.sds_url, reviewDueDate: c.sds_expiry });
+}
+
+// Worst status across a group's containers (missing/overdue outrank due_soon/ok),
+// used for the parent row's summary badge, group-level filtering, and sorting.
+function worstSdsStatus(items: Chemical[]): SdsStatusResult {
+  let worst: SdsStatusResult | null = null;
+  for (const c of items) {
+    const r = chemicalSdsStatus(c);
+    if (!worst || SDS_STATUS_RANK[r.status] < SDS_STATUS_RANK[worst.status]) worst = r;
+  }
+  return worst as SdsStatusResult;
 }
 
 function primaryHazard(c: Chemical): string {
@@ -86,9 +105,6 @@ const HAZARD_COLOR: Record<string, string> = {
   "Low Hazard":    "bg-emerald-50 text-emerald-600",
   "Hazardous":     "bg-slate-100 text-slate-600",
 };
-
-const SDS_STYLE = { on_file: "bg-emerald-100 text-emerald-700", expiring: "bg-amber-100 text-amber-700", expired: "bg-red-100 text-red-700", missing: "bg-slate-100 text-slate-500" };
-const SDS_LABEL = { on_file: "On File", expiring: "Expiring", expired: "Expired", missing: "Missing" };
 
 // ── Quick print (no modal — opens print window directly) ──────────────────────
 
@@ -191,7 +207,7 @@ function SdsModal({ chemical, onClose }: { chemical: Chemical; onClose: () => vo
             </div>
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1.5">
-                SDS Expiry Date <span className="text-slate-300">(optional)</span>
+                SDS Review Due Date <span className="text-slate-300">(optional — defaults to 3 years out)</span>
               </label>
               <input
                 type="date"
@@ -219,10 +235,38 @@ function SdsModal({ chemical, onClose }: { chemical: Chemical; onClose: () => vo
   );
 }
 
+// ── Reset SDS clock — quick action for flagged rows that already have an SDS
+// linked and just need the review due date refreshed (e.g. re-uploaded the
+// same document after a supplier revision). ─────────────────────────────────
+
+function ResetSdsClockButton({ chemicalId }: { chemicalId: string }) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+
+  async function handleClick() {
+    setPending(true);
+    await setSdsReviewDate({ chemicalId, markAsNewUpload: true });
+    router.refresh();
+    setPending(false);
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={pending}
+      title="Reset the SDS review clock to 3 years from today"
+      className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+    >
+      <RotateCcw className="h-3 w-3" />
+      {pending ? "Resetting…" : "Upload New SDS"}
+    </button>
+  );
+}
+
 // ── Expanded container rows ────────────────────────────────────────────────────
 
 function ContainerRow({ c, onSdsClick }: { c: Chemical; onSdsClick: (c: Chemical) => void }) {
-  const status = sdsStatus(c);
+  const status = chemicalSdsStatus(c);
   return (
     <tr className="bg-slate-50/70 border-slate-100">
       <td className="pl-10 pr-4 py-2 text-xs text-slate-600">
@@ -253,20 +297,23 @@ function ContainerRow({ c, onSdsClick }: { c: Chemical; onSdsClick: (c: Chemical
         )}
       </td>
       <td className="px-4 py-2" colSpan={2}>
-        <div className="flex items-center gap-2">
-          <Pill className={SDS_STYLE[status]}>{SDS_LABEL[status]}</Pill>
+        <div className="flex flex-wrap items-center gap-2">
+          <SdsStatusBadge sdsUrl={c.sds_url} reviewDueDate={c.sds_expiry} />
           {c.sds_url && (
             <a href={c.sds_url} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-blue-600">
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
           )}
-          {(status === "missing" || status === "expired") && (
+          {status.status !== "ok" && !c.sds_url && (
             <button
               onClick={() => onSdsClick(c)}
               className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 hover:bg-blue-100"
             >
               Link SDS
             </button>
+          )}
+          {status.status !== "ok" && c.sds_url && (
+            <ResetSdsClockButton chemicalId={c.id} />
           )}
         </div>
       </td>
@@ -305,10 +352,8 @@ function GroupRow({
 }) {
   const rep = group.representative;
   const hazard = group.hazard;
-  const sdsStatuses = group.items.map(sdsStatus);
-  const hasMissing  = sdsStatuses.some((s) => s === "missing" || s === "expired");
-  const hasOnFile   = sdsStatuses.some((s) => s === "on_file");
-  const overallSds  = hasMissing ? "missing" : hasOnFile ? "on_file" : "expiring";
+  const overall = worstSdsStatus(group.items);
+  const flaggedCount = group.items.filter((c) => chemicalSdsStatus(c).status !== "ok").length;
 
   return (
     <>
@@ -370,12 +415,12 @@ function GroupRow({
           <Pill className={HAZARD_COLOR[hazard] ?? "bg-slate-100 text-slate-600"}>{hazard}</Pill>
         </td>
 
-        {/* SDS summary */}
+        {/* SDS Status summary */}
         <td className="px-4 py-3">
-          <Pill className={SDS_STYLE[overallSds]}>{SDS_LABEL[overallSds]}</Pill>
-          {hasMissing && hasOnFile && (
+          <SdsStatusPill result={overall} />
+          {flaggedCount > 0 && group.items.length > 1 && (
             <div className="mt-0.5 text-[10px] text-amber-600">
-              {sdsStatuses.filter((s) => s === "missing" || s === "expired").length} missing
+              {flaggedCount} of {group.items.length} flagged
             </div>
           )}
         </td>
@@ -426,13 +471,21 @@ function GroupRow({
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
+export function ChemicalsTable({
+  chemicals,
+  initialSdsStatusFilter = [],
+}: {
+  chemicals: Chemical[];
+  initialSdsStatusFilter?: SdsStatus[];
+}) {
   const [search, setSearch]         = useState("");
   const [hazardFilter, setHazardFilter] = useState<"all" | "high" | "scheduled">("all");
   const [category, setCategory]     = useState<CategoryKey>("all");
   const [expanded, setExpanded]     = useState<Set<string>>(new Set());
   const [sdsModal, setSdsModal]     = useState<Chemical | null>(null);
   const [page, setPage]             = useState(1);
+  const [sdsFilter, setSdsFilter]   = useState<Set<SdsStatus>>(new Set(initialSdsStatusFilter));
+  const [sdsSort, setSdsSort]       = useState<"none" | "asc" | "desc">("none");
 
   function toggleGroup(key: string) {
     setExpanded((prev) => {
@@ -440,6 +493,18 @@ export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
       next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
+  }
+
+  function toggleSdsFilter(status: SdsStatus) {
+    setSdsFilter((prev) => {
+      const next = new Set(prev);
+      next.has(status) ? next.delete(status) : next.add(status);
+      return next;
+    });
+  }
+
+  function cycleSdsSort() {
+    setSdsSort((prev) => (prev === "none" ? "asc" : prev === "asc" ? "desc" : "none"));
   }
 
   // Build groups first, then filter
@@ -499,6 +564,12 @@ export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
     if (hazardFilter === "high") list = list.filter((g) => g.isHighHazard);
     if (hazardFilter === "scheduled") list = list.filter((g) => g.items.some((c) => c.is_scheduled));
 
+    // SDS status filter — group counts as a match if ANY container matches
+    // one of the selected statuses (so a partially-flagged group stays visible).
+    if (sdsFilter.size > 0) {
+      list = list.filter((g) => g.items.some((c) => sdsFilter.has(chemicalSdsStatus(c).status)));
+    }
+
     // Search
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -514,8 +585,21 @@ export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
       );
     }
 
+    // SDS status sort — missing/overdue rank first regardless of daysUntilDue
+    // (both null and negative should surface ahead of "OK" chemicals).
+    if (sdsSort !== "none") {
+      list = [...list].sort((a, b) => {
+        const sa = worstSdsStatus(a.items);
+        const sb = worstSdsStatus(b.items);
+        const rankDiff = SDS_STATUS_RANK[sa.status] - SDS_STATUS_RANK[sb.status];
+        const dayDiff = (sa.daysUntilDue ?? -Infinity) - (sb.daysUntilDue ?? -Infinity);
+        const diff = rankDiff !== 0 ? rankDiff : dayDiff;
+        return sdsSort === "asc" ? diff : -diff;
+      });
+    }
+
     return list;
-  }, [groups, category, hazardFilter, search]);
+  }, [groups, category, hazardFilter, sdsFilter, search, sdsSort]);
 
   const totalContainers = filtered.reduce((s, g) => s + g.items.length, 0);
 
@@ -527,7 +611,7 @@ export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
   const visible = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
 
   // Reset to the first page whenever the filters change the result set.
-  useEffect(() => { setPage(1); }, [category, hazardFilter, search]);
+  useEffect(() => { setPage(1); }, [category, hazardFilter, sdsFilter, search]);
 
   return (
     <>
@@ -577,6 +661,34 @@ export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
         </span>
       </div>
 
+      {/* SDS status filter */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">SDS Status</span>
+        <button
+          onClick={() => setSdsFilter(new Set())}
+          className={
+            sdsFilter.size === 0
+              ? "rounded-full bg-slate-600 px-3 py-1 text-xs font-semibold text-white"
+              : INACTIVE_CAT
+          }
+        >
+          All
+        </button>
+        {SDS_FILTER_OPTIONS.map((opt) => (
+          <button
+            key={opt.key}
+            onClick={() => toggleSdsFilter(opt.key)}
+            className={
+              sdsFilter.has(opt.key)
+                ? "rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white"
+                : INACTIVE_CAT
+            }
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -587,7 +699,12 @@ export function ChemicalsTable({ chemicals }: { chemicals: Chemical[] }) {
               <th className="px-4 py-2.5 text-left">Containers</th>
               <th className="px-4 py-2.5 text-left">Storage</th>
               <th className="px-4 py-2.5 text-left">Hazard</th>
-              <th className="px-4 py-2.5 text-left">SDS</th>
+              <th className="px-4 py-2.5 text-left">
+                <button onClick={cycleSdsSort} className="inline-flex items-center gap-1 hover:text-slate-600">
+                  SDS Status
+                  <ArrowUpDown className={`h-3 w-3 ${sdsSort !== "none" ? "text-blue-500" : ""}`} />
+                </button>
+              </th>
               <th className="px-4 py-2.5 text-left">Flags</th>
               <th className="px-4 py-2.5 text-left">Label</th>
             </tr>
