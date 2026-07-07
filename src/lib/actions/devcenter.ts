@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { isSuperadmin, getServerUser } from "@/lib/auth/session";
+import { isSuperadmin, getServerUser, getServerProfileId } from "@/lib/auth/session";
 import { MOCK_MODE } from "@/lib/env";
 import type { DevTask, DevFileChangePlan, DevReviewGate, DevApproval } from "@/lib/devcenter/types";
 import {
@@ -21,7 +21,11 @@ import { generateFilePlans } from "@/lib/devcenter/file-plans";
 import { generateCodeDrafts } from "@/lib/devcenter/code-drafts";
 import { generateReviewGate, STAGE_REVIEW_GATES, REQUIRED_FOR_RELEASE, gateCleared } from "@/lib/devcenter/review-gates";
 import { findReviewFinding } from "@/lib/devcenter/review-live";
-import { getGithubSettings, logDevAudit, getConvertedFindingIds, getDismissedFindingIds } from "@/lib/devcenter/repo";
+import {
+  getGithubSettings, logDevAudit, getConvertedFindingIds, getDismissedFindingIds,
+  getConvertedSuggestionIds, getDismissedSuggestionIds,
+} from "@/lib/devcenter/repo";
+import { getNextEligibleSuggestion, type PlatformSuggestion } from "@/lib/devcenter/suggestions";
 import type { ReviewGateStatus } from "@/lib/devcenter/types";
 
 const nowIso = () => new Date().toISOString();
@@ -44,6 +48,7 @@ const schema = z.object({
   success_criteria: z.string().trim().optional().default(""),
   notes: z.string().trim().optional().default(""),
   source_finding_id: z.string().trim().optional().default(""),
+  source_suggestion_id: z.string().trim().optional().default(""),
 });
 
 const bool = (fd: FormData, k: string) => fd.get(k) === "on" || fd.get(k) === "true";
@@ -111,6 +116,9 @@ export async function createDevTask(
       risk_level: v.risk_level,
       status: "intake",
       metadata,
+      // Links the task back to the Daily Suggestion it came from so the card
+      // stops showing it once it's on the board.
+      source_suggestion_id: v.source_suggestion_id || null,
       created_by: createdBy,
     })
     .select("id")
@@ -985,6 +993,58 @@ export async function setFindingDismissed(
 
   revalidatePath("/admin/dev-command/review");
   return { ok: true };
+}
+
+/**
+ * Dismiss a Daily Suggestion for the current admin profile — it never shows
+ * for them again (other admins are unaffected; dismissal is per-profile,
+ * unlike the shared Platform Review finding dismissal above). Logged to the
+ * audit trail.
+ */
+export async function dismissDailySuggestion(suggestionId: string): Promise<{ ok: boolean; error?: string }> {
+  if (MOCK_MODE) return { ok: false, error: "Dismissing needs the live database — this preview is in demo mode." };
+  if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
+  const client = createServiceRoleClient() ?? await createSupabaseServerClient();
+  if (!client) return { ok: false, error: "Your session expired — please reload." };
+  if (!suggestionId.trim()) return { ok: false, error: "Something went wrong — please try again." };
+
+  const profileId = await getServerProfileId();
+  const { error } = await client
+    .from("dismissed_suggestions")
+    .upsert({ profile_id: profileId, suggestion_id: suggestionId }, { onConflict: "profile_id,suggestion_id" });
+  if (error) return { ok: false, error: "Couldn't dismiss the suggestion. Please try again." };
+
+  await logDevAudit({
+    actor_type: "human",
+    actor_id: (await getServerUser())?.display_name ?? "Reliance Admin",
+    action: "suggestion_dismissed",
+    entity: "daily_suggestion",
+    entity_id: suggestionId,
+    detail: {},
+  });
+
+  revalidatePath("/admin/dev-command");
+  return { ok: true };
+}
+
+/**
+ * "Show another" on the Daily Suggestion card — cycles to the next suggestion
+ * that hasn't been dismissed by this admin or already turned into a task,
+ * without dismissing the current one (it can resurface on a later cycle).
+ */
+export async function getNextDailySuggestion(
+  currentSuggestionId?: string,
+): Promise<{ ok: boolean; suggestion?: PlatformSuggestion | null; error?: string }> {
+  if (!(await isSuperadmin())) return { ok: false, error: "You don't have permission for this." };
+
+  const profileId = MOCK_MODE ? null : await getServerProfileId();
+  const [dismissedIds, convertedIds] = await Promise.all([
+    profileId ? getDismissedSuggestionIds(profileId) : Promise.resolve([] as string[]),
+    getConvertedSuggestionIds(),
+  ]);
+  const excludeIds = new Set([...dismissedIds, ...convertedIds]);
+  const suggestion = getNextEligibleSuggestion(excludeIds, currentSuggestionId);
+  return { ok: true, suggestion };
 }
 
 /**

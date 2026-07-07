@@ -90,7 +90,9 @@
     { "version": "20260706121842", "name": "event_embeddings_match_events_search_path" },
     { "version": "20260706131210", "name": "ai_findings_rejection_reason" },
     { "version": "20260706175857", "name": "tenant_module_access" },
-    { "version": "20260707121225", "name": "chemical_container_label" }
+    { "version": "20260707121225", "name": "chemical_container_label" },
+    { "version": "20260707134446", "name": "sds_review_due_date" },
+    { "version": "20260707144410", "name": "daily_suggestion_dismiss_rotation" }
   ],
   "schemaProbes": {
     "table:ai_telemetry": false,

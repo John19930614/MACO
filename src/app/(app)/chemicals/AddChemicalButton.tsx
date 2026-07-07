@@ -9,6 +9,7 @@ import { ChemicalNamePicker } from "./ChemicalNamePicker";
 import { STORAGE_CLASSES, type CommonChemical } from "@/lib/chemicalRefData";
 import { addChemical } from "@/lib/actions/ehs";
 import { playCreateSound } from "@/lib/sounds";
+import { computeDefaultReviewDueDate } from "@/lib/sds/sdsStatus";
 
 export function AddChemicalButton() {
   const [open, setOpen] = useState(false);
@@ -169,8 +170,11 @@ export function AddChemicalButton() {
                   <option value="true">Yes — regulated substance</option>
                 </Select>
               </Field>
-              <Field label="SDS Expiry / Review">
-                <Input name="sds_expiry" type="date" />
+              <Field label="SDS Review Due Date">
+                <Input name="sds_expiry" type="date" defaultValue={computeDefaultReviewDueDate()} />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Defaults to 3 years from today. Override for hazard classes that require more frequent review (e.g. annually).
+                </p>
               </Field>
             </div>
 

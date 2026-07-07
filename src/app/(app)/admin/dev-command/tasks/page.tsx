@@ -1,22 +1,26 @@
 import Link from "next/link";
-import { Card } from "@/components/ui/primitives";
+import { Card, Pill } from "@/components/ui/primitives";
 import { TaskStatusBadge, PriorityBadge, RiskLevelBadge } from "../_components/badges";
 import { EmptyStateCard } from "../_components/states";
-import { getDevTasks } from "@/lib/devcenter/repo";
-import { SAMPLE_TASKS } from "@/lib/devcenter/sample";
+import { getDevTasks, getTaskFilterBucketIds } from "@/lib/devcenter/repo";
+import { SAMPLE_TASKS, sampleTaskFilterBucketIds } from "@/lib/devcenter/sample";
 import { CLOSED_TASK_STATUSES } from "@/lib/devcenter/labels";
+import {
+  parseTaskStatusFilter, filterTasksByBucket, TASK_STATUS_FILTER_LABELS,
+} from "@/lib/devcenter/task-status-filters";
 import { relativeTime } from "@/lib/utils";
-import { Plus, Info, FolderOpen, CheckCircle2 } from "lucide-react";
+import { Plus, Info, FolderOpen, CheckCircle2, X } from "lucide-react";
 
 export const metadata = { title: "Tasks · AI Dev Command Center" };
 
 export default async function TasksPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; status?: string }>;
 }) {
-  const { tab } = await searchParams;
+  const { tab, status } = await searchParams;
   const activeTab = tab === "closed" ? "closed" : "open";
+  const activeFilter = parseTaskStatusFilter(status);
 
   const real = await getDevTasks().catch(() => []);
   const usingSample = real.length === 0;
@@ -26,7 +30,14 @@ export default async function TasksPage({
 
   const openTasks   = allTasks.filter((t) => !CLOSED_TASK_STATUSES.includes(t.status));
   const closedTasks = allTasks.filter((t) =>  CLOSED_TASK_STATUSES.includes(t.status));
-  const tasks = activeTab === "open" ? openTasks : closedTasks;
+
+  let tasks = activeTab === "open" ? openTasks : closedTasks;
+  if (activeFilter) {
+    const bucketIds = usingSample
+      ? sampleTaskFilterBucketIds()
+      : await getTaskFilterBucketIds().catch(() => ({ draft_plans: [], active_prs: [], security_warnings: [], xp_failures: [] }));
+    tasks = filterTasksByBucket(allTasks, bucketIds[activeFilter]);
+  }
 
   return (
     <div className="space-y-4">
@@ -53,49 +64,65 @@ export default async function TasksPage({
         </div>
       )}
 
+      {activeFilter && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Pill className="bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+            Filtered by: {TASK_STATUS_FILTER_LABELS[activeFilter]} ({tasks.length})
+          </Pill>
+          <Link
+            href="/admin/dev-command/tasks"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
+          >
+            <X className="h-3 w-3" /> Clear filter
+          </Link>
+        </div>
+      )}
+
       {/* Tabs */}
-      <div className="flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800/50">
-        <Link
-          href="/admin/dev-command/tasks?tab=open"
-          className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold transition ${
-            activeTab === "open"
-              ? "bg-white text-slate-800 shadow-sm dark:bg-slate-700 dark:text-white"
-              : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-          }`}
-        >
-          <FolderOpen className="h-4 w-4" />
-          Open
-          {openTasks.length > 0 && (
-            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+      {!activeFilter && (
+        <div className="flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800/50">
+          <Link
+            href="/admin/dev-command/tasks?tab=open"
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold transition ${
               activeTab === "open"
-                ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
-                : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-400"
-            }`}>
-              {openTasks.length}
-            </span>
-          )}
-        </Link>
-        <Link
-          href="/admin/dev-command/tasks?tab=closed"
-          className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold transition ${
-            activeTab === "closed"
-              ? "bg-white text-slate-800 shadow-sm dark:bg-slate-700 dark:text-white"
-              : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-          }`}
-        >
-          <CheckCircle2 className="h-4 w-4" />
-          Closed
-          {closedTasks.length > 0 && (
-            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                ? "bg-white text-slate-800 shadow-sm dark:bg-slate-700 dark:text-white"
+                : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+            }`}
+          >
+            <FolderOpen className="h-4 w-4" />
+            Open
+            {openTasks.length > 0 && (
+              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                activeTab === "open"
+                  ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+                  : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-400"
+              }`}>
+                {openTasks.length}
+              </span>
+            )}
+          </Link>
+          <Link
+            href="/admin/dev-command/tasks?tab=closed"
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold transition ${
               activeTab === "closed"
-                ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
-                : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-400"
-            }`}>
-              {closedTasks.length}
-            </span>
-          )}
-        </Link>
-      </div>
+                ? "bg-white text-slate-800 shadow-sm dark:bg-slate-700 dark:text-white"
+                : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+            }`}
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            Closed
+            {closedTasks.length > 0 && (
+              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                activeTab === "closed"
+                  ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                  : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-400"
+              }`}>
+                {closedTasks.length}
+              </span>
+            )}
+          </Link>
+        </div>
+      )}
 
       {/* Task list */}
       {tasks.length > 0 ? (
@@ -121,6 +148,11 @@ export default async function TasksPage({
             ))}
           </ul>
         </Card>
+      ) : activeFilter ? (
+        <EmptyStateCard
+          title="No matching tasks"
+          description={`Nothing is currently in "${TASK_STATUS_FILTER_LABELS[activeFilter]}."`}
+        />
       ) : (
         <EmptyStateCard
           title={activeTab === "open" ? "No open tasks" : "No closed tasks yet"}

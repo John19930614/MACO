@@ -7,6 +7,7 @@ import { ScoreGauge, DonutChart, Legend, type Segment } from "@/components/chart
 import { ChemicalsTable } from "./ChemicalsTable";
 import { WasteReviewTab } from "./WasteReviewTab";
 import { ClassificationsTab } from "./ClassificationsTab";
+import { getSdsStatus, type SdsStatus } from "@/lib/sds/sdsStatus";
 import {
   AlertTriangle,
   BrainCircuit,
@@ -113,15 +114,19 @@ function buildTriggeredCourses(chemicals: Chemical[], courses: TrainingCourse[])
 }
 
 // ─── SDS status ───────────────────────────────────────────────────────────────
+// Routes through the shared src/lib/sds/sdsStatus.ts utility (single source of
+// truth also used by ChemicalsTable and the dashboard compliance tile), mapped
+// to this tab's existing on_file/expiring/expired/missing display naming.
+
+const SDS_STATUS_LEGACY_MAP: Record<SdsStatus, "on_file" | "expiring" | "expired" | "missing"> = {
+  ok: "on_file",
+  due_soon: "expiring",
+  overdue: "expired",
+  missing: "missing",
+};
 
 function sdsStatus(c: Chemical): "on_file" | "expiring" | "expired" | "missing" {
-  if (!c.sds_url) return "missing";
-  if (!c.sds_expiry) return "on_file";
-  const exp = new Date(c.sds_expiry);
-  const now = new Date();
-  if (exp < now) return "expired";
-  if (exp.getTime() - now.getTime() < 90 * 24 * 60 * 60 * 1000) return "expiring";
-  return "on_file";
+  return SDS_STATUS_LEGACY_MAP[getSdsStatus({ sdsUrl: c.sds_url, reviewDueDate: c.sds_expiry }).status];
 }
 
 // ─── Compatibility Matrix helpers ─────────────────────────────────────────────
@@ -888,10 +893,12 @@ export function ChemicalsDashboard({
   chemicals,
   courses,
   wasteFlags = [],
+  initialSdsStatusFilter = [],
 }: {
   chemicals: Chemical[];
   courses: TrainingCourse[];
   wasteFlags?: WasteReviewFlag[];
+  initialSdsStatusFilter?: SdsStatus[];
 }) {
   const [tab, setTab] = useState<Tab>("inventory");
 
@@ -1082,7 +1089,7 @@ export function ChemicalsDashboard({
               title="Chemical Inventory"
               subtitle={`${chemicals.length} chemicals · ${highHazard.length} high-hazard · ${sdsProblem} SDS issues`}
             />
-            <ChemicalsTable chemicals={chemicals} />
+            <ChemicalsTable chemicals={chemicals} initialSdsStatusFilter={initialSdsStatusFilter} />
           </Card>
         )}
 

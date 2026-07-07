@@ -9,7 +9,7 @@ import { useDemoUser, type DemoProfile } from "@/lib/context/demo-user";
 import { MOCK_MODE } from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
 import type { ServerUser } from "@/lib/auth/types";
-import { ROLE_META, canCoordinate, type Role, type EhsModule } from "@/lib/constants";
+import { ROLE_META, canCoordinate, canManage, type Role, type EhsModule } from "@/lib/constants";
 import { getActiveKey } from "@/lib/nav/activeKey";
 
 // Maps a nav item's href to the EHS module that gates it (mirrors
@@ -98,6 +98,19 @@ const COMPANY_ADMIN_EXTRA: NavSection[] = [
     items: [
       { href: "/team",       label: "Team & Invites",          description: "Members, roster & invites",     icon: "👥" },
       { href: "/settings",   label: "Company Settings",        description: "Users, roles & preferences",    icon: "⚙" },
+    ],
+  },
+];
+
+// Predictive Risk Engine — DRAFT, gated to MANAGER_ROLES (safety_manager,
+// ehs_manager, admin) via canManage() below, same as the rest of this section.
+// Label deliberately avoids "training" to avoid confusion with the existing
+// Training & Competency nav item — this is a risk MODEL, not employee training.
+const PREDICTIVE_RISK_NAV: NavSection[] = [
+  {
+    group: "Predictive Risk",
+    items: [
+      { href: "/predictive-risk", label: "Predictive Risk",  description: "Site risk scores from leading indicators", icon: "📈" },
     ],
   },
 ];
@@ -199,7 +212,13 @@ function getNav(user: DemoProfile): NavSection[] {
   // Management roles (ehs_coordinator, supervisor, safety_manager, ehs_manager,
   // admin) get the full company nav INCLUDING the Admin section. Derived from
   // constants COORDINATOR_ROLES via canCoordinate so the list never drifts.
-  if (canCoordinate(role)) return [...BASE_COMPANY_NAV, ...COMPANY_ADMIN_EXTRA];
+  // Predictive Risk is narrower — only MANAGER_ROLES (safety_manager,
+  // ehs_manager, admin) via canManage — ehs_coordinator/supervisor don't see it.
+  if (canCoordinate(role)) {
+    return canManage(role)
+      ? [...BASE_COMPANY_NAV, ...PREDICTIVE_RISK_NAV, ...COMPANY_ADMIN_EXTRA]
+      : [...BASE_COMPANY_NAV, ...COMPANY_ADMIN_EXTRA];
+  }
   // Unknown / non-management company roles fall through to the base nav.
   return BASE_COMPANY_NAV;
 }
