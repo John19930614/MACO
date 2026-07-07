@@ -139,6 +139,10 @@ export function AddChemicalButton() {
               </Field>
             </div>
 
+            <Field label="Container Label / ID (optional)">
+              <Input name="container_label" placeholder="e.g. Bottle 1, Cabinet A-3 — distinguishes this container from other containers of the same chemical" />
+            </Field>
+
             <Field label="Recommended PPE">
               <PpePicker key={`ppe-${prefillKey}`} name="recommended_ppe" defaultCodes={prefill.ppe} />
             </Field>

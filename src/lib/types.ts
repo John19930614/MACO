@@ -174,6 +174,7 @@ export interface Chemical {
   unit: string;                      // kg, L, t, m³
   container_capacity?: number | null;      // capacity of ONE container (for CLP label sizing)
   container_capacity_unit?: string | null; // mL | L | gal | g | kg
+  container_label?: string | null;   // distinguishes this physical container from others of the same chemical (e.g. "Bottle 1")
   storage_location: string;
   storage_class?: string | null;     // GHS storage-class code (see STORAGE_CLASSES)
   recommended_ppe?: string[];        // PPE codes (see PPE_TYPES)
