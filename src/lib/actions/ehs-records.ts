@@ -314,6 +314,7 @@ export async function addChemical(_prev: unknown, formData: FormData) {
         quantity: parseFloat(formData.get("quantity") as string) || 0,
         unit: (formData.get("unit") as string) || "L",
         ...containerCapFields(formData),
+        container_label: (formData.get("container_label") as string)?.trim() || null,
         storage_location: (formData.get("storage_location") as string) || "",
         storage_class: storageClass,
         recommended_ppe: ppe,
@@ -339,6 +340,7 @@ export async function addChemical(_prev: unknown, formData: FormData) {
       ghs_classes: hazards as Chemical["ghs_classes"],
       quantity: parseFloat(formData.get("quantity") as string) || 0,
       unit: (formData.get("unit") as string) || "L",
+      container_label: (formData.get("container_label") as string)?.trim() || null,
       storage_location: (formData.get("storage_location") as string) || "",
       sds_url: null,
       sds_expiry: sdsExpiry,
@@ -384,6 +386,7 @@ export async function updateChemical(id: string, formData: FormData) {
         quantity:         parseFloat(formData.get("quantity") as string) || 0,
         unit:             (formData.get("unit") as string) || "L",
         ...containerCapFields(formData),
+        container_label:  (formData.get("container_label") as string)?.trim() || null,
         storage_location: (formData.get("storage_location") as string) || "",
         supplier:         (formData.get("supplier") as string) || null,
         ...(hasHazards ? {
@@ -410,6 +413,7 @@ export async function updateChemical(id: string, formData: FormData) {
         quantity:         parseFloat(formData.get("quantity") as string) || 0,
         unit:             (formData.get("unit") as string) || "L",
         ...containerCapFields(formData),
+        container_label:  (formData.get("container_label") as string)?.trim() || null,
         storage_location: (formData.get("storage_location") as string) || "",
         supplier:         (formData.get("supplier") as string) || null,
         ...(hasHazards ? {

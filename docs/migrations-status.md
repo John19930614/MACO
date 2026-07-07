@@ -1,10 +1,10 @@
 # Database Update Status: What's Live in Production
 
-Generated: 2026-07-06T17:39:21.805Z by `scripts/check-migration-status.ts`
+Generated: 2026-07-07T12:47:58.706Z by `scripts/check-migration-status.ts`
 Environment: safetyiq prod
-Prod history snapshot: retrieved 2026-07-06 from project `bjgqjpekhicqlunxbobo` via Supabase MCP list_migrations (supabase_migrations.schema_migrations) + read-only information_schema probes
+Prod history snapshot: retrieved 2026-07-07 from project `bjgqjpekhicqlunxbobo` via Supabase MCP list_migrations (supabase_migrations.schema_migrations) + read-only information_schema probes
 
-**46 of 49 local database updates are live in production** — 45 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **3 are NOT applied**, and 3 of those have application code that already depends on them.
+**49 of 50 local database updates are live in production** — 48 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **1 are NOT applied**, and 1 of those have application code that already depends on them.
 
 > Safety note: this only checks, it doesn't change anything. This is a read-only audit — applying any pending migration requires a separate, explicitly approved follow-up.
 
@@ -17,20 +17,6 @@ Prod history snapshot: retrieved 2026-07-06 from project `bjgqjpekhicqlunxbobo` 
   - Referenced in `src/lib/ai/telemetry.ts:54` — `console.error("[safetyiq] ai_telemetry persist error:", String(err));`
   - Referenced in `src/lib/ai/telemetry.ts:69` — `/** Map a persisted ai_telemetry row back to the in-app AiCall shape (pure). */`
   - Referenced in `src/lib/ai/telemetry.ts:84` — `* `ai_telemetry` table (survives cold starts); in mock mode, or if the query`
-- 🚨 **ACTION NEEDED**: `20260630000000_ai_findings_rejection_reason.sql` — Audit-trail column recording why an AI finding was rejected
-  - Referenced in `src/app/(app)/ai/AiDashboard.tsx:1144` — `{f.review_status === "rejected" && f.rejection_reason && (`
-  - Referenced in `src/app/(app)/ai/AiDashboard.tsx:1145` — `<p className="text-[10px] text-slate-400 max-w-48 leading-snug" title={f.rejection_reason}>`
-  - Referenced in `src/app/(app)/ai/AiDashboard.tsx:1146` — `{f.rejection_reason.length > 60 ? f.rejection_reason.slice(0, 60) + "…" : f.rejection_reason}`
-  - Referenced in `src/lib/actions/ai-remediate.ts:124` — `.update({ review_status: "rejected", rejection_reason: reason })`
-  - Referenced in `src/lib/actions/ai-remediate.ts:153` — `if (idx !== -1) store.findings[idx] = { ...store.findings[idx], review_status: "rejected", rejection_reason: reason };`
-  - Referenced in `src/lib/types.ts:836` — `rejection_reason?: string | null;`
-- 🚨 **ACTION NEEDED**: `20260706010000_tenant_module_access.sql` — tenant module access
-  - Referenced in `src/app/(app)/sa/companies/[id]/CompanyDetailClient.tsx:56` — `// the per-company tenant_module_access toggle (see `statuses` below), not this.`
-  - Referenced in `src/app/api/tenant/modules/route.ts:11` — `* status (RLS additionally scopes tenant_module_access reads the same way).`
-  - Referenced in `src/lib/actions/tenant-module-access.ts:54` — `.from("tenant_module_access")`
-  - Referenced in `src/lib/actions/tenant-module-access.ts:63` — `.from("tenant_module_access")`
-  - Referenced in `src/lib/actions/tenant-module-access.ts:81` — `const { error: auditError } = await ctx.client.from("tenant_module_access_audit").insert({`
-  - Referenced in `src/lib/actions/tenant-module-access.ts:89` — `console.error("tenant_module_access_audit insert failed:", auditError.message);`
 
 Until these are applied, the code paths above hit a missing table/column at runtime in live mode. Applying them is a separate task requiring explicit approval.
 
@@ -80,7 +66,7 @@ Matching is by migration name (local filename timestamps are synthetic; the prod
 | 20260629050000 | `20260629050000_dev_learning_loop.sql` | dev learning loop | ✅ Live (tracked) | 20260629141740 |
 | 20260629060000 | `20260629060000_dev_review_gates_phase15.sql` | dev review gates phase15 | ✅ Live (tracked) | 20260629143308 |
 | 20260629070000 | `20260629070000_dev_test_results_phase16.sql` | dev test results phase16 | ✅ Live (tracked) | 20260629145528 |
-| 20260630000000 | `20260630000000_ai_findings_rejection_reason.sql` | Audit-trail column recording why an AI finding was rejected | 🚨 Pending — code depends on it | — (schema probe: `column:ai_findings.rejection_reason`) |
+| 20260630000000 | `20260630000000_ai_findings_rejection_reason.sql` | Audit-trail column recording why an AI finding was rejected | ✅ Live (tracked) | 20260706131210 |
 | 20260630020000 | `20260630020000_waste_profile_composition.sql` | waste profile composition | ✅ Live (tracked) | 20260630192750 |
 | 20260701000000 | `20260701000000_chemical_container_capacity.sql` | Container capacity field driving EU CLP label sizing | ✅ Live (untracked) | — (schema probe: `column:chemical_inventory.container_capacity`) |
 | 20260701010000 | `20260701010000_chemical_concentration_hazard.sql` | Concentration-based chemical hazard classification columns (incl. hazard_review_status) | ✅ Live (tracked) | 20260630125515 (as `add_concentration_hazard_columns_to_chemical_inventory`) |
@@ -88,7 +74,8 @@ Matching is by migration name (local filename timestamps are synthetic; the prod
 | 20260702010000 | `20260702010000_arc_missing_tables.sql` | arc missing tables | ✅ Live (tracked) | 20260702181601 |
 | 20260702020000 | `20260702020000_dev_review_findings.sql` | dev review findings | ✅ Live (tracked) | 20260702184905 |
 | 20260706000000 | `20260706000000_event_embeddings.sql` | event embeddings | ✅ Live (tracked) | 20260706121742 |
-| 20260706010000 | `20260706010000_tenant_module_access.sql` | tenant module access | 🚨 Pending — code depends on it | — |
+| 20260706010000 | `20260706010000_tenant_module_access.sql` | tenant module access | ✅ Live (tracked) | 20260706175857 |
+| 20260707000000 | `20260707000000_chemical_container_label.sql` | chemical container label | ✅ Live (tracked) | 20260707121225 |
 
 ## Prod-Only History Entries
 

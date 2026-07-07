@@ -230,6 +230,11 @@ function ContainerRow({ c, onSdsClick }: { c: Chemical; onSdsClick: (c: Chemical
           <Link href={`/chemicals/${c.id}`} className="text-blue-600 hover:underline font-medium">
             View record
           </Link>
+          {c.container_label && (
+            <span className="inline-flex w-fit items-center rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+              {c.container_label}
+            </span>
+          )}
           {c.label_code && (
             <span className="font-mono text-[10px] tracking-wider text-slate-400 select-all">
               {c.label_code}

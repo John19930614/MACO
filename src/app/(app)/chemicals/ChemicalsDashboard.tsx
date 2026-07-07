@@ -179,7 +179,8 @@ function getCompatibility(a: Chemical, b: Chemical): Compatibility {
   // Two harmful → compatible
   if (ac.has("harmful") && bc.has("harmful")) return "compatible";
 
-  return "conditional";
+  // No identified hazard-class overlap or conflict → safe to co-store
+  return "compatible";
 }
 
 function compatReason(a: Chemical, b: Chemical): string {
@@ -200,7 +201,7 @@ function compatReason(a: Chemical, b: Chemical): string {
   if (both("flammable", "toxic"))          return "Separate cabinets — inhalation hazard with flammable vapours";
   if (ac.has("flammable") && bc.has("flammable")) return "Compatible flammable solvents — same FM/UL-listed flammables cabinet";
   if (ac.has("harmful") && bc.has("harmful"))     return "Low-level similar hazard profile — standard lab storage acceptable";
-  return "Store per GHS SDS Section 7 segregation requirements";
+  return "No known hazard-class conflict — standard shared storage acceptable";
 }
 
 const COMPAT_STYLE: Record<
@@ -226,6 +227,34 @@ const CHEM_SHORT: Record<string, string> = {
 
 function shortName(name: string): string {
   return (CHEM_SHORT[name] ?? (name.length > 12 ? name.slice(0, 10) + "…" : name));
+}
+
+function fullLabel(c: Chemical): string {
+  return c.container_label ? `${c.name} (${c.container_label})` : c.name;
+}
+
+/** Disambiguates chemicals sharing a name — via container_label when set,
+ *  else a numbered suffix — so matrix headers never merge two distinct
+ *  containers into one indistinguishable column. */
+function buildMatrixLabels(chemicals: Chemical[]): Map<string, string> {
+  const counts = new Map<string, number>();
+  for (const c of chemicals) counts.set(c.name, (counts.get(c.name) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  const labels = new Map<string, string>();
+  for (const c of chemicals) {
+    let label = shortName(c.name);
+    if ((counts.get(c.name) ?? 0) > 1) {
+      if (c.container_label) {
+        label = `${label} (${c.container_label})`;
+      } else {
+        const n = (seen.get(c.name) ?? 0) + 1;
+        seen.set(c.name, n);
+        label = `${label} (#${n})`;
+      }
+    }
+    labels.set(c.id, label);
+  }
+  return labels;
 }
 
 // ─── PPE profile derivation ───────────────────────────────────────────────────
@@ -328,6 +357,7 @@ function getPPEProfile(c: Chemical): PPEProfile {
 
 function CompatibilityMatrix({ chemicals }: { chemicals: Chemical[] }) {
   const [hovered, setHovered] = useState<{ aId: string; bId: string } | null>(null);
+  const matrixLabels = useMemo(() => buildMatrixLabels(chemicals), [chemicals]);
 
   const stats = useMemo(() => {
     let compat = 0, cond = 0, incompat = 0;
@@ -382,7 +412,7 @@ function CompatibilityMatrix({ chemicals }: { chemicals: Chemical[] }) {
           }`}
         >
           <div className="text-sm font-semibold text-slate-800">
-            {COMPAT_STYLE[hoveredResult].icon} {COMPAT_STYLE[hoveredResult].label} — {hoveredA.name} + {hoveredB.name}
+            {COMPAT_STYLE[hoveredResult].icon} {COMPAT_STYLE[hoveredResult].label} — {fullLabel(hoveredA)} + {fullLabel(hoveredB)}
           </div>
           {hoveredReason && (
             <div className="mt-0.5 text-xs text-slate-600">{hoveredReason}</div>
@@ -402,9 +432,9 @@ function CompatibilityMatrix({ chemicals }: { chemicals: Chemical[] }) {
                 <th
                   key={c.id}
                   className="min-w-14 border-b border-r border-slate-100 bg-slate-50 px-2 py-2.5 text-center font-semibold text-slate-700"
-                  title={c.name}
+                  title={fullLabel(c)}
                 >
-                  {shortName(c.name)}
+                  {matrixLabels.get(c.id)}
                 </th>
               ))}
             </tr>
@@ -414,9 +444,9 @@ function CompatibilityMatrix({ chemicals }: { chemicals: Chemical[] }) {
               <tr key={row.id}>
                 <td
                   className="border-b border-r border-slate-100 bg-slate-50 px-3 py-2.5 font-semibold text-slate-700 whitespace-nowrap"
-                  title={row.name}
+                  title={fullLabel(row)}
                 >
-                  {shortName(row.name)}
+                  {matrixLabels.get(row.id)}
                 </td>
                 {chemicals.map((col) => {
                   const result = getCompatibility(row, col);
@@ -434,7 +464,7 @@ function CompatibilityMatrix({ chemicals }: { chemicals: Chemical[] }) {
                           : undefined
                       }
                       onMouseLeave={() => setHovered(null)}
-                      title={result !== "self" ? `${row.name} + ${col.name}` : ""}
+                      title={result !== "self" ? `${fullLabel(row)} + ${fullLabel(col)}` : ""}
                     >
                       <span className="text-base font-bold leading-none">{style.icon}</span>
                     </td>
