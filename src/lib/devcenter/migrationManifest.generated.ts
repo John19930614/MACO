@@ -328,6 +328,24 @@ export const LOCAL_MIGRATIONS: LocalMigrationEntry[] = [
     "filename": "20260707020000_daily_suggestion_dismiss_rotation.sql",
     "name": "daily_suggestion_dismiss_rotation",
     "prodName": "daily_suggestion_dismiss_rotation"
+  },
+  {
+    "version": "20260707030000",
+    "filename": "20260707030000_predictive_risk_engine.sql",
+    "name": "predictive_risk_engine",
+    "prodName": "predictive_risk_engine"
+  },
+  {
+    "version": "20260707040000",
+    "filename": "20260707040000_predictive_risk_go_live_signoff.sql",
+    "name": "predictive_risk_go_live_signoff",
+    "prodName": "predictive_risk_go_live_signoff"
+  },
+  {
+    "version": "20260707050000",
+    "filename": "20260707050000_phase3_ai_agent.sql",
+    "name": "phase3_ai_agent",
+    "prodName": "phase3_ai_agent"
   }
 ];
 

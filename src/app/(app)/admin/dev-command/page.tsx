@@ -4,6 +4,7 @@ import {
 } from "@/lib/devcenter/sample";
 import { DevCommandDashboard } from "./_components/DevCommandDashboard";
 import { DailySuggestion } from "./_components/DailySuggestion";
+import { AiUsagePanel } from "./AiUsagePanel";
 import { MOCK_MODE } from "@/lib/env";
 
 export const metadata = { title: "AI Dev Command Center" };
@@ -13,6 +14,7 @@ export default async function DevCommandHomePage() {
     return (
       <div className="space-y-4">
         <DailySuggestion />
+        <AiUsagePanel />
         <DevCommandDashboard
           metrics={dashboardMetrics()}
           pendingApprovals={SAMPLE_APPROVALS.filter((a) => a.status === "pending")}
@@ -47,6 +49,7 @@ export default async function DevCommandHomePage() {
   return (
     <div className="space-y-4">
       <DailySuggestion />
+      <AiUsagePanel />
       <DevCommandDashboard
         metrics={metrics}
         pendingApprovals={hasTasks ? live.pendingApprovals : SAMPLE_APPROVALS.filter((a) => a.status === "pending")}

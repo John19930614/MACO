@@ -28,16 +28,19 @@ import {
   getGoLiveStatus,
   type GoLiveStatus,
 } from "@/lib/actions/predictive-risk-engine";
+import { SiteRiskRecommendationCard } from "@/components/risk/SiteRiskRecommendationCard";
 import { Phase1Go } from "./Phase1Go";
 
 type Band = "green" | "amber" | "orange" | "red";
 
 interface SiteRiskRow {
+  id: string | null; // site_risk_scores.id when persisted; null for fresh/mock results
   siteId: string;
   siteName: string;
   score: number;
   band: Band;
   explanation: string;
+  aiRecommendation: string | null; // AI prevention guidance, once generated
   updatedAt: string | null; // null until a score has been computed/persisted
 }
 
@@ -134,11 +137,13 @@ export default function PredictiveRiskPage() {
     // computed fresh but not persisted — they won't survive a page reload.
     setScores(
       res.results.map((r) => ({
+        id: null, // fresh compute — not persisted yet, so no AI recommendation/review controls
         siteId: r.siteId,
         siteName: r.siteName,
         score: r.rawScore,
         band: r.band,
         explanation: r.explanationText,
+        aiRecommendation: null,
         updatedAt: new Date().toISOString(),
       })),
     );
@@ -234,10 +239,24 @@ export default function PredictiveRiskPage() {
                   />
                   <div className="px-4 pb-4">
                     <p className="text-3xl font-bold text-slate-800 dark:text-slate-100">{s.score.toFixed(1)}</p>
-                    <p className="mt-1 flex items-start gap-1.5 text-sm text-slate-600 dark:text-slate-300">
-                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
-                      {s.explanation}
-                    </p>
+                    {s.id ? (
+                      // Persisted score → show the AI prevention recommendation (with the
+                      // templated explanation as the built-in fallback until one is generated),
+                      // plus manager Generate + EHS-lead Review controls.
+                      <SiteRiskRecommendationCard
+                        siteRiskScoreId={s.id}
+                        explanationText={s.explanation}
+                        aiRecommendationText={s.aiRecommendation}
+                        canManage={canRecalculate}
+                        reviewerName={user?.display_name ?? "EHS Lead"}
+                      />
+                    ) : (
+                      // Freshly computed (not yet persisted) → templated explanation only.
+                      <p className="mt-1 flex items-start gap-1.5 text-sm text-slate-600 dark:text-slate-300">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        {s.explanation}
+                      </p>
+                    )}
                     <p className="mt-2 text-xs text-slate-400">
                       {s.updatedAt ? `Updated overnight · ${new Date(s.updatedAt).toLocaleString()}` : "Updated overnight"}
                     </p>

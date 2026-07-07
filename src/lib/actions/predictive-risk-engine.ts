@@ -17,7 +17,14 @@
 // ============================================================
 
 import { z } from "zod";
-import { getEffectiveTenantId, getServerUser, getServerProfileId, isSuperadmin } from "@/lib/auth/session";
+import {
+  getEffectiveTenantId,
+  getServerUser,
+  getServerProfileId,
+  isSuperadmin,
+  assertTenantOwnership,
+  NIL_UUID,
+} from "@/lib/auth/session";
 import { canManage, type Role } from "@/lib/constants";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { MOCK_MODE } from "@/lib/env";
@@ -25,7 +32,7 @@ import { MOCK_PROFILES_ALL } from "@/lib/data/mock";
 import { getSites } from "@/lib/data/repo";
 import { getAudits, getChemicals, getTrainingRecords, getIncidents } from "@/lib/data/ehsRepo";
 import { computeSiteRiskScore } from "@/lib/predictive-risk-engine/scoring";
-// import { createSupabaseServerClient } from "@/lib/supabase/server"; // needed once site_risk_scores exists
+import { evaluateGatewayTrigger } from "./phase-3-ai-agent";
 
 const RecalculateInputSchema = z.object({
   siteId: z.string().uuid().optional(), // omit to recalculate every site for the caller's tenant
@@ -87,23 +94,43 @@ export async function recalculateSiteRiskScores(input: RecalculateInput) {
     computeSiteRiskScore(site.id, site.name, { audits, chemicals, trainingRecords, incidents }),
   );
 
-  // NOT executed until DRAFT_predictive_risk_engine.sql is approved and applied:
-  //
-  // const client = await createSupabaseServerClient();
-  // for (const r of results) {
-  //   await client.from("site_risk_scores").upsert({
-  //     tenant_id: tenantId,
-  //     site_id: r.siteId,
-  //     score_date: parsed.data.scoreDate ?? new Date().toISOString().slice(0, 10),
-  //     raw_score: r.rawScore,
-  //     band_key: r.band,
-  //     explanation_text: r.explanationText,
-  //     indicator_breakdown: r.indicatorBreakdown,
-  //   }, { onConflict: "site_id,score_date" });
-  // }
-  //
-  // No downstream alert, escalation, or AI Gateway call fires from this
-  // function in Phase 1 — it only computes and (once approved) persists scores.
+  // Persist scores. The service-role client bypasses RLS (site_risk_scores has
+  // no client insert policy by design), so tenant ownership is enforced HERE.
+  // Under MOCK_MODE createServiceRoleClient() returns null → we skip persistence
+  // and return the freshly computed results (shown on the dashboard but not
+  // durable across a reload), preserving the demo experience. Superadmins have
+  // no tenant of their own, so there's nothing for them to persist here.
+  const client = createServiceRoleClient();
+  if (client && tenantId !== NIL_UUID) {
+    await assertTenantOwnership(tenantId);
+    const scoreDate = parsed.data.scoreDate ?? new Date().toISOString().slice(0, 10);
+    const { error: upsertError } = await client.from("site_risk_scores").upsert(
+      results.map((r) => ({
+        tenant_id: tenantId,
+        site_id: r.siteId,
+        score_date: scoreDate,
+        raw_score: r.rawScore,
+        band_key: r.band,
+        explanation_text: r.explanationText,
+        indicator_breakdown: r.indicatorBreakdown,
+      })),
+      { onConflict: "site_id,score_date" },
+    );
+    if (upsertError) {
+      return { ok: false as const, error: "Scores were calculated but couldn't be saved. Please try again." };
+    }
+
+    // Phase 3 (observation-only): after persisting, check each site for a
+    // gateway trigger condition (band crossing / 2+ indicators degrading) and
+    // log it to ai_gateway_trigger_log. This NEVER sends an alert or escalation
+    // — that's Phase 4. Best-effort and non-fatal: a logging hiccup must not
+    // fail a recalculation.
+    try {
+      await Promise.all(results.map((r) => evaluateGatewayTrigger({ siteId: r.siteId })));
+    } catch {
+      // swallow — trigger logging is observational and must not break recalc
+    }
+  }
 
   return { ok: true as const, updated: results.length, results };
 }
@@ -219,16 +246,57 @@ export async function approveGoLiveStep(
   return { ok: true as const, status };
 }
 
-export async function getSiteRiskScores(_siteId?: string) {
-  // DRAFT — read-only fetch for the dashboard. Returns [] until
-  // site_risk_scores exists; once the migration is applied, scope by
-  // in_tenant(tenant_id) RLS (see DRAFT_predictive_risk_engine.sql) and
-  // optionally filter by site_id, ordered by score_date desc.
-  //
-  // const client = await createSupabaseServerClient();
-  // let query = client.from("site_risk_scores").select("*").order("score_date", { ascending: false });
-  // if (siteId) query = query.eq("site_id", siteId);
-  // const { data } = await query;
-  // return data ?? [];
-  return [];
+export interface SiteRiskScoreRow {
+  id: string; // site_risk_scores.id — needed to attach an AI recommendation/review
+  siteId: string;
+  siteName: string;
+  score: number;
+  band: string;
+  explanation: string;
+  aiRecommendation: string | null;
+  updatedAt: string | null;
+}
+
+// Read-only fetch for the dashboard: the LATEST persisted score per site,
+// scoped to the caller's tenant. Returns [] under MOCK_MODE (no Supabase) — the
+// page then shows freshly computed results from "Refresh risk scores" instead.
+export async function getSiteRiskScores(siteId?: string): Promise<SiteRiskScoreRow[]> {
+  const client = createServiceRoleClient();
+  if (!client) return [];
+
+  const tenantId = await getEffectiveTenantId();
+  if (tenantId === NIL_UUID) return [];
+
+  let query = client
+    .from("site_risk_scores")
+    .select("id, site_id, band_key, raw_score, explanation_text, ai_recommendation_text, score_date, created_at, sites(name)")
+    .eq("tenant_id", tenantId)
+    .order("score_date", { ascending: false })
+    .limit(500);
+  if (siteId) query = query.eq("site_id", siteId);
+
+  const { data, error } = await query;
+  if (error || !data) return [];
+
+  // Keep only the most recent score per site (rows are already score_date desc).
+  const seen = new Set<string>();
+  const rows: SiteRiskScoreRow[] = [];
+  for (const r of data) {
+    const sid = r.site_id as string;
+    if (seen.has(sid)) continue;
+    seen.add(sid);
+    const rel = (r as { sites?: { name?: string } | { name?: string }[] | null }).sites;
+    const name = Array.isArray(rel) ? rel[0]?.name : rel?.name;
+    rows.push({
+      id: r.id as string,
+      siteId: sid,
+      siteName: name ?? "Unknown site",
+      score: Number(r.raw_score),
+      band: r.band_key as string,
+      explanation: r.explanation_text as string,
+      aiRecommendation: (r.ai_recommendation_text as string | null) ?? null,
+      updatedAt: (r.created_at as string | null) ?? null,
+    });
+  }
+  return rows;
 }
