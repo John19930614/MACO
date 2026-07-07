@@ -10,6 +10,7 @@ import { AuthGuard } from "@/components/layout/AuthGuard";
 import { GuidedTour } from "@/components/tour/GuidedTour";
 import { getCapaActions, getRiskAssessments, getWorkspaceTasks, getIncidents } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId, getServerUser, getServerProfileId } from "@/lib/auth/session";
+import { getEscalationNavSummary } from "@/lib/actions/phase-4-action-response";
 import type { NotifItem } from "@/components/layout/NotificationsDropdown";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -19,11 +20,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     getServerProfileId(),
   ]);
 
-  const [capas, risks, tasks, incidents] = await Promise.all([
+  const [capas, risks, tasks, incidents, escalations] = await Promise.all([
     getCapaActions(effectiveTenantId),
     getRiskAssessments(effectiveTenantId),
     getWorkspaceTasks(profileId, effectiveTenantId),
     getIncidents(effectiveTenantId),
+    getEscalationNavSummary(),
   ]);
 
   const now = new Date();
@@ -87,7 +89,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       date:     r.review_date ?? r.created_at,
     }));
 
-  const notifItems: NotifItem[] = [...capaNotifs, ...incidentNotifs, ...riskNotifs];
+  // Phase 4: a CONFIRMED high-risk-site escalation is the in-app notification —
+  // there is no separate notifications table; the app shell is the delivery
+  // channel. Only appears after a manager explicitly clicked "notify the team".
+  const escalationNotifs: NotifItem[] = escalations.confirmed
+    .slice(0, 3)
+    .map((e) => ({
+      id:       `esc-${e.id}`,
+      type:     "risk" as const,
+      title:    `${e.siteName} — high-risk site (Red)`,
+      href:     "/risk-escalations",
+      tag:      "Action confirmed",
+      severity: "high" as const,
+      date:     e.notifiedAt,
+    }));
+
+  const notifItems: NotifItem[] = [...escalationNotifs, ...capaNotifs, ...incidentNotifs, ...riskNotifs];
   const notifCount = notifItems.length;
 
   return (
@@ -101,7 +118,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <CommandPalette />
           <div className="flex flex-1 overflow-hidden">
             <div className="hidden md:block print:hidden" data-tour="left-nav">
-              <LeftNav openCapas={openCapas} openRisks={openRisks} pendingTasks={pendingTasks} serverUser={serverUser} />
+              <LeftNav openCapas={openCapas} openRisks={openRisks} pendingTasks={pendingTasks} openEscalations={escalations.pending} serverUser={serverUser} />
             </div>
             <main id="main-content" className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <ModuleGateClient>
