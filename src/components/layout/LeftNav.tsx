@@ -111,6 +111,7 @@ const PREDICTIVE_RISK_NAV: NavSection[] = [
     group: "Predictive Risk",
     items: [
       { href: "/predictive-risk", label: "Predictive Risk",  description: "Site risk scores from leading indicators", icon: "📈" },
+      { href: "/risk-escalations", label: "Action Needed: High-Risk Sites", description: "Review & confirm alerts before anyone is notified", icon: "🚩" },
     ],
   },
 ];
@@ -161,6 +162,7 @@ const SA_NAV: NavSection[] = [
       { href: "/sa/standup",      label: "Agent Standup",            description: "Daily GUS × EHS agent meeting + gaps", icon: "🤝" },
       { href: "/sa/guardrails",  label: "Guardrails",              description: "AI autonomy & risk rules",      icon: "🛡" },
       { href: "/sa/predictive",  label: "Predictive Model",        description: "Predictive engine settings",    icon: "📈" },
+      { href: "/sa/risk-reliability", label: "Risk Score Reliability", description: "Is the risk model working well right now?", icon: "🩺" },
       { href: "/sa/imports",     label: "Data Imports",            description: "Bulk data ingestion",           icon: "📥" },
       { href: "/sa/analytics",   label: "Analytics & Insights",    description: "Platform-wide metrics",         icon: "📊" },
       { href: "/sa/support",     label: "Support & QA",            description: "Tickets & QA checks",          icon: "🛠" },
@@ -292,10 +294,11 @@ interface LeftNavProps {
   openCapas?: number;
   openRisks?: number;
   pendingTasks?: number;
+  openEscalations?: number;
   serverUser?: ServerUser | null;
 }
 
-export function LeftNav({ openCapas = 0, openRisks = 0, pendingTasks = 0, serverUser }: LeftNavProps) {
+export function LeftNav({ openCapas = 0, openRisks = 0, pendingTasks = 0, openEscalations = 0, serverUser }: LeftNavProps) {
   const { user } = useDemoUser();
   const pathname = usePathname();
   const allSections = getNav(user);
@@ -392,9 +395,10 @@ export function LeftNav({ openCapas = 0, openRisks = 0, pendingTasks = 0, server
                   {item.badge && (
                     <Badge text={item.badge} type={item.badgeType ?? "red"} />
                   )}
-                  {item.href === "/workspace"  && pendingTasks > 0  && <Badge text={String(pendingTasks)} />}
-                  {item.href === "/capa"       && openCapas > 0     && <Badge text={String(openCapas)} />}
-                  {item.href === "/risk"       && openRisks > 0     && <Badge text={String(openRisks)} />}
+                  {item.href === "/workspace"        && pendingTasks > 0   && <Badge text={String(pendingTasks)} />}
+                  {item.href === "/capa"             && openCapas > 0      && <Badge text={String(openCapas)} />}
+                  {item.href === "/risk"             && openRisks > 0      && <Badge text={String(openRisks)} />}
+                  {item.href === "/risk-escalations" && openEscalations > 0 && <Badge text={String(openEscalations)} />}
                 </Link>
               );
             })}
