@@ -352,6 +352,7 @@ export type CapaSourceType =
   | "legal_requirement"
   | "risk_assessment"
   | "ai_finding"
+  | "risk_score_escalation" // Phase 4: auto-drafted from a Red-band site_risk_scores row
   | "manual";
 
 export interface CapaAction {
@@ -374,6 +375,30 @@ export interface CapaAction {
   closed_with_evidence: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// ── Predictive Risk Engine — Phase 4: Action & Response ───────────────────────
+// A human-in-the-loop escalation created when a site crosses into the Red band.
+// Nothing is notified until an EHS manager confirms (notification_sent_at). See
+// supabase/migrations/20260707060000_risk_escalations.sql and
+// src/lib/actions/phase-4-action-response.ts.
+
+export type EscalationStatus = "needs_review" | "confirmed" | "dismissed";
+
+export interface RiskEscalation {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  site_risk_score_id: string;
+  status: EscalationStatus;
+  capa_record_id: string | null;
+  reason_plain_text: string;
+  recipients: string[];
+  created_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  notification_sent_at: string | null;
+  notified_recipient: string | null;
 }
 
 // ── Training ──────────────────────────────────────────────────────────────────
