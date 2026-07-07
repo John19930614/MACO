@@ -1,12 +1,62 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// ── Live-mode mocks for the server-action tests ─────────────────────────────
+// Force live mode (so role resolution goes through getServerUser, not mock
+// profiles) and stub session + the service-role Supabase client. The pure
+// computeSiteRiskScore tests below don't touch any of this.
+vi.mock("@/lib/env", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/env")>()),
+  MOCK_MODE: false,
+}));
+
+const session = vi.hoisted(() => ({
+  getServerUser: vi.fn(),
+  getServerProfileId: vi.fn(async () => "approver-1"),
+  getEffectiveTenantId: vi.fn(async () => "tenant-A"),
+  isSuperadmin: vi.fn(async () => false),
+}));
+vi.mock("@/lib/auth/session", () => session);
+
+// In-memory stand-in for public.predictive_risk_go_live, keyed by tenant_id.
+// Mirrors upsert(onConflict) merge + partial update semantics.
+const db = vi.hoisted(() => ({ rows: new Map<string, Record<string, unknown>>() }));
+vi.mock("@/lib/supabase/server", () => ({
+  createServiceRoleClient: () => ({
+    from() {
+      return {
+        upsert(payload: Record<string, unknown>) {
+          const key = payload.tenant_id as string;
+          db.rows.set(key, { status: "preview", ...(db.rows.get(key) ?? {}), ...payload });
+          return Promise.resolve({ error: null });
+        },
+        select() {
+          return {
+            eq(_col: string, val: string) {
+              return { maybeSingle: () => Promise.resolve({ data: db.rows.get(val) ?? null, error: null }) };
+            },
+          };
+        },
+        update(patch: Record<string, unknown>) {
+          return {
+            eq(_col: string, val: string) {
+              const existing = db.rows.get(val);
+              if (existing) db.rows.set(val, { ...existing, ...patch });
+              return Promise.resolve({ error: null });
+            },
+          };
+        },
+      };
+    },
+  }),
+}));
+
 import { computeSiteRiskScore } from "@/lib/predictive-risk-engine/scoring";
-import { recalculateSiteRiskScores } from "@/lib/actions/predictive-risk-engine";
+import { recalculateSiteRiskScores, approveGoLiveStep } from "@/lib/actions/predictive-risk-engine";
 import type { Audit, Chemical, TrainingRecord, Incident } from "@/lib/types";
 
-// DRAFT test scaffold for the Phase 1 Predictive Risk Engine. computeSiteRiskScore
-// is pure (no Supabase/auth), so it's exercised directly with fixtures below.
-// The vitest config only picks up test/**/*.test.ts — a file under
-// src/lib/**/__tests__ would silently never run, so this lives here instead.
+// computeSiteRiskScore is pure (no Supabase/auth), so it's exercised directly
+// with fixtures below. The vitest config only picks up test/**/*.test.ts — a
+// file under src/lib/**/__tests__ would silently never run, so this lives here.
 
 const SITE = "site-1";
 const OTHER_SITE = "site-2";
@@ -159,24 +209,89 @@ describe("computeSiteRiskScore", () => {
 });
 
 describe("recalculateSiteRiskScores (role gating + input validation)", () => {
-  it.skip("rejects recalculation request with an invalid siteId (needs a mocked session — fill in with test doubles for getServerUser/getEffectiveTenantId)", async () => {
+  beforeEach(() => {
+    session.getServerUser.mockResolvedValue({ role: "ehs_manager" });
+    session.isSuperadmin.mockResolvedValue(false);
+  });
+
+  it("rejects recalculation request with an invalid siteId", async () => {
+    // Input validation runs before role/data resolution, so this is caught
+    // regardless of who's calling.
     const res = await recalculateSiteRiskScores({ siteId: "not-a-uuid" } as never);
     expect(res.ok).toBe(false);
   });
 
-  it.skip("blocks non-admin/non-EHS-manager roles from triggering recalculation (needs a mocked session)", async () => {
-    // Requires stubbing getServerUser() to return a viewer/field_officer role
-    // and asserting recalculateSiteRiskScores(...) returns { ok: false }.
+  it("blocks non-manager roles from triggering recalculation (returns { ok: false }, no throw)", async () => {
+    session.getServerUser.mockResolvedValue({ role: "field_officer" });
+    const res = await recalculateSiteRiskScores({});
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toMatch(/EHS manager or admin/i);
+  });
+});
+
+describe("approveGoLiveStep (two-person sign-off gate)", () => {
+  beforeEach(() => {
+    db.rows.clear();
+    session.getServerUser.mockResolvedValue({ role: "ehs_manager" });
+    session.getEffectiveTenantId.mockResolvedValue("tenant-A");
+    session.getServerProfileId.mockResolvedValue("approver-1");
+    session.isSuperadmin.mockResolvedValue(false);
+  });
+
+  it("flips status to 'live' only once BOTH ehs_lead and superadmin approvals are recorded", async () => {
+    // Step 1: EHS lead (tenant manager) approves — still Preview.
+    const r1 = await approveGoLiveStep("ehs_lead");
+    expect(r1.ok).toBe(true);
+    if (r1.ok) expect(r1.status).toBe("preview");
+
+    // Step 2: superadmin approves the same tenant — now Live.
+    session.isSuperadmin.mockResolvedValue(true);
+    const r2 = await approveGoLiveStep("superadmin", "tenant-A");
+    expect(r2.ok).toBe(true);
+    if (r2.ok) expect(r2.status).toBe("live");
+    expect(db.rows.get("tenant-A")?.status).toBe("live");
+  });
+
+  it("does not flip to 'live' on the EHS lead approval alone", async () => {
+    const r1 = await approveGoLiveStep("ehs_lead");
+    expect(r1.ok).toBe(true);
+    expect(db.rows.get("tenant-A")?.status).toBe("preview");
+  });
+
+  it("rejects a non-manager attempting the EHS lead step", async () => {
+    session.getServerUser.mockResolvedValue({ role: "viewer" });
+    const res = await approveGoLiveStep("ehs_lead");
+    expect(res.ok).toBe(false);
+  });
+
+  it("rejects a non-superadmin attempting the superadmin step (and vice versa)", async () => {
+    // A tenant manager who is not a superadmin cannot complete Step 2.
+    session.isSuperadmin.mockResolvedValue(false);
+    expect((await approveGoLiveStep("superadmin", "tenant-A")).ok).toBe(false);
+
+    // A superadmin must still name the tenant they're approving.
+    session.isSuperadmin.mockResolvedValue(true);
+    expect((await approveGoLiveStep("superadmin")).ok).toBe(false);
+  });
+});
+
+describe("statistical validation (deferred — needs real data + EHS sign-off)", () => {
+  it.skip("validates correlation between historical incidents and predicted band", () => {
+    // Compute correlation coefficient + false-positive rate against historical
+    // incident data. Must be reviewed by someone who understands both the data
+    // and the real-world cost of a false alarm before any alerting is enabled
+    // in a later phase. See docs/predictive-risk-engine.md § Statistical validation.
     expect(true).toBe(true);
   });
 });
 
-describe("statistical validation (deferred)", () => {
-  it.skip("validates correlation between historical incidents and predicted band (needs real data + EHS sign-off)", () => {
-    // Statistical validation: compute correlation coefficient + false-positive
-    // rate against historical incident data. Must be reviewed by someone who
-    // understands both the data and the real-world cost of a false alarm
-    // before any alerting is enabled in a later phase.
+describe("RLS tenant isolation (verified manually against staging — not a unit test)", () => {
+  it.skip("denies a user in tenant A reading tenant B's site_risk_scores", () => {
+    // Postgres RLS (in_tenant()) can only be exercised against a live database
+    // with two seeded tenants and real auth JWTs — it can't be asserted in this
+    // node/mock unit context. This is checklist item 5 in
+    // docs/predictive-risk-engine.md and is verified manually on the staging
+    // branch (dashboard + a raw Supabase client call from each tenant).
     expect(true).toBe(true);
   });
 });

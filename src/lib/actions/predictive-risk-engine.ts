@@ -17,8 +17,9 @@
 // ============================================================
 
 import { z } from "zod";
-import { getEffectiveTenantId, getServerUser, getServerProfileId } from "@/lib/auth/session";
+import { getEffectiveTenantId, getServerUser, getServerProfileId, isSuperadmin } from "@/lib/auth/session";
 import { canManage, type Role } from "@/lib/constants";
+import { createServiceRoleClient } from "@/lib/supabase/server";
 import { MOCK_MODE } from "@/lib/env";
 import { MOCK_PROFILES_ALL } from "@/lib/data/mock";
 import { getSites } from "@/lib/data/repo";
@@ -105,6 +106,117 @@ export async function recalculateSiteRiskScores(input: RecalculateInput) {
   // function in Phase 1 — it only computes and (once approved) persists scores.
 
   return { ok: true as const, updated: results.length, results };
+}
+
+// ── Go-live gate (Preview mode vs Live) ─────────────────────────────────────
+// Backs the Preview/Live badge, the one-time trust banner, and the two-person
+// sign-off panel. State lives in public.predictive_risk_go_live (one row per
+// tenant, see 20260707040000_predictive_risk_go_live_signoff.sql). Reads/writes
+// go through the service-role client and enforce role/tenant in this layer —
+// mirroring how site_risk_scores writes work — because a Reliance superadmin
+// (tenant_id IS NULL) can't satisfy the table's in_tenant() RLS policy.
+
+export type GoLiveStatus = {
+  status: "preview" | "live";
+  ehs_lead_approved_at: string | null;
+  superadmin_approved_at: string | null;
+};
+
+const DEFAULT_GO_LIVE: GoLiveStatus = {
+  status: "preview",
+  ehs_lead_approved_at: null,
+  superadmin_approved_at: null,
+};
+
+export async function getGoLiveStatus() {
+  // MOCK_MODE has no Supabase — the dashboard renders in Preview and the
+  // sign-off panel is informational only (approveGoLiveStep is a no-op there).
+  if (MOCK_MODE) {
+    return { ok: true as const, data: DEFAULT_GO_LIVE };
+  }
+
+  const tenantId = await getEffectiveTenantId();
+  const client = createServiceRoleClient();
+  if (!client) return { ok: false as const, error: "Couldn't load go-live status. Please try again." };
+  const { data, error } = await client
+    .from("predictive_risk_go_live")
+    .select("status, ehs_lead_approved_at, superadmin_approved_at")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) {
+    return { ok: false as const, error: "Couldn't load go-live status. Please try again." };
+  }
+  return { ok: true as const, data: (data as GoLiveStatus | null) ?? DEFAULT_GO_LIVE };
+}
+
+// Records one of the two required approvals, then flips status to 'live' only
+// once BOTH are present. `tenantId` is honored ONLY for the superadmin step
+// (a superadmin has no tenant of their own); the ehs_lead step always derives
+// the tenant from the caller's session and never trusts a client-supplied id.
+export async function approveGoLiveStep(
+  step: "ehs_lead" | "superadmin",
+  tenantId?: string,
+) {
+  if (MOCK_MODE) {
+    return {
+      ok: false as const,
+      error: "Sign-off runs on a connected staging/live environment, not in demo mode.",
+    };
+  }
+
+  const approverId = await getServerProfileId();
+
+  let targetTenantId: string;
+  if (step === "superadmin") {
+    if (!(await isSuperadmin())) {
+      return { ok: false as const, error: "Only a Reliance superadmin can complete this step." };
+    }
+    if (!tenantId) {
+      return { ok: false as const, error: "Select which tenant to approve before signing off." };
+    }
+    targetTenantId = tenantId; // honored because isSuperadmin() passed above
+  } else {
+    const user = await getServerUser();
+    const role = (user?.role as Role) ?? null;
+    if (!role || !canManage(role)) {
+      return { ok: false as const, error: "Only an EHS lead (manager) can complete this step." };
+    }
+    targetTenantId = await getEffectiveTenantId();
+  }
+
+  const client = createServiceRoleClient();
+  if (!client) return { ok: false as const, error: "Couldn't save approval. Please try again." };
+  const nowIso = new Date().toISOString();
+  const approvalCols =
+    step === "ehs_lead"
+      ? { ehs_lead_approved_at: nowIso, ehs_lead_approved_by: approverId }
+      : { superadmin_approved_at: nowIso, superadmin_approved_by: approverId };
+
+  const { error: upsertError } = await client
+    .from("predictive_risk_go_live")
+    .upsert({ tenant_id: targetTenantId, updated_at: nowIso, ...approvalCols }, { onConflict: "tenant_id" });
+
+  if (upsertError) {
+    return { ok: false as const, error: "Couldn't save approval. Please try again." };
+  }
+
+  const { data: row } = await client
+    .from("predictive_risk_go_live")
+    .select("ehs_lead_approved_at, superadmin_approved_at, status")
+    .eq("tenant_id", targetTenantId)
+    .maybeSingle();
+
+  let status: "preview" | "live" = (row?.status as "preview" | "live") ?? "preview";
+  if (row?.ehs_lead_approved_at && row?.superadmin_approved_at && status !== "live") {
+    await client
+      .from("predictive_risk_go_live")
+      .update({ status: "live", updated_at: new Date().toISOString() })
+      .eq("tenant_id", targetTenantId);
+    status = "live";
+  }
+
+  return { ok: true as const, status };
 }
 
 export async function getSiteRiskScores(_siteId?: string) {
