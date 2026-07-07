@@ -9,6 +9,7 @@
  * Everything here is inert make-believe — it triggers no side effects.
  */
 import { getDevAgents } from "./repo";
+import { STAT_CARD_WINDOW_LABELS } from "@/lib/devcommand/stat-window-labels";
 import type {
   DevAgent, DevTask, DevAgentRun, DevAgentMessage, DevArtifact, DevFileChangePlan,
   DevCodeReview, DevTestResult, DevSecurityReview, DevExperienceReview, DevReviewGate,
@@ -205,16 +206,16 @@ export function dashboardMetrics(live?: Partial<Record<string, number>>): Dashbo
   const auditActivity = SAMPLE_AUDIT.filter((a) => isToday(a.created_at)).length;
 
   return [
-    { key: "open_tasks", label: "Open tasks", value: openTasks, hint: "Tasks still in progress", tone: "info", href: "/admin/dev-command/tasks" },
-    { key: "need_approval", label: "Need your approval", value: needApproval, hint: "Waiting on your yes/no", tone: needApproval ? "violet" : "neutral", href: "/admin/dev-command/approvals" },
-    { key: "runs_today", label: "Active agents", value: runsToday, hint: "AI agents currently working", tone: "neutral", href: "/admin/dev-command/audit-log" },
-    { key: "failed_runs", label: "Failed reviews", value: failedRuns, hint: "Agent runs that errored", tone: failedRuns ? "danger" : "neutral", href: "/admin/dev-command/audit-log" },
-    { key: "security_warnings", label: "Security blockers", value: securityWarnings, hint: "Critical findings blocking release", tone: securityWarnings ? "danger" : "success", href: "/admin/dev-command/tasks" },
-    { key: "xp_failures", label: "Experience issues", value: xpFailures, hint: "Ease-of-use problems found", tone: xpFailures ? "warn" : "success", href: "/admin/dev-command/tasks" },
-    { key: "draft_plans", label: "Draft artifacts", value: draftPlans, hint: "Code drafts awaiting your review", tone: draftPlans ? "info" : "neutral", href: "/admin/dev-command/tasks" },
-    { key: "active_prs", label: "Open pull requests", value: activePRs, hint: "PRs open on GitHub", tone: "info", href: "/admin/dev-command/tasks" },
-    { key: "recent_deploys", label: "Deployments", value: recentDeploys, hint: "Preview and production releases", tone: "neutral", href: "/admin/dev-command/tasks" },
-    { key: "audit_today", label: "Audit entries today", value: auditActivity, hint: "Actions logged today", tone: "neutral", href: "/admin/dev-command/audit-log" },
+    { key: "open_tasks", label: "Open tasks", value: openTasks, hint: STAT_CARD_WINDOW_LABELS.open_tasks, tone: "info", href: "/admin/dev-command/tasks" },
+    { key: "need_approval", label: "Need your approval", value: needApproval, hint: STAT_CARD_WINDOW_LABELS.need_approval, tone: needApproval ? "violet" : "neutral", href: "/admin/dev-command/approvals" },
+    { key: "runs_today", label: "Active agents", value: runsToday, hint: STAT_CARD_WINDOW_LABELS.runs_today, tone: "neutral", href: "/admin/dev-command/audit-log" },
+    { key: "failed_runs", label: "Failed reviews", value: failedRuns, hint: STAT_CARD_WINDOW_LABELS.failed_runs, tone: failedRuns ? "danger" : "neutral", href: "/admin/dev-command/audit-log" },
+    { key: "security_warnings", label: "Security blockers", value: securityWarnings, hint: STAT_CARD_WINDOW_LABELS.security_warnings, tone: securityWarnings ? "danger" : "success", href: "/admin/dev-command/tasks" },
+    { key: "xp_failures", label: "Experience issues", value: xpFailures, hint: STAT_CARD_WINDOW_LABELS.xp_failures, tone: xpFailures ? "warn" : "success", href: "/admin/dev-command/tasks" },
+    { key: "draft_plans", label: "Draft artifacts", value: draftPlans, hint: STAT_CARD_WINDOW_LABELS.draft_plans, tone: draftPlans ? "info" : "neutral", href: "/admin/dev-command/tasks" },
+    { key: "active_prs", label: "Open pull requests", value: activePRs, hint: STAT_CARD_WINDOW_LABELS.active_prs, tone: "info", href: "/admin/dev-command/tasks" },
+    { key: "recent_deploys", label: "Deployments", value: recentDeploys, hint: STAT_CARD_WINDOW_LABELS.recent_deploys, tone: "neutral", href: "/admin/dev-command/tasks" },
+    { key: "audit_today", label: "Audit entries today", value: auditActivity, hint: STAT_CARD_WINDOW_LABELS.audit_today, tone: "neutral", href: "/admin/dev-command/audit-log" },
   ];
 }
 
