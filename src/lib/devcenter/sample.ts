@@ -10,6 +10,7 @@
  */
 import { getDevAgents } from "./repo";
 import { buildTaskFilterHref, type TaskStatusFilterKey } from "./task-status-filters";
+import { reorderStatCards } from "./stat-card-order";
 import type {
   DevAgent, DevTask, DevAgentRun, DevAgentMessage, DevArtifact, DevFileChangePlan,
   DevCodeReview, DevTestResult, DevSecurityReview, DevExperienceReview, DevReviewGate,
@@ -205,7 +206,10 @@ export function dashboardMetrics(live?: Partial<Record<string, number>>): Dashbo
   const recentDeploys = SAMPLE_DEPLOYMENTS.length;
   const auditActivity = SAMPLE_AUDIT.filter((a) => isToday(a.created_at)).length;
 
-  return [
+  // Risk/blocker cards (security_warnings, failed_runs, xp_failures) are
+  // pinned first by reorderStatCards regardless of declaration order below —
+  // see ./stat-card-order.
+  const rawCards: DashboardMetric[] = [
     { key: "open_tasks", label: "Open tasks", value: openTasks, hint: "Tasks still in progress", tone: "info", href: "/admin/dev-command/tasks" },
     { key: "need_approval", label: "Need your approval", value: needApproval, hint: "Waiting on your yes/no", tone: needApproval ? "violet" : "neutral", href: "/admin/dev-command/approvals" },
     { key: "runs_today", label: "Active agents", value: runsToday, hint: "AI agents currently working", tone: "neutral", href: "/admin/dev-command/audit-log" },
@@ -217,6 +221,8 @@ export function dashboardMetrics(live?: Partial<Record<string, number>>): Dashbo
     { key: "recent_deploys", label: "Deployments", value: recentDeploys, hint: "Preview and production releases", tone: "neutral", href: "/admin/dev-command/tasks" },
     { key: "audit_today", label: "Audit entries today", value: auditActivity, hint: "Actions logged today", tone: "neutral", href: "/admin/dev-command/audit-log" },
   ];
+
+  return reorderStatCards(rawCards);
 }
 
 /**
