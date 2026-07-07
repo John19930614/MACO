@@ -1,86 +1,75 @@
-# Predictive Risk Engine (Phase 1) — DRAFT, not yet live
+# Predictive Risk Engine — Go-Live Checklist
 
-**Status: draft for EHS-lead / superadmin review.** Nothing described below is
-running in production yet — the migration is unapplied and the server action
-is not wired to any button or scheduler until this is approved.
+**Status: Phase 1 go-live gate.** The dashboard (`/predictive-risk`) stays in
+**Preview mode** for every tenant until the two-person sign-off below is
+complete and the migrations are applied to staging. Production apply happens
+only after all 6 engineering items are checked and both approvals are recorded.
 
-## What this is
+## For safety managers (plain English)
 
-A dashboard (`/predictive-risk`, nav label "Predictive Risk") that shows each
-site's current safety risk as a numeric score and a color band (🟢 Green /
-🟡 Amber / 🟠 Orange / 🔴 Red), based on data already in SafetyIQ:
+When this dashboard says **Live**, the risk scores you see are calculated from
+your real audits, chemical inventory, training records, and incidents —
+refreshed **overnight, not in real time**. While it says **Preview mode**, treat
+the numbers as a preview only; they are not yet confirmed for real decisions.
 
-- Overdue inspections (`audits` — scheduled/in-progress and past due)
-- Expired chemical SDS (`chemical_inventory.sds_expiry` in the past)
-- Missing/overdue employee training (`training_records.expiry_date` in the past)
-- Recent open incidents (last 90 days, not near-misses, not closed)
-- Recent open near-misses (last 90 days, not closed)
+If go-live is ever paused or a migration step is rejected during setup, the
+dashboard simply stays in **Preview mode** — nothing breaks, no data is lost,
+and your team is not affected.
 
-This is **not** the same thing as **Training & Competency** (`/training`,
-employee course completions) — this is a **Risk Model** that looks across
-several safety signals to estimate how much attention a site needs. Every
-label in the UI and nav says "Predictive Risk Engine" / "Risk Model," never
-"training a model," specifically to avoid that confusion.
+## What the colors mean
 
-## How often does it update?
-
-Overnight, once per day, via a scheduled batch job — **not live**. The
-dashboard shows "Updated overnight" next to each score's timestamp. An EHS
-manager or admin can also click **Recalculate now** to refresh on demand; that
-button is hidden from everyone else.
-
-## What do the colors mean?
+Every badge shows an icon **and** a word (never color alone), so it stays
+legible under color-blindness.
 
 | Band | Meaning | Default cutoff (raw score) |
 |------|---------|------|
-| 🟢 Green | Low Risk | 0 – 2.99 |
+| 🟢 Green | Low risk | 0 – 2.99 |
 | 🟡 Amber | Watch | 3 – 5.99 |
 | 🟠 Orange | Elevated | 6 – 8.49 |
-| 🔴 Red | Act Now | 8.5+ |
+| 🔴 Red | High risk · Act Now | 8.5+ |
 
-These cutoffs, and the weight given to each indicator, are **placeholders**
-seeded by the draft migration — they have not been reviewed by an EHS/safety
-manager yet. Once reviewed, they can be adjusted directly in the
-`risk_score_bands` / `leading_indicators` tables (admin-editable) without a
-code deploy. Requesting a threshold change is as simple as an admin updating
-the relevant row — see an admin if a band doesn't match your real-world
-judgment for a site.
+These cutoffs and the per-indicator weights are **seed placeholders** until an
+EHS/safety manager reviews them (checklist item 1). After go-live they can be
+tuned directly in the `risk_score_bands` / `leading_indicators` tables
+(admin-editable) with no code deploy.
 
-## What happens when a site is flagged high-risk?
+## Two-person sign-off (who does what)
 
-In this first release: **nothing happens automatically.** The score and a
-plain-language explanation (e.g. "Risk rose because 3 inspections are overdue
-and 2 SDS have expired") are shown on the dashboard. A human decides whether
-to act, escalate, or notify someone.
+1. **EHS lead** (a tenant manager — `safety_manager` / `ehs_manager` / `admin`)
+   reviews the seeded weights/cutoffs and the backfilled scores for real sites,
+   then clicks **Approve** on Step 1 of the dashboard's sign-off panel.
+2. **Superadmin** (a Reliance platform superadmin — `profiles.tenant_id IS NULL`)
+   confirms the migration applied cleanly to staging and that role/RLS checks
+   pass, then clicks **Approve** on Step 2.
+3. Once **both** approvals are recorded, the dashboard automatically flips to
+   **Live** for that tenant and shows the trust banner once.
 
-Automatic alerts, paging, and AI-agent-triggered actions are **intentionally
-not part of this phase** — they are deferred to a later phase and require a
-separate sign-off from an EHS lead, including a statistical review of
-false-positive rates, before being turned on.
+> Note: there is no `superadmin` *role* in this platform — a superadmin is a
+> profile with no tenant. Because of that, the two approvers are genuinely
+> distinct parties, and the superadmin approval is enforced by `isSuperadmin()`
+> in `approveGoLiveStep()`, not by a role string.
 
-## What's not in this release
+## Engineering checklist (internal — do not surface to end users)
 
-- No model-health/monitoring screen (planned for a later phase)
-- No automatic retraining loop
-- No auto-escalation or paging
-- No AI Gateway calls of any kind from this code path
-- No changes to production data or deploys without explicit human approval
+- [ ] 1. EHS/safety manager reviewed seeded `leading_indicators` weights and `risk_score_bands` cutoffs for real-world validity, and filled the `SEED VALUES` sign-off comment in the migration. Owner: _____ Date: _____
+- [ ] 2. Both migrations (`20260707030000_predictive_risk_engine.sql`, `20260707040000_predictive_risk_go_live_signoff.sql`) applied to a preview/staging Supabase branch — never directly to prod. Owner: _____ Date: _____
+- [ ] 3. Backfilled and sanity-checked scores for at least 5 real sites with an EHS manager ("does Red actually mean act this week here?"). Owner: _____ Date: _____
+- [ ] 4. Verified role gating — a non-manager cannot see "Refresh risk scores" and `recalculateSiteRiskScores()` returns `{ ok: false }` (not a throw) when called directly. Owner: _____ Date: _____
+- [ ] 5. Confirmed RLS scopes `site_risk_scores` and `predictive_risk_go_live` to the caller's own tenant (cross-tenant read denied). Owner: _____ Date: _____
+- [ ] 6. Confirmed the dashboard always shows "Updated overnight — not real-time" in both states and never implies live data; band badges use icon+word, checked with a color-blindness simulator (Chrome DevTools vision-deficiency emulation or Coblis). Owner: _____ Date: _____
 
-## Before this can go live
+## Statistical validation (deferred to a later phase)
 
-1. An EHS/safety manager reviews the seeded indicator weights and band
-   cutoffs in `supabase/migrations/DRAFT_predictive_risk_engine.sql` and
-   confirms they reflect real-world judgment.
-2. The migration runs against a preview/staging Supabase branch first — never
-   directly against production.
-3. Scores are backfilled and sanity-checked for at least 5 real sites by an
-   EHS manager ("does Red actually mean act this week here?").
-4. The statistical validation test in
-   `test/predictive-risk-engine.test.ts` (currently `it.skip`) is completed
-   with real historical incident data and reviewed for an acceptable
-   false-positive rate before anyone treats a score as "validated."
-5. Role gating is manually verified: a non-admin/non-EHS-manager account
-   cannot see the "Recalculate now" button and cannot call the server action
-   directly.
-6. RLS is confirmed to correctly scope `site_risk_scores` to a user's own
-   tenant (cross-tenant access denied).
+Correlation of predicted bands against historical incidents, plus a
+false-positive-rate review, is **not** part of this gate. The corresponding
+`it.skip` test in `test/predictive-risk-engine.test.ts` stays skipped until real
+historical data and an explicit EHS sign-off exist. No alerting/escalation is
+turned on in Phase 1, so a wrong band has no automated consequence yet.
+
+## Rollback
+
+If the staging migration fails or is rejected, or either sign-off is not
+completed: the dashboard **stays in Preview mode**. No production impact, no data
+loss — Preview is the safe default. Re-run the migration after fixes and restart
+the checklist from item 2. The go-live flip is fully reversible by setting
+`predictive_risk_go_live.status` back to `'preview'` for the tenant.

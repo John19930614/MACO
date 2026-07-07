@@ -1,8 +1,20 @@
 -- ============================================================
--- DRAFT — NOT APPLIED. Requires explicit EHS-lead/superadmin approval
--- before running against ANY environment (preview, staging, or prod).
--- Feature: Predictive Risk Engine (Phase 1 — data foundation + scoring).
+-- Predictive Risk Engine (Phase 1 — data foundation + scoring).
+-- Renamed from DRAFT_predictive_risk_engine.sql on 2026-07-07 as part of the
+-- go-live gate (docs/predictive-risk-engine.md). STAGING/PREVIEW ONLY until all
+-- 6 checklist items are signed off — do NOT apply to production directly. The
+-- production apply happens only after both sign-offs are recorded in
+-- public.predictive_risk_go_live.
 -- Phase 1 ONLY: no AI Gateway wiring, no auto-escalation, no retraining loop.
+--
+-- RLS policy names below (grep targets for the manual RLS verification step):
+--   tenant_read_site_risk_scores        (select on site_risk_scores, in_tenant)
+--   admin_manage_leading_indicators     (all on leading_indicators)
+--   admin_manage_risk_score_bands       (all on risk_score_bands)
+--   authenticated_read_leading_indicators / authenticated_read_risk_score_bands
+-- leading_indicators + risk_score_bands are platform-wide reference data by
+-- design (admin/ehs_manager editable, all-authenticated readable) — intentionally
+-- NOT tenant-scoped. Only site_risk_scores carries per-tenant rows.
 -- ============================================================
 --
 -- This schema deliberately reuses tenant_id/site_id — the platform's actual
@@ -89,6 +101,8 @@ create policy authenticated_read_risk_score_bands on public.risk_score_bands
 
 -- Seed default indicators. Weights are PLACEHOLDERS — must be reviewed and
 -- tuned by an EHS lead against real site history before go-live.
+-- SEED VALUES: reviewed and approved by <EHS manager name> on <date> for pilot tenant <tenant_id>
+-- (Fill in at checklist item 1. Until filled, treat these weights as unreviewed.)
 insert into public.leading_indicators (key, label, description, weight) values
   ('overdue_inspection', 'Overdue Inspections',        'Scheduled audit/inspection past its scheduled date and not completed', 2.0),
   ('expired_sds',        'Expired SDS',                'Chemical Safety Data Sheet review date has passed',                    1.5),
@@ -99,6 +113,8 @@ on conflict (key) do nothing;
 
 -- Seed default bands. Cutoffs are PLACEHOLDERS — require sign-off from an
 -- actual EHS/safety manager, not just a statistical default.
+-- SEED VALUES: reviewed and approved by <EHS manager name> on <date> for pilot tenant <tenant_id>
+-- (Fill in at checklist item 1. Until filled, treat these cutoffs as unreviewed.)
 insert into public.risk_score_bands (band_key, label, min_score, max_score, color_hex) values
   ('green',  'Low Risk',  0,   2.99, '#2E7D32'),
   ('amber',  'Watch',     3,   5.99, '#F9A825'),
