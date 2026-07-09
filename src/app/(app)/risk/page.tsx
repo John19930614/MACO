@@ -10,6 +10,7 @@ import { ShieldAlert } from "lucide-react";
 import { AddRiskButton } from "./AddRiskButton";
 import { RiskExportButton } from "./RiskExportButton";
 import { RiskDashboard } from "./RiskDashboard";
+import { RiskViewTabs } from "./RiskViewTabs";
 
 function riskLevelOrder(level: string): number {
   return level === "extreme" ? 4 : level === "high" ? 3 : level === "medium" ? 2 : 1;
@@ -91,7 +92,7 @@ export default async function RiskPage() {
             description="Add your first risk assessment with the button above. SafetyIQ scores likelihood × consequence, tracks residual risk after controls, and links high risks to CAPAs."
           />
         ) : (
-          <>
+          <RiskViewTabs assessments={assessments}>
 
         {/* Analytics strip */}
         <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -200,7 +201,7 @@ export default async function RiskPage() {
           profiles={profiles}
           latestRun={latestRun}
         />
-          </>
+          </RiskViewTabs>
         )}
       </div>
     </div>
