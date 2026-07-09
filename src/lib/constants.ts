@@ -22,12 +22,16 @@ export const SEVERITY_META: Record<
 export const RISK_LEVELS = ["negligible", "low", "medium", "high", "extreme"] as const;
 export type RiskLevel = (typeof RISK_LEVELS)[number];
 
-export const RISK_LEVEL_META: Record<RiskLevel, { label: string; color: string; bg: string; action: string }> = {
-  negligible: { label: "Negligible", color: "#22c55e", bg: "bg-emerald-100", action: "No action required"                  },
-  low:        { label: "Low",        color: "#86efac", bg: "bg-green-100",   action: "Monitor and review periodically"      },
-  medium:     { label: "Medium",     color: "#f59e0b", bg: "bg-amber-100",   action: "Action required within 30 days"       },
-  high:       { label: "High",       color: "#ef4444", bg: "bg-red-100",     action: "Urgent action required within 7 days" },
-  extreme:    { label: "Extreme",    color: "#7f1d1d", bg: "bg-red-900",     action: "STOP — immediate action required"     },
+// `bgColor` is a plain hex fill for direct inline `style={{ backgroundColor }}`
+// use (e.g. the Risk Matrix cells) where a Tailwind class name is not usable.
+// Green = low, amber = medium, red = high, dark red = extreme — matching the
+// plain-language legend shown across the app.
+export const RISK_LEVEL_META: Record<RiskLevel, { label: string; color: string; bg: string; bgColor: string; action: string }> = {
+  negligible: { label: "Negligible", color: "#22c55e", bg: "bg-emerald-100", bgColor: "#dcfce7", action: "No action required"                  },
+  low:        { label: "Low",        color: "#86efac", bg: "bg-green-100",   bgColor: "#bbf7d0", action: "Monitor and review periodically"      },
+  medium:     { label: "Medium",     color: "#f59e0b", bg: "bg-amber-100",   bgColor: "#fde68a", action: "Action required within 30 days"       },
+  high:       { label: "High",       color: "#ef4444", bg: "bg-red-100",     bgColor: "#fca5a5", action: "Urgent action required within 7 days" },
+  extreme:    { label: "Extreme",    color: "#7f1d1d", bg: "bg-red-900",     bgColor: "#7f1d1d", action: "STOP — immediate action required"     },
 };
 
 export function riskLevelFromScore(score: number): RiskLevel {
