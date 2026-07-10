@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { summarizeHierarchy, type HierarchyRow } from "@/lib/waste/hierarchy";
 import type { GeneratorCategory } from "@/lib/waste/generator-category";
 import { HazardousWasteGenerator, type ProgramRow, type SiteOption } from "./HazardousWasteGenerator";
+import { WasteModuleTabs } from "../WasteModuleTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +86,7 @@ export default async function WasteCompliancePage() {
         title="Hazardous Waste & Minimization"
         subtitle="Track your site's EPA generator status and waste-reduction programs in one place."
       />
+      <WasteModuleTabs active="compliance" />
       <div className="iq-scroll flex-1 overflow-y-auto p-6">
         <HazardousWasteGenerator
           headlineCategory={data.headlineCategory}

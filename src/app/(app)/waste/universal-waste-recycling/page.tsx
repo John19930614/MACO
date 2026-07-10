@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/ui/primitives";
 import { getEffectiveTenantId } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { UniversalWasteRecycling } from "./UniversalWasteRecycling";
+import { WasteModuleTabs } from "../WasteModuleTabs";
 import type {
   Determination, UwItem, NonhazRecord, VendorLite, Certificate, RejectedLoad,
 } from "./types";
@@ -55,6 +56,7 @@ export default async function UniversalWasteRecyclingPage({
         title="Waste & Recycling Tracking"
         subtitle="Universal Waste (hazardous) and Nonhazardous Recycling — tracked separately, with certificates, deadlines, and diversion handled for you."
       />
+      <WasteModuleTabs active={initialTab === "nonhaz_recycling" ? "nonhaz_recycling" : "universal_waste"} />
       <div className="iq-scroll flex-1 overflow-y-auto">
         <UniversalWasteRecycling {...data} initialTab={initialTab} />
       </div>
