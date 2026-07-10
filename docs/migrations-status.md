@@ -1,10 +1,10 @@
 # Database Update Status: What's Live in Production
 
-Generated: 2026-07-10T12:58:36.869Z by `scripts/check-migration-status.ts`
+Generated: 2026-07-10T14:28:21.825Z by `scripts/check-migration-status.ts`
 Environment: safetyiq prod
 Prod history snapshot: retrieved 2026-07-07 from project `bjgqjpekhicqlunxbobo` via Supabase MCP list_migrations (supabase_migrations.schema_migrations) + read-only information_schema probes
 
-**51 of 55 local database updates are live in production** — 50 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **4 are NOT applied**, and 4 of those have application code that already depends on them.
+**51 of 56 local database updates are live in production** — 50 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **5 are NOT applied**, and 5 of those have application code that already depends on them.
 
 > Safety note: this only checks, it doesn't change anything. This is a read-only audit — applying any pending migration requires a separate, explicitly approved follow-up.
 
@@ -38,6 +38,13 @@ Prod history snapshot: retrieved 2026-07-07 from project `bjgqjpekhicqlunxbobo` 
   - Referenced in `src/lib/actions/risk-model-reweight.ts:129` — `.from("risk_model_validation_runs")`
   - Referenced in `src/lib/actions/risk-model-reweight.ts:168` — `.from("risk_model_validation_runs")`
   - Referenced in `src/lib/actions/risk-model-reweight.ts:215` — `.from("risk_model_validation_runs")`
+- 🚨 **ACTION NEEDED**: `20260710010000_universal_waste_recycling_tracking.sql` — universal waste recycling tracking
+  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:24` — `client.from("waste_determinations").select("*").eq("tenant_id", tenantId).order("determined_at", { ascending: false }),`
+  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:25` — `client.from("universal_waste_items").select("*").eq("tenant_id", tenantId).order("accumulation_deadline", { ascending: t`
+  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:26` — `client.from("nonhaz_recycling_records").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }),`
+  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:27` — `client.from("waste_vendors").select("id,name,permit_expiry,insurance_expiry,recycler_authorization_expiry,status").eq("t`
+  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:28` — `client.from("recycling_certificates").select("*").eq("tenant_id", tenantId).order("issued_date", { ascending: false }),`
+  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:29` — `client.from("rejected_loads").select("*").eq("tenant_id", tenantId).is("resolved_at", null).order("rejected_at", { ascen`
 
 Until these are applied, the code paths above hit a missing table/column at runtime in live mode. Applying them is a separate task requiring explicit approval.
 
@@ -102,6 +109,7 @@ Matching is by migration name (local filename timestamps are synthetic; the prod
 | 20260707030000 | `20260707030000_predictive_risk_engine.sql` | predictive risk engine | 🚨 Pending — code depends on it | — |
 | 20260707040000 | `20260707040000_predictive_risk_go_live_signoff.sql` | predictive risk go live signoff | 🚨 Pending — code depends on it | — |
 | 20260710000000 | `20260710000000_phase5_learning_loop.sql` | phase5 learning loop | 🚨 Pending — code depends on it | — |
+| 20260710010000 | `20260710010000_universal_waste_recycling_tracking.sql` | universal waste recycling tracking | 🚨 Pending — code depends on it | — |
 
 ## Prod-Only History Entries
 
