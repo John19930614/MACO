@@ -3,6 +3,8 @@
 import { useState, useMemo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { LegalRequirement, Audit, CapaAction, Equipment } from "@/lib/types";
+import type { DrillCalendarEventLite } from "@/lib/data/ehsRepo";
+import { DRILL_EVENT_LABELS, type DrillEventType } from "@/lib/drill-compliance/helpers";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -10,7 +12,7 @@ interface CalItem {
   id: string;
   date: Date;
   label: string;
-  module: "legal" | "audit" | "capa" | "equipment";
+  module: "legal" | "audit" | "capa" | "equipment" | "drill";
   urgency: "overdue" | "this_week" | "this_month" | "upcoming";
 }
 
@@ -19,6 +21,7 @@ const MODULE_STYLE = {
   audit:     { dot: "bg-purple-500", chip: "bg-purple-50 border-purple-200 text-purple-800", tag: "Audit" },
   capa:      { dot: "bg-orange-500", chip: "bg-orange-50 border-orange-200 text-orange-800", tag: "CAPA"  },
   equipment: { dot: "bg-amber-500",  chip: "bg-amber-50 border-amber-200 text-amber-800",  tag: "Equip."  },
+  drill:     { dot: "bg-teal-500",   chip: "bg-teal-50 border-teal-200 text-teal-800",   tag: "Drill"     },
 } as const;
 
 const URGENCY_LEFT: Record<CalItem["urgency"], string> = {
@@ -74,11 +77,12 @@ interface Props {
   audits: Audit[];
   capas: CapaAction[];
   equipment: Equipment[];
+  drills?: DrillCalendarEventLite[];
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ComplianceCalendar({ requirements, audits, capas, equipment }: Props) {
+export function ComplianceCalendar({ requirements, audits, capas, equipment, drills = [] }: Props) {
   const now = new Date();
   const todayStr = now.toDateString();
 
@@ -122,9 +126,17 @@ export function ComplianceCalendar({ requirements, audits, capas, equipment }: P
       }
     });
 
+    drills.forEach((dr) => {
+      if (!dr.due_date) return;
+      const d = parseDate(dr.due_date);
+      const name = DRILL_EVENT_LABELS[dr.event_type as DrillEventType] ?? dr.event_type;
+      const label = dr.shift_name ? `Drill: ${name} — ${dr.shift_name}` : `Drill: ${name}`;
+      items.push({ id: `drill-${dr.id}`, date: d, label, module: "drill", urgency: getUrgency(d, now) });
+    });
+
     return items.sort((a, b) => a.date.getTime() - b.date.getTime());
   // eslint-disable-next-line react-hooks/exhaustive-deps -- recompute only when the source datasets change; parseDate/getUrgency/now are stable and intentionally excluded
-  }, [requirements, audits, capas, equipment]);
+  }, [requirements, audits, capas, equipment, drills]);
 
   // Index by day
   const itemsByDay = useMemo(() => {
@@ -304,7 +316,7 @@ export function ComplianceCalendar({ requirements, audits, capas, equipment }: P
 
           {/* Legend */}
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            {(["legal", "audit", "capa", "equipment"] as const).map((m) => (
+            {(["legal", "audit", "capa", "equipment", "drill"] as const).map((m) => (
               <div
                 key={m}
                 className={`flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-[10px] font-semibold ${MODULE_STYLE[m].chip}`}

@@ -14,6 +14,8 @@ import {
 import type {
   Determination, UwItem, NonhazRecord, VendorLite, Certificate, RejectedLoad, UwCategory,
 } from "./types";
+import { ComboBox } from "@/components/ui/ComboBox";
+import { COMMON_WASTE_MATERIALS, COMMON_RECYCLABLE_MATERIALS, COMMON_REJECT_REASONS, US_STATES } from "@/lib/waste/options";
 
 type TabKey = "universal_waste" | "nonhaz_recycling";
 
@@ -55,7 +57,9 @@ interface Props {
 }
 
 export function UniversalWasteRecycling({ initialTab = "universal_waste", ...props }: Props & { initialTab?: TabKey }) {
-  const [tab, setTab] = useState<TabKey>(initialTab);
+  // Which section to show is driven by the top Waste-module tab bar (?tab=…), so
+  // there's no inner tab switcher here — that would duplicate the module tabs.
+  const tab = initialTab;
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -79,26 +83,6 @@ export function UniversalWasteRecycling({ initialTab = "universal_waste", ...pro
 
   return (
     <div className="p-6 space-y-6">
-      {/* Two visually distinct tabs — red = hazardous/UW, green = recycling */}
-      <div className="flex gap-2 border-b">
-        <button
-          className={`px-4 py-2 font-medium transition-colors ${
-            tab === "universal_waste" ? "border-b-2 border-red-600 text-red-700" : "text-slate-500 hover:text-slate-700"
-          }`}
-          onClick={() => setTab("universal_waste")}
-        >
-          ⚠ Hazardous / Universal Waste
-        </button>
-        <button
-          className={`px-4 py-2 font-medium transition-colors ${
-            tab === "nonhaz_recycling" ? "border-b-2 border-green-600 text-green-700" : "text-slate-500 hover:text-slate-700"
-          }`}
-          onClick={() => setTab("nonhaz_recycling")}
-        >
-          ♻ Nonhazardous Recycling
-        </button>
-      </div>
-
       {error && (
         <div className="rounded-md border border-red-400 bg-red-50 p-3 text-sm text-red-800">{error}</div>
       )}
@@ -157,9 +141,9 @@ function DeterminationSection({
       ) : (
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           <label className="col-span-full text-xs font-medium text-slate-600">
-            What material is this?
-            <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="e.g. Spent AA batteries from packaging line"
-              className="mt-1 w-full rounded border px-2 py-1.5 text-sm" />
+            What material is this? <span className="font-normal text-slate-400">▾ pick or type</span>
+            <ComboBox value={desc} onValueChange={setDesc} options={COMMON_WASTE_MATERIALS}
+              placeholder="e.g. Spent AA batteries from packaging line" />
           </label>
           <label className="text-xs font-medium text-slate-600">
             Determination result
@@ -171,8 +155,9 @@ function DeterminationSection({
             </select>
           </label>
           <label className="text-xs font-medium text-slate-600">
-            State (2-letter)
-            <input value={state} onChange={(e) => setState(e.target.value.toUpperCase().slice(0, 2))} className="mt-1 w-full rounded border px-2 py-1.5 text-sm" />
+            State ▾
+            <ComboBox value={state} onValueChange={(v) => setState(v.toUpperCase().slice(0, 2))}
+              options={US_STATES} maxLength={2} placeholder="e.g. WI" />
           </label>
           <label className="col-span-full text-xs font-medium text-slate-600">
             Supporting document URL (optional)
@@ -318,8 +303,9 @@ function AddUwItemForm({ determinations, pending, run }: { determinations: Deter
           </select>
         </label>
         <label className="text-xs font-medium text-slate-600">
-          State
-          <input value={state} onChange={(e) => setState(e.target.value.toUpperCase().slice(0, 2))} className="mt-1 w-full rounded border px-2 py-1.5 text-sm" />
+          State ▾
+          <ComboBox value={state} onValueChange={(v) => setState(v.toUpperCase().slice(0, 2))}
+            options={US_STATES} maxLength={2} placeholder="e.g. WI" />
         </label>
         <label className="text-xs font-medium text-slate-600">
           Clock starts (accumulation start date)
@@ -478,8 +464,9 @@ function AddNonhazForm({ determinations, vendors, pending, run }: { determinatio
           </select>
         </label>
         <label className="text-xs font-medium text-slate-600">
-          Material (e.g. cardboard, scrap metal)
-          <input value={material} onChange={(e) => setMaterial(e.target.value)} className="mt-1 w-full rounded border px-2 py-1.5 text-sm" />
+          Material ▾ (e.g. cardboard, scrap metal)
+          <ComboBox value={material} onValueChange={setMaterial} options={COMMON_RECYCLABLE_MATERIALS}
+            placeholder="e.g. Cardboard / OCC" />
         </label>
         <label className="text-xs font-medium text-slate-600">
           Vendor (optional)
@@ -604,8 +591,9 @@ function RejectButton({ kind, targetId, pending, run }: { kind: "uw" | "nonhaz";
   return (
     <div className="w-full rounded border border-red-300 bg-red-50 p-3">
       <label className="text-xs font-medium text-slate-600">
-        Why was this load rejected?
-        <input value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 w-full rounded border px-2 py-1 text-sm" />
+        Why was this load rejected? ▾
+        <ComboBox value={reason} onValueChange={setReason} options={COMMON_REJECT_REASONS}
+          className="mt-1 w-full rounded border px-2 py-1 text-sm" placeholder="Pick a reason or type your own…" />
       </label>
       <div className="mt-2 flex gap-2">
         <button

@@ -151,6 +151,7 @@ interface QuantitySummary {
 interface ChemGroup {
   key: string;
   name: string;
+  names: string[];            // distinct product/label names sharing this CAS
   cas_number: string | null;
   representative: Chemical;   // first item — used for hazard / SDS display
   items: Chemical[];
@@ -286,7 +287,7 @@ function ContainerRow({ c, onSdsClick }: { c: Chemical; onSdsClick: (c: Chemical
           )}
         </div>
       </td>
-      <td className="px-4 py-2 text-xs text-slate-400 tabular-nums">{c.cas_number ?? "—"}</td>
+      <td className="px-4 py-2 text-xs text-slate-700">{c.name}</td>
       <td className="px-4 py-2 text-xs text-slate-700 tabular-nums font-medium whitespace-nowrap">
         {c.quantity} {c.unit}
       </td>
@@ -354,6 +355,10 @@ function GroupRow({
   const hazard = group.hazard;
   const overall = worstSdsStatus(group.items);
   const flaggedCount = group.items.filter((c) => chemicalSdsStatus(c).status !== "ok").length;
+  const namesSummary =
+    group.names.length <= 1
+      ? group.names[0] ?? group.name
+      : `${group.names[0]} +${group.names.length - 1} more`;
 
   return (
     <>
@@ -362,7 +367,7 @@ function GroupRow({
         className={`cursor-pointer hover:bg-blue-50/40 transition-colors ${expanded ? "bg-blue-50/30" : ""}`}
         onClick={onToggle}
       >
-        {/* Expand toggle + name */}
+        {/* Expand toggle + CAS number (the primary identity for the group) */}
         <td className="px-4 py-3">
           <div className="flex items-start gap-2">
             <span className="mt-0.5 shrink-0 text-slate-400">
@@ -371,16 +376,30 @@ function GroupRow({
                 : <ChevronRight className="h-4 w-4" />}
             </span>
             <div>
-              <div className="font-semibold text-slate-800 text-sm leading-snug">{group.name}</div>
-              {rep.chemical_formula && (
-                <div className="text-xs text-slate-400">{rep.chemical_formula}</div>
+              {group.cas_number ? (
+                <>
+                  <div className="font-mono font-semibold text-slate-800 text-sm tabular-nums">{group.cas_number}</div>
+                  {rep.chemical_formula && (
+                    <div className="text-xs text-slate-400">{rep.chemical_formula}</div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="font-semibold text-slate-800 text-sm leading-snug">{group.name}</div>
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-slate-400">No CAS #</div>
+                </>
               )}
             </div>
           </div>
         </td>
 
-        {/* CAS */}
-        <td className="px-4 py-3 text-xs text-slate-500 tabular-nums">{group.cas_number ?? "—"}</td>
+        {/* Chemical / product name(s) sharing this CAS */}
+        <td className="px-4 py-3 text-xs text-slate-600 max-w-56">
+          <div className="font-medium text-slate-700 leading-snug">{namesSummary}</div>
+          {group.names.length > 1 && (
+            <div className="text-[10px] text-slate-400">{group.names.length} product names</div>
+          )}
+        </td>
 
         {/* Container count + quantity rollup */}
         <td className="px-4 py-3">
@@ -509,13 +528,17 @@ export function ChemicalsTable({
 
   // Build groups first, then filter
   const groups = useMemo<ChemGroup[]>(() => {
+    // Primary grouping is by CAS number — every product/label sharing a CAS rolls
+    // up under one row. Items with no CAS fall back to grouping by name so they
+    // still collapse sensibly instead of scattering.
     const map = new Map<string, Chemical[]>();
     for (const c of chemicals) {
-      const key = `${c.name.trim().toLowerCase()}||${c.cas_number ?? ""}`;
+      const cas = c.cas_number?.trim();
+      const key = cas ? `cas:${cas}` : `name:${c.name.trim().toLowerCase()}`;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(c);
     }
-    return Array.from(map.values()).map((items) => {
+    return Array.from(map.entries()).map(([key, items]) => {
       const rep = items[0];
       const hazard = primaryHazard(rep);
 
@@ -529,10 +552,19 @@ export function ChemicalsTable({
         .sort((a, b) => b[1] - a[1])
         .map(([unit, total]) => ({ total: Math.round(total * 10) / 10, unit }));
 
+      // Distinct product/label names under this CAS (case-insensitive de-dupe).
+      const nameMap = new Map<string, string>();
+      for (const c of items) {
+        const n = c.name?.trim();
+        if (n && !nameMap.has(n.toLowerCase())) nameMap.set(n.toLowerCase(), n);
+      }
+      const names = Array.from(nameMap.values());
+
       return {
-        key: `${rep.name.trim().toLowerCase()}||${rep.cas_number ?? ""}`,
+        key,
         name: rep.name,
-        cas_number: rep.cas_number ?? null,
+        names,
+        cas_number: rep.cas_number?.trim() || null,
         representative: rep,
         items,
         category: deriveCategory(rep),
@@ -694,8 +726,8 @@ export function ChemicalsTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100 text-xs uppercase tracking-wide text-slate-400">
-              <th className="px-4 py-2.5 text-left">Chemical Name</th>
               <th className="px-4 py-2.5 text-left">CAS #</th>
+              <th className="px-4 py-2.5 text-left">Chemical</th>
               <th className="px-4 py-2.5 text-left">Containers</th>
               <th className="px-4 py-2.5 text-left">Storage</th>
               <th className="px-4 py-2.5 text-left">Hazard</th>

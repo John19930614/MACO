@@ -6,6 +6,7 @@ import { Trash2 } from "lucide-react";
 import { AddWasteButton } from "./AddWasteButton";
 import { WasteExportButton } from "./WasteExportButton";
 import { WasteDashboard } from "./WasteDashboard";
+import { WasteModuleTabs } from "./WasteModuleTabs";
 
 export default async function WastePage() {
   const tenantId = await getEffectiveTenantId();
@@ -33,6 +34,7 @@ export default async function WastePage() {
           </div>
         }
       />
+      <WasteModuleTabs active="streams" />
       <div className="iq-scroll flex-1 overflow-y-auto p-6">
         {streams.length === 0 ? (
           <EmptyState

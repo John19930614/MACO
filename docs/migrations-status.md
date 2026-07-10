@@ -1,10 +1,10 @@
 # Database Update Status: What's Live in Production
 
-Generated: 2026-07-10T14:28:21.825Z by `scripts/check-migration-status.ts`
+Generated: 2026-07-10T16:29:42.616Z by `scripts/check-migration-status.ts`
 Environment: safetyiq prod
 Prod history snapshot: retrieved 2026-07-07 from project `bjgqjpekhicqlunxbobo` via Supabase MCP list_migrations (supabase_migrations.schema_migrations) + read-only information_schema probes
 
-**51 of 56 local database updates are live in production** — 50 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **5 are NOT applied**, and 5 of those have application code that already depends on them.
+**51 of 59 local database updates are live in production** — 50 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **8 are NOT applied**, and 8 of those have application code that already depends on them.
 
 > Safety note: this only checks, it doesn't change anything. This is a read-only audit — applying any pending migration requires a separate, explicitly approved follow-up.
 
@@ -39,12 +39,33 @@ Prod history snapshot: retrieved 2026-07-07 from project `bjgqjpekhicqlunxbobo` 
   - Referenced in `src/lib/actions/risk-model-reweight.ts:168` — `.from("risk_model_validation_runs")`
   - Referenced in `src/lib/actions/risk-model-reweight.ts:215` — `.from("risk_model_validation_runs")`
 - 🚨 **ACTION NEEDED**: `20260710010000_universal_waste_recycling_tracking.sql` — universal waste recycling tracking
-  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:24` — `client.from("waste_determinations").select("*").eq("tenant_id", tenantId).order("determined_at", { ascending: false }),`
-  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:25` — `client.from("universal_waste_items").select("*").eq("tenant_id", tenantId).order("accumulation_deadline", { ascending: t`
-  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:26` — `client.from("nonhaz_recycling_records").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }),`
-  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:27` — `client.from("waste_vendors").select("id,name,permit_expiry,insurance_expiry,recycler_authorization_expiry,status").eq("t`
-  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:28` — `client.from("recycling_certificates").select("*").eq("tenant_id", tenantId).order("issued_date", { ascending: false }),`
-  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:29` — `client.from("rejected_loads").select("*").eq("tenant_id", tenantId).is("resolved_at", null).order("rejected_at", { ascen`
+  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:25` — `client.from("waste_determinations").select("*").eq("tenant_id", tenantId).order("determined_at", { ascending: false }),`
+  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:26` — `client.from("universal_waste_items").select("*").eq("tenant_id", tenantId).order("accumulation_deadline", { ascending: t`
+  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:27` — `client.from("nonhaz_recycling_records").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }),`
+  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:28` — `client.from("waste_vendors").select("id,name,permit_expiry,insurance_expiry,recycler_authorization_expiry,status").eq("t`
+  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:29` — `client.from("recycling_certificates").select("*").eq("tenant_id", tenantId).order("issued_date", { ascending: false }),`
+  - Referenced in `src/app/(app)/waste/universal-waste-recycling/page.tsx:30` — `client.from("rejected_loads").select("*").eq("tenant_id", tenantId).is("resolved_at", null).order("rejected_at", { ascen`
+- 🚨 **ACTION NEEDED**: `20260710020000_young_worker_module.sql` — young worker module
+  - Referenced in `src/app/(app)/team/young-workers/page.tsx:8` — `// Young-worker PII is manager-only. Gate here (mirrors young_workers RLS) and`
+  - Referenced in `src/app/api/young-workers/route.ts:8` — `// RLS on young_workers is the second line of defence.`
+  - Referenced in `src/app/api/young-workers/route.ts:34` — `.from("young_workers")`
+  - Referenced in `src/app/api/young-workers/route.ts:36` — `"id, dob, classification, work_permit_expiry_date, profiles!young_workers_profile_id_fkey(display_name)",`
+  - Referenced in `src/components/layout/LeftNav.tsx:125` — `// below, matching the young_workers RLS policy. Superadmins use the /sa console,`
+  - Referenced in `src/lib/actions/minor-injury-escalation.ts:10` — `// incidents.young_worker_id — set it when reporting an incident for a young`
+- 🚨 **ACTION NEEDED**: `20260710030000_hazardous_waste_generator_category_and_minimization.sql` — hazardous waste generator category and minimization
+  - Referenced in `src/app/(app)/waste/compliance/HazardousWasteGenerator.tsx:13` — `current_generator_category: GeneratorCategory | null;`
+  - Referenced in `src/app/(app)/waste/compliance/page.tsx:35` — `.select("id, name, current_generator_category")`
+  - Referenced in `src/app/(app)/waste/compliance/page.tsx:39` — `.from("waste_hierarchy_record")`
+  - Referenced in `src/app/(app)/waste/compliance/page.tsx:44` — `.from("waste_compliance_action")`
+  - Referenced in `src/app/(app)/waste/compliance/page.tsx:49` — `.from("waste_minimization_program")`
+  - Referenced in `src/app/(app)/waste/compliance/page.tsx:70` — `.map((s) => s.current_generator_category)`
+- 🚨 **ACTION NEEDED**: `20260710040000_evacuation_drill_compliance.sql` — evacuation drill compliance
+  - Referenced in `src/app/(app)/emergency/drill-calendar/page.tsx:47` — `client.from("facility_profiles").select("*").eq("tenant_id", tenantId).eq("site_id", siteId).maybeSingle(),`
+  - Referenced in `src/app/(app)/emergency/drill-calendar/page.tsx:49` — `.from("drill_calendar_events")`
+  - Referenced in `src/app/(app)/emergency/drill-calendar/page.tsx:55` — `.from("drill_frequency_requirements")`
+  - Referenced in `src/app/(app)/emergency/drill-calendar/page.tsx:61` — `.from("drill_wardens")`
+  - Referenced in `src/app/(app)/emergency/drill-calendar/page.tsx:67` — `.from("drill_compliance_action")`
+  - Referenced in `src/lib/actions/evacuation-drill-compliance-calendar.ts:142` — `.from("facility_profiles")`
 
 Until these are applied, the code paths above hit a missing table/column at runtime in live mode. Applying them is a separate task requiring explicit approval.
 
@@ -110,6 +131,9 @@ Matching is by migration name (local filename timestamps are synthetic; the prod
 | 20260707040000 | `20260707040000_predictive_risk_go_live_signoff.sql` | predictive risk go live signoff | 🚨 Pending — code depends on it | — |
 | 20260710000000 | `20260710000000_phase5_learning_loop.sql` | phase5 learning loop | 🚨 Pending — code depends on it | — |
 | 20260710010000 | `20260710010000_universal_waste_recycling_tracking.sql` | universal waste recycling tracking | 🚨 Pending — code depends on it | — |
+| 20260710020000 | `20260710020000_young_worker_module.sql` | young worker module | 🚨 Pending — code depends on it | — |
+| 20260710030000 | `20260710030000_hazardous_waste_generator_category_and_minimization.sql` | hazardous waste generator category and minimization | 🚨 Pending — code depends on it | — |
+| 20260710040000 | `20260710040000_evacuation_drill_compliance.sql` | evacuation drill compliance | 🚨 Pending — code depends on it | — |
 
 ## Prod-Only History Entries
 

@@ -1224,6 +1224,43 @@ export const getOshaCases = cache(async (tenantId = MOCK_TENANT_ID): Promise<Osh
   }));
 });
 
+// ── Drill compliance (evacuation drill calendar) ────────────────────────────────
+
+export interface DrillCalendarEventLite {
+  id: string;
+  event_type: string;
+  shift_name: string | null;
+  due_date: string;
+  status: "scheduled" | "completed" | "overdue" | "escalated";
+}
+
+// Upcoming/overdue evacuation-drill occurrences, surfaced on the Legal-page
+// Compliance Calendar alongside audits, CAPA deadlines and calibrations.
+// Returns [] in mock mode and — critically — also when the drill_calendar_events
+// table is absent (migration 20260710040000 not yet applied), because the query
+// error is swallowed. Completed drills are excluded (only open obligations show).
+export const getDrillCalendarEvents = cache(
+  async (tenantId = MOCK_TENANT_ID): Promise<DrillCalendarEventLite[]> => {
+    if (MOCK_MODE) return [];
+    const client = await sb();
+    if (!client) return [];
+    const { data, error } = await client
+      .from("drill_calendar_events")
+      .select("id, event_type, shift_name, due_date, status")
+      .eq("tenant_id", tenantId)
+      .neq("status", "completed")
+      .order("due_date", { ascending: true });
+    if (error || !data) return [];
+    return data.map((r) => ({
+      id: r.id,
+      event_type: r.event_type,
+      shift_name: r.shift_name ?? null,
+      due_date: r.due_date,
+      status: (r.status ?? "scheduled") as DrillCalendarEventLite["status"],
+    }));
+  },
+);
+
 // ── Re-exports ────────────────────────────────────────────────────────────────
 
 export type {

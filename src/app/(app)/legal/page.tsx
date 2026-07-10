@@ -1,6 +1,6 @@
-import { getLegalRequirements, getProfiles, getComplianceScores, getAudits, getCapaActions, getEquipment } from "@/lib/data/ehsRepo";
+import Link from "next/link";
+import { getLegalRequirements, getProfiles, getComplianceScores, getAudits, getCapaActions, getEquipment, getDrillCalendarEvents } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId } from "@/lib/auth/session";
-import { MOCK_TENANT_ID } from "@/lib/data/mock";
 import { PageHeader, Stat, Card, CardHeader } from "@/components/ui/primitives";
 import { LegalTable } from "./LegalTable";
 import { ComplianceCalendar } from "./ComplianceCalendar";
@@ -9,13 +9,14 @@ import { LegalExportButton } from "./LegalExportButton";
 
 export default async function LegalPage() {
   const tenantId = await getEffectiveTenantId();
-  const [requirements, profiles, scores, audits, capas, equipment] = await Promise.all([
+  const [requirements, profiles, scores, audits, capas, equipment, drills] = await Promise.all([
     getLegalRequirements(tenantId),
     getProfiles(tenantId),
     getComplianceScores(tenantId),
     getAudits(tenantId),
     getCapaActions(tenantId),
     getEquipment(tenantId),
+    getDrillCalendarEvents(tenantId),
   ]);
   const legalScore    = scores.find((s) => s.module === "legal");
 
@@ -189,13 +190,22 @@ export default async function LegalPage() {
         <Card className="mb-5">
           <CardHeader
             title="Compliance Calendar"
-            subtitle="Upcoming review dates, audits, CAPA deadlines, and equipment calibrations — next 90 days"
+            subtitle="Upcoming review dates, audits, CAPA deadlines, equipment calibrations, and evacuation drills — next 90 days"
+            right={
+              <Link
+                href="/emergency/drill-calendar"
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
+              >
+                Manage evacuation drills →
+              </Link>
+            }
           />
           <ComplianceCalendar
             requirements={requirements}
             audits={audits}
             capas={capas}
             equipment={equipment}
+            drills={drills}
           />
         </Card>
 
