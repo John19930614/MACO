@@ -142,7 +142,7 @@ export async function suggestMinimizationProgram(): Promise<
   const thisYear = new Date().getFullYear();
 
   // Tenant-scoped signals; keep each query small.
-  const [streamsRes, tallyRes, hierarchyRes] = await Promise.all([
+  const [streamsRes, tallyRes, hierarchyRes, existingRes] = await Promise.all([
     db.from("waste_streams")
       .select("waste_name, classification, quantity, unit")
       .eq("tenant_id", tenantId)
@@ -159,11 +159,17 @@ export async function suggestMinimizationProgram(): Promise<
       .eq("tenant_id", tenantId)
       .order("period_year", { ascending: false })
       .limit(24),
+    // Existing programs — so the AI proposes something NEW, not a duplicate.
+    db.from("waste_minimization_program")
+      .select("name, waste_stream, reduction_target_pct")
+      .eq("tenant_id", tenantId)
+      .limit(50),
   ]);
 
   const streams = streamsRes.data ?? [];
   const tally = tallyRes.data ?? [];
   const hierarchy = hierarchyRes.data ?? [];
+  const existing = existingRes.data ?? [];
 
   if (streams.length === 0 && tally.length === 0 && hierarchy.length === 0) {
     return {
@@ -177,16 +183,22 @@ export async function suggestMinimizationProgram(): Promise<
     "(none)";
   const totalHaz = tally.reduce((sum, t) => sum + Number(t.hazardous_waste_kg ?? 0), 0);
   const landfilled = hierarchy.reduce((sum, h) => sum + Number(h.landfilled_kg ?? 0), 0);
+  const existingLines = existing.length
+    ? existing
+        .map((p) => `- ${p.name}${p.waste_stream ? ` [stream: ${p.waste_stream}]` : ""} — target ${p.reduction_target_pct ?? "?"}%`)
+        .join("\n")
+    : "(none yet)";
 
   try {
     const result = await generateStructuredJson({
       system:
-        "You are an EHS waste-minimization advisor. Using a facility's own waste data, propose ONE concrete, high-impact waste-minimization program targeting the largest or most hazardous stream. Prefer source reduction / substitution over recycling. Be realistic and conservative with cost and savings estimates in USD; if you cannot estimate one, use 0. Set reduction_target_pct to a defensible near-term target (typically 10-30%). This is advisory — a human reviews and edits it before saving.",
+        "You are an EHS waste-minimization advisor. Using a facility's own waste data, propose ONE concrete, high-impact waste-minimization program. CRITICAL: never duplicate a program the facility already has — pick a DIFFERENT waste stream or a distinctly different reduction angle from the existing list. If every major stream is already covered, propose the next-best untapped opportunity, a different process area, or a more aggressive next-phase target for the highest-impact gap (and name it clearly as a next phase). Prefer source reduction / substitution over recycling. Be realistic and conservative with cost and savings estimates in USD; use 0 if you cannot estimate. Set reduction_target_pct to a defensible near-term target (typically 10-30%). This is advisory — a human reviews and edits it before saving.",
       user:
         `Facility waste streams (largest first):\n${streamLines}\n\n` +
         `Reported hazardous waste over recent months: ${Math.round(totalHaz)} kg total.\n` +
         `Landfilled (recent hierarchy records): ${Math.round(landfilled)} kg.\n\n` +
-        `Propose one minimization program. Use ${thisYear} as the baseline year unless the data clearly suggests another.`,
+        `EXISTING minimization programs (do NOT propose a duplicate of any of these):\n${existingLines}\n\n` +
+        `Propose ONE new, non-duplicate minimization program. Use ${thisYear} as the baseline year unless the data clearly suggests another.`,
       schema: {
         name: "minimization_program_suggestion",
         strict: true,
