@@ -5,6 +5,7 @@ import { summarizeHierarchy, type HierarchyRow } from "@/lib/waste/hierarchy";
 import type { GeneratorCategory } from "@/lib/waste/generator-category";
 import { HazardousWasteGenerator, type ProgramRow, type SiteOption } from "./HazardousWasteGenerator";
 import { WasteModuleTabs } from "../WasteModuleTabs";
+import { checkOverdueMinimizationTargets } from "@/lib/actions/waste-minimization-program";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,10 @@ async function fetchData(tenantId: string) {
     wasteStreamOptions: [] as string[],
   };
   if (!client) return empty;
+
+  // Refresh overdue-target actions on view (idempotent — no cron wired yet), so
+  // the "Open actions" count and any downstream alerts reflect reality.
+  await checkOverdueMinimizationTargets(tenantId).catch(() => {});
 
   const year = new Date().getFullYear();
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { GENERATOR_CATEGORY_META, type GeneratorCategory } from "@/lib/waste/generator-category";
 import type { HierarchySplit } from "@/lib/waste/hierarchy";
 import { upsertMinimizationProgram, suggestMinimizationProgram } from "@/lib/actions/waste-minimization-program";
+import { upsertMonthlyWasteTally } from "@/lib/actions/waste-generator-category";
 
 export interface SiteOption {
   id: string;
@@ -68,6 +69,11 @@ const PROGRAM_NAME_SUGGESTIONS = [
 ];
 
 const TARGET_PCT_SUGGESTIONS = ["5", "10", "15", "20", "25", "30", "40", "50"];
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
 // A native combobox: a text input backed by a <datalist>. Users pick from the
 // suggestions OR type their own value — the "dropdown, but manual entry too"
@@ -214,6 +220,61 @@ export function HazardousWasteGenerator({ headlineCategory, split, openActions, 
   const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  // ── Monthly waste tally → generator category ────────────────────────────────
+  const nowDate = new Date();
+  const [showTally, setShowTally] = useState(false);
+  const [tally, setTally] = useState({
+    siteId: sites[0]?.id ?? "",
+    year: String(nowDate.getFullYear()),
+    month: String(nowDate.getMonth() + 1),
+    hazardousWasteKg: "",
+    acuteHazardousWasteKg: "",
+  });
+  const [tallyPending, startTallyTransition] = useTransition();
+  const [tallyError, setTallyError] = useState<string | null>(null);
+  const [tallyMsg, setTallyMsg] = useState<string | null>(null);
+
+  const setTallyField = (k: keyof typeof tally) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setTally((t) => ({ ...t, [k]: e.target.value }));
+
+  function onSaveTally() {
+    setTallyError(null);
+    setTallyMsg(null);
+    if (!tally.siteId) {
+      setTallyError("Pick a site first.");
+      return;
+    }
+    const haz = Number(tally.hazardousWasteKg);
+    const acute = Number(tally.acuteHazardousWasteKg || "0");
+    if (tally.hazardousWasteKg === "" || Number.isNaN(haz) || haz < 0) {
+      setTallyError("Enter this month's hazardous waste amount (kg).");
+      return;
+    }
+    if (Number.isNaN(acute) || acute < 0) {
+      setTallyError("Acute hazardous waste must be a number of kg (0 or more).");
+      return;
+    }
+    startTallyTransition(async () => {
+      const res = await upsertMonthlyWasteTally({
+        siteId: tally.siteId,
+        periodYear: Number(tally.year),
+        periodMonth: Number(tally.month),
+        hazardousWasteKg: haz,
+        acuteHazardousWasteKg: acute,
+      });
+      if (!res.ok) {
+        setTallyError(res.error);
+        return;
+      }
+      setTallyMsg(
+        res.changed
+          ? `Saved. Your generator category is now ${res.generatorCategory}.`
+          : `Saved. Your generator category stays ${res.generatorCategory}.`,
+      );
+      router.refresh();
+    });
+  }
+
   function validate(): boolean {
     const errs: Record<string, boolean> = {};
     if (!form.name.trim()) errs.name = true;
@@ -286,6 +347,87 @@ export function HazardousWasteGenerator({ headlineCategory, split, openActions, 
           <p className="text-xs text-slate-500 dark:text-slate-400">Open compliance actions</p>
           <p className={`text-lg font-semibold ${openActions > 0 ? "text-red-700" : ""}`}>{openActions}</p>
         </div>
+      </div>
+
+      {/* Monthly waste tally → generator category */}
+      <div className="rounded-lg border p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h2 className="font-medium">Log this month&apos;s hazardous waste</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Enter your monthly totals and we work out your EPA generator category automatically.
+            </p>
+          </div>
+          {!showTally && (
+            <button onClick={() => setShowTally(true)} className="rounded-md bg-primary px-3 py-1.5 text-sm text-white">
+              Log totals
+            </button>
+          )}
+        </div>
+
+        {showTally && (
+          <div className="space-y-3">
+            {tallyError && (
+              <div className="rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-800">{tallyError}</div>
+            )}
+            {tallyMsg && (
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-800">{tallyMsg}</div>
+            )}
+            {sites.length === 0 ? (
+              <p className="text-sm text-slate-500 dark:text-slate-400">Add a site before recording waste totals.</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <label className="block">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Site</span>
+                    <select value={tally.siteId} onChange={setTallyField("siteId")} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                      {sites.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="text-xs text-slate-500 dark:text-slate-400">Month</span>
+                      <select value={tally.month} onChange={setTallyField("month")} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                        {MONTHS.map((m, i) => (
+                          <option key={m} value={String(i + 1)}>{m}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-xs text-slate-500 dark:text-slate-400">Year</span>
+                      <select value={tally.year} onChange={setTallyField("year")} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                        {yearOptions.map((y) => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <label className="block">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Hazardous waste this month (kg)</span>
+                    <input value={tally.hazardousWasteKg} onChange={setTallyField("hazardousWasteKg")} inputMode="decimal" placeholder="e.g. 850" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Acute hazardous waste this month (kg)</span>
+                    <input value={tally.acuteHazardousWasteKg} onChange={setTallyField("acuteHazardousWasteKg")} inputMode="decimal" placeholder="e.g. 0" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                  </label>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={onSaveTally} disabled={tallyPending} className="rounded-md bg-primary px-4 py-2 text-sm text-white disabled:opacity-50">
+                    {tallyPending ? "Saving…" : "Save totals"}
+                  </button>
+                  <button onClick={() => setShowTally(false)} className="rounded-md border px-4 py-2 text-sm">
+                    Cancel
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Thresholds: under 100 kg/mo = VSQG · 100–1,000 kg/mo = SQG · over 1,000 kg/mo (or ≥1 kg acute) = LQG.
+                </p>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Minimization programs */}
