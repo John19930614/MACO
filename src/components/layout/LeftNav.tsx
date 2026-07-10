@@ -24,6 +24,8 @@ const NAV_HREF_TO_MODULE: Record<string, EhsModule> = {
   "/documents":  "documents",
   "/chemicals":  "chemical",
   "/waste":      "waste",
+  "/waste/universal-waste-recycling?tab=universal_waste": "waste",
+  "/waste/universal-waste-recycling?tab=nonhaz_recycling": "waste",
   "/monitoring": "equipment",
   "/incidents":  "incidents",
 };
@@ -77,6 +79,8 @@ const BASE_COMPANY_NAV: NavSection[] = [
       { href: "/chemicals",  label: "Chemical Management",     description: "SDS, inventory & exposure",      icon: "⚗" },
       { href: "/biosafety",  label: "Biosafety & Lab Safety",  description: "BSL protocols & cabinets",       icon: "🔬" },
       { href: "/waste",      label: "Waste Management",        description: "Hazardous waste streams",        icon: "♻" },
+      { href: "/waste/universal-waste-recycling?tab=universal_waste", label: "Universal Waste", description: "Batteries, lamps, mercury, aerosols…", icon: "⚠" },
+      { href: "/waste/universal-waste-recycling?tab=nonhaz_recycling", label: "Recycling", description: "Diversion & weight tickets", icon: "♲" },
       { href: "/ergonomics", label: "Ergonomics & MSD",         description: "Workstation & MSD risk controls",icon: "🪑" },
       { href: "/monitoring", label: "Monitoring & Equipment",  description: "Calibration & inspections",      icon: "📡" },
       { href: "/incidents",  label: "Incident Reporting",      description: "Near-miss & injury reports",     icon: "⚠" },
