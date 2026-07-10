@@ -328,6 +328,42 @@ export const LOCAL_MIGRATIONS: LocalMigrationEntry[] = [
     "filename": "20260707020000_daily_suggestion_dismiss_rotation.sql",
     "name": "daily_suggestion_dismiss_rotation",
     "prodName": "daily_suggestion_dismiss_rotation"
+  },
+  {
+    "version": "20260707030000",
+    "filename": "20260707030000_predictive_risk_engine.sql",
+    "name": "predictive_risk_engine",
+    "prodName": "predictive_risk_engine"
+  },
+  {
+    "version": "20260707040000",
+    "filename": "20260707040000_predictive_risk_go_live_signoff.sql",
+    "name": "predictive_risk_go_live_signoff",
+    "prodName": "predictive_risk_go_live_signoff"
+  },
+  {
+    "version": "20260710000000",
+    "filename": "20260710000000_phase5_learning_loop.sql",
+    "name": "phase5_learning_loop",
+    "prodName": "phase5_learning_loop"
+  },
+  {
+    "version": "20260710010000",
+    "filename": "20260710010000_universal_waste_recycling_tracking.sql",
+    "name": "universal_waste_recycling_tracking",
+    "prodName": "universal_waste_recycling_tracking"
+  },
+  {
+    "version": "20260710020000",
+    "filename": "20260710020000_young_worker_module.sql",
+    "name": "young_worker_module",
+    "prodName": "young_worker_module"
+  },
+  {
+    "version": "20260710030000",
+    "filename": "20260710030000_hazardous_waste_generator_category_and_minimization.sql",
+    "name": "hazardous_waste_generator_category_and_minimization",
+    "prodName": "hazardous_waste_generator_category_and_minimization"
   }
 ];
 

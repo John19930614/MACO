@@ -26,6 +26,7 @@ const NAV_HREF_TO_MODULE: Record<string, EhsModule> = {
   "/waste":      "waste",
   "/waste/universal-waste-recycling?tab=universal_waste": "waste",
   "/waste/universal-waste-recycling?tab=nonhaz_recycling": "waste",
+  "/waste/compliance": "waste",
   "/monitoring": "equipment",
   "/incidents":  "incidents",
 };
@@ -81,6 +82,7 @@ const BASE_COMPANY_NAV: NavSection[] = [
       { href: "/waste",      label: "Waste Management",        description: "Hazardous waste streams",        icon: "♻" },
       { href: "/waste/universal-waste-recycling?tab=universal_waste", label: "Universal Waste", description: "Batteries, lamps, mercury, aerosols…", icon: "⚠" },
       { href: "/waste/universal-waste-recycling?tab=nonhaz_recycling", label: "Recycling", description: "Diversion & weight tickets", icon: "♲" },
+      { href: "/waste/compliance", label: "Waste Compliance", description: "Generator status & minimization", icon: "🛡" },
       { href: "/ergonomics", label: "Ergonomics & MSD",         description: "Workstation & MSD risk controls",icon: "🪑" },
       { href: "/monitoring", label: "Monitoring & Equipment",  description: "Calibration & inspections",      icon: "📡" },
       { href: "/incidents",  label: "Incident Reporting",      description: "Near-miss & injury reports",     icon: "⚠" },
@@ -116,6 +118,24 @@ const PREDICTIVE_RISK_NAV: NavSection[] = [
     items: [
       { href: "/predictive-risk", label: "Predictive Risk",  description: "Site risk scores from leading indicators", icon: "📈" },
       { href: "/predictive-risk/model-update", label: "Review & Approve Risk Model Update", description: "Check accuracy & false alarms before any scoring change", icon: "🧪" },
+    ],
+  },
+];
+
+// Young Worker Profiles — young-worker PII + the task-assignment safety gate.
+// Gated to MANAGER_ROLES (safety_manager, ehs_manager, admin) via canManage
+// below, matching the young_workers RLS policy. Superadmins use the /sa console,
+// not this company nav.
+const YOUNG_WORKER_NAV: NavSection[] = [
+  {
+    group: "Workforce Protection",
+    items: [
+      {
+        href: "/team/young-workers",
+        label: "Young Worker Profiles",
+        description: "Under-18 permits, age & task gate",
+        icon: "🛡",
+      },
     ],
   },
 ];
@@ -221,7 +241,7 @@ function getNav(user: DemoProfile): NavSection[] {
   // ehs_manager, admin) via canManage — ehs_coordinator/supervisor don't see it.
   if (canCoordinate(role)) {
     return canManage(role)
-      ? [...BASE_COMPANY_NAV, ...PREDICTIVE_RISK_NAV, ...COMPANY_ADMIN_EXTRA]
+      ? [...BASE_COMPANY_NAV, ...PREDICTIVE_RISK_NAV, ...YOUNG_WORKER_NAV, ...COMPANY_ADMIN_EXTRA]
       : [...BASE_COMPANY_NAV, ...COMPANY_ADMIN_EXTRA];
   }
   // Unknown / non-management company roles fall through to the base nav.
