@@ -1,7 +1,11 @@
 # Evacuation Drill Compliance Calendar
 
-Part of the Emergency / EAP module. Lives at **Emergency → Drill Calendar**
-(`/emergency/drill-calendar`).
+Part of the Emergency / EAP module. It is **not a separate left-nav item** — it
+is reached from the **Compliance Calendar** (Legal Register → Compliance Calendar
+card → "Manage evacuation drills →"). Upcoming and overdue drills also appear
+directly on that Compliance Calendar (teal "Drill" chips), alongside audits, CAPA
+deadlines and equipment calibrations. The management page itself lives at
+`/emergency/drill-calendar`.
 
 ## What this is for
 

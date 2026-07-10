@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import {
   CalendarClock,
@@ -159,9 +160,15 @@ export function EvacuationDrillCompliance({
     <div className="flex h-full flex-col">
       <PageHeader
         title="Evacuation Drill Compliance Calendar"
-        subtitle="See which drills are due, log completed drills, and keep wardens up to date — by building and by shift."
+        subtitle="Due drills feed the Compliance Calendar. Log completed drills and keep wardens up to date — by building and by shift."
         actions={
           <div className="flex items-center gap-2">
+            <Link
+              href="/legal"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200"
+            >
+              ← Compliance Calendar
+            </Link>
             <button
               type="button"
               onClick={onEscalate}
