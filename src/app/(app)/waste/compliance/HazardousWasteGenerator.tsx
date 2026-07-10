@@ -29,9 +29,87 @@ interface Props {
   openActions: number;
   programs: ProgramRow[];
   sites: SiteOption[];
+  wasteStreamOptions: string[];
 }
 
 const kg = (v: number) => `${Math.round(v).toLocaleString()} kg`;
+
+// Curated fall-back suggestions. These are merged with the tenant's real waste
+// streams so the dropdown is useful even before any data exists — and every one
+// of these fields still accepts a typed-in value (native <datalist> combobox).
+const COMMON_WASTE_STREAMS = [
+  "Spent solvents",
+  "Used oil",
+  "Waste paint & thinner",
+  "Aerosol cans",
+  "Corrosive acids",
+  "Corrosive bases",
+  "Ignitable waste",
+  "Contaminated rags & absorbents",
+  "Lab-pack chemicals",
+  "Heavy-metal sludge",
+  "Spent batteries",
+  "Universal-waste lamps",
+  "Mercury-containing devices",
+  "Electronic waste (e-waste)",
+  "Cutting oils & coolants",
+  "Plating / rinse waste",
+];
+
+const PROGRAM_NAME_SUGGESTIONS = [
+  "Solvent reduction program",
+  "Paint & thinner waste minimization",
+  "Aerosol elimination initiative",
+  "Used-oil recycling program",
+  "Rag & absorbent reuse program",
+  "Chemical substitution program",
+  "Packaging reduction program",
+  "Coolant recovery & reuse program",
+];
+
+const TARGET_PCT_SUGGESTIONS = ["5", "10", "15", "20", "25", "30", "40", "50"];
+
+// A native combobox: a text input backed by a <datalist>. Users pick from the
+// suggestions OR type their own value — the "dropdown, but manual entry too"
+// pattern. `inputMode` lets numeric comboboxes show the number keypad on mobile.
+function ComboField({
+  label,
+  listId,
+  value,
+  onChange,
+  options,
+  invalid,
+  placeholder = "Pick from the list or type your own…",
+  inputMode,
+}: {
+  label: string;
+  listId: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  options: string[];
+  invalid?: boolean;
+  placeholder?: string;
+  inputMode?: "decimal" | "numeric";
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
+      <input
+        list={listId}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        inputMode={inputMode}
+        className={`w-full rounded-md border px-3 py-2 text-sm ${invalid ? "border-red-400 bg-red-50" : "border-slate-300"}`}
+      />
+      <datalist id={listId}>
+        {options.map((o) => (
+          <option key={o} value={o} />
+        ))}
+      </datalist>
+    </label>
+  );
+}
 
 function StatusBadge({ status, approval }: { status: string; approval: string }) {
   // Approval takes visual priority — an unapproved program isn't "active" yet.
@@ -82,8 +160,14 @@ const EMPTY_FORM: FormState = {
   estimatedSavings: "",
 };
 
-export function HazardousWasteGenerator({ headlineCategory, split, openActions, programs, sites }: Props) {
+export function HazardousWasteGenerator({ headlineCategory, split, openActions, programs, sites, wasteStreamOptions }: Props) {
   const router = useRouter();
+
+  // Tenant's real waste streams first, then curated common ones (de-duplicated).
+  const streamOptions = Array.from(new Set([...wasteStreamOptions, ...COMMON_WASTE_STREAMS]));
+  // Baseline year suggestions: current year back 15 years.
+  const thisYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 16 }, (_, i) => String(thisYear - i));
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState<Record<string, boolean>>({});
@@ -233,15 +317,25 @@ export function HazardousWasteGenerator({ headlineCategory, split, openActions, 
             {submitError && (
               <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-sm text-amber-800">{submitError}</div>
             )}
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Fields with a ▾ let you pick from the list or type your own value.
+            </p>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <label className="block">
-                <span className="text-xs text-slate-500 dark:text-slate-400">Program name</span>
-                <input className={errCls("name")} value={form.name} onChange={set("name")} />
-              </label>
-              <label className="block">
-                <span className="text-xs text-slate-500 dark:text-slate-400">Waste stream (optional)</span>
-                <input className={errCls("wasteStream")} value={form.wasteStream} onChange={set("wasteStream")} />
-              </label>
+              <ComboField
+                label="Program name ▾"
+                listId="program-name-options"
+                value={form.name}
+                onChange={set("name")}
+                options={PROGRAM_NAME_SUGGESTIONS}
+                invalid={!!fieldErrors.name}
+              />
+              <ComboField
+                label="Waste stream ▾ (optional)"
+                listId="waste-stream-options"
+                value={form.wasteStream}
+                onChange={set("wasteStream")}
+                options={streamOptions}
+              />
               {sites.length > 0 && (
                 <label className="block">
                   <span className="text-xs text-slate-500 dark:text-slate-400">Site (optional)</span>
@@ -253,29 +347,41 @@ export function HazardousWasteGenerator({ headlineCategory, split, openActions, 
                   </select>
                 </label>
               )}
-              <label className="block">
-                <span className="text-xs text-slate-500 dark:text-slate-400">Baseline year</span>
-                <input className={errCls("baselineYear")} value={form.baselineYear} onChange={set("baselineYear")} inputMode="numeric" />
-              </label>
+              <ComboField
+                label="Baseline year ▾"
+                listId="baseline-year-options"
+                value={form.baselineYear}
+                onChange={set("baselineYear")}
+                options={yearOptions}
+                invalid={!!fieldErrors.baselineYear}
+                placeholder="e.g. 2025"
+                inputMode="numeric"
+              />
               <label className="block">
                 <span className="text-xs text-slate-500 dark:text-slate-400">Baseline quantity (kg)</span>
-                <input className={errCls("baselineQuantityKg")} value={form.baselineQuantityKg} onChange={set("baselineQuantityKg")} inputMode="decimal" />
+                <input className={errCls("baselineQuantityKg")} value={form.baselineQuantityKg} onChange={set("baselineQuantityKg")} inputMode="decimal" placeholder="e.g. 1200" />
               </label>
-              <label className="block">
-                <span className="text-xs text-slate-500 dark:text-slate-400">Reduction target (%)</span>
-                <input className={errCls("reductionTargetPct")} value={form.reductionTargetPct} onChange={set("reductionTargetPct")} inputMode="decimal" />
-              </label>
+              <ComboField
+                label="Reduction target ▾ (%)"
+                listId="reduction-target-options"
+                value={form.reductionTargetPct}
+                onChange={set("reductionTargetPct")}
+                options={TARGET_PCT_SUGGESTIONS}
+                invalid={!!fieldErrors.reductionTargetPct}
+                placeholder="e.g. 20"
+                inputMode="decimal"
+              />
               <label className="block">
                 <span className="text-xs text-slate-500 dark:text-slate-400">Due date</span>
                 <input type="date" className={errCls("dueDate")} value={form.dueDate} onChange={set("dueDate")} />
               </label>
               <label className="block">
                 <span className="text-xs text-slate-500 dark:text-slate-400">Estimated cost (optional)</span>
-                <input className={errCls("estimatedCost")} value={form.estimatedCost} onChange={set("estimatedCost")} inputMode="decimal" />
+                <input className={errCls("estimatedCost")} value={form.estimatedCost} onChange={set("estimatedCost")} inputMode="decimal" placeholder="e.g. 5000" />
               </label>
               <label className="block">
                 <span className="text-xs text-slate-500 dark:text-slate-400">Estimated savings (optional)</span>
-                <input className={errCls("estimatedSavings")} value={form.estimatedSavings} onChange={set("estimatedSavings")} inputMode="decimal" />
+                <input className={errCls("estimatedSavings")} value={form.estimatedSavings} onChange={set("estimatedSavings")} inputMode="decimal" placeholder="e.g. 8000" />
               </label>
             </div>
             <div className="flex gap-3">

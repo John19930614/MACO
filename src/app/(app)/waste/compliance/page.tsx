@@ -17,12 +17,13 @@ async function fetchData(tenantId: string) {
     openActions: 0,
     programs: [] as ProgramRow[],
     sites: [] as SiteOption[],
+    wasteStreamOptions: [] as string[],
   };
   if (!client) return empty;
 
   const year = new Date().getFullYear();
 
-  const [sitesRes, hierarchyRes, actionsRes, programsRes] = await Promise.all([
+  const [sitesRes, hierarchyRes, actionsRes, programsRes, streamsRes] = await Promise.all([
     client
       .from("sites")
       .select("id, name, current_generator_category")
@@ -43,7 +44,20 @@ async function fetchData(tenantId: string) {
       .select("id, name, waste_stream, due_date, status, approval_status, reduction_target_pct, estimated_roi_pct")
       .eq("tenant_id", tenantId)
       .order("due_date", { ascending: true }),
+    client
+      .from("waste_streams")
+      .select("waste_name")
+      .eq("tenant_id", tenantId)
+      .order("waste_name", { ascending: true }),
   ]);
+
+  const wasteStreamOptions = Array.from(
+    new Set(
+      ((streamsRes.data ?? []) as { waste_name: string | null }[])
+        .map((s) => s.waste_name?.trim())
+        .filter((n): n is string => !!n),
+    ),
+  );
 
   const sites = (sitesRes.data ?? []) as SiteOption[];
   const headlineCategory = sites
@@ -57,6 +71,7 @@ async function fetchData(tenantId: string) {
     openActions: actionsRes.count ?? 0,
     programs: (programsRes.data ?? []) as ProgramRow[],
     sites,
+    wasteStreamOptions,
   };
 }
 
@@ -77,6 +92,7 @@ export default async function WasteCompliancePage() {
           openActions={data.openActions}
           programs={data.programs}
           sites={data.sites}
+          wasteStreamOptions={data.wasteStreamOptions}
         />
       </div>
     </div>
