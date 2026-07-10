@@ -42,8 +42,28 @@ export const BANDS = [
 
 export type BandKey = (typeof BANDS)[number]["key"];
 
-export function bandForScore(score: number): BandKey {
-  return BANDS.find((b) => score >= b.min && score <= b.max)?.key ?? "green";
+// Phase 5: an optional, EHS-approved override for the weights and band cutoffs.
+// When supplied (loaded from leading_indicators / risk_score_bands via
+// loadScoringConfig), the engine uses these instead of the hardcoded defaults —
+// so an approved reweighting actually takes effect on the next recalculation.
+// Omitting it (the mock/demo path and every existing unit test) falls back to
+// the constants above, keeping behaviour identical.
+export interface ScoringBand {
+  key: BandKey;
+  min: number;
+  max: number;
+}
+
+export interface ScoringConfig {
+  weights: Partial<Record<IndicatorKey, number>>;
+  bands: ScoringBand[];
+}
+
+export function bandForScore(
+  score: number,
+  bands: readonly ScoringBand[] = BANDS,
+): BandKey {
+  return bands.find((b) => score >= b.min && score <= b.max)?.key ?? "green";
 }
 
 export interface IndicatorContribution {
@@ -80,8 +100,13 @@ export function computeSiteRiskScore(
   siteId: string,
   siteName: string,
   data: SiteRiskInputData,
+  config?: ScoringConfig,
 ): SiteRiskComputation {
   const today = new Date();
+  // EHS-approved overrides when present, else the reviewed defaults. Weights
+  // fall back per-key so a partial config can never zero out a missing indicator.
+  const weights = config?.weights;
+  const bands = config?.bands && config.bands.length > 0 ? config.bands : BANDS;
   const recentSince = daysAgo(RECENT_INCIDENT_WINDOW_DAYS);
 
   const overdueInspectionCount = data.audits.filter(
@@ -126,7 +151,7 @@ export function computeSiteRiskScore(
   const indicatorBreakdown = {} as Record<IndicatorKey, IndicatorContribution>;
   let rawScore = 0;
   for (const key of Object.keys(counts) as IndicatorKey[]) {
-    const weight = INDICATOR_WEIGHTS[key];
+    const weight = weights?.[key] ?? INDICATOR_WEIGHTS[key];
     const contribution = counts[key] * weight;
     indicatorBreakdown[key] = { count: counts[key], weight, contribution };
     rawScore += contribution;
@@ -150,7 +175,7 @@ export function computeSiteRiskScore(
     siteId,
     siteName,
     rawScore,
-    band: bandForScore(rawScore),
+    band: bandForScore(rawScore, bands),
     explanationText,
     indicatorBreakdown,
   };

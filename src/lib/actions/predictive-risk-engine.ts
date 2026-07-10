@@ -25,6 +25,7 @@ import { MOCK_PROFILES_ALL } from "@/lib/data/mock";
 import { getSites } from "@/lib/data/repo";
 import { getAudits, getChemicals, getTrainingRecords, getIncidents } from "@/lib/data/ehsRepo";
 import { computeSiteRiskScore } from "@/lib/predictive-risk-engine/scoring";
+import { loadScoringConfig } from "@/lib/predictive-risk-engine/scoring-config";
 // import { createSupabaseServerClient } from "@/lib/supabase/server"; // needed once site_risk_scores exists
 
 const RecalculateInputSchema = z.object({
@@ -83,8 +84,13 @@ export async function recalculateSiteRiskScores(input: RecalculateInput) {
     ? allSites.filter((s) => s.id === parsed.data.siteId && s.tenant_id === tenantId)
     : allSites.filter((s) => s.tenant_id === tenantId);
 
+  // Phase 5: use the EHS-approved weights/bands from the DB when available so an
+  // approved reweighting takes effect here. Falls back to reviewed defaults
+  // (null → undefined) under MOCK_MODE or if the reference tables can't be read.
+  const scoringConfig = (await loadScoringConfig()) ?? undefined;
+
   const results = targetSites.map((site) =>
-    computeSiteRiskScore(site.id, site.name, { audits, chemicals, trainingRecords, incidents }),
+    computeSiteRiskScore(site.id, site.name, { audits, chemicals, trainingRecords, incidents }, scoringConfig),
   );
 
   // NOT executed until DRAFT_predictive_risk_engine.sql is approved and applied:

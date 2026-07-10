@@ -111,6 +111,7 @@ const PREDICTIVE_RISK_NAV: NavSection[] = [
     group: "Predictive Risk",
     items: [
       { href: "/predictive-risk", label: "Predictive Risk",  description: "Site risk scores from leading indicators", icon: "📈" },
+      { href: "/predictive-risk/model-update", label: "Review & Approve Risk Model Update", description: "Check accuracy & false alarms before any scoring change", icon: "🧪" },
     ],
   },
 ];
