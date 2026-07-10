@@ -364,6 +364,12 @@ export const LOCAL_MIGRATIONS: LocalMigrationEntry[] = [
     "filename": "20260710030000_hazardous_waste_generator_category_and_minimization.sql",
     "name": "hazardous_waste_generator_category_and_minimization",
     "prodName": "hazardous_waste_generator_category_and_minimization"
+  },
+  {
+    "version": "20260710040000",
+    "filename": "20260710040000_evacuation_drill_compliance.sql",
+    "name": "evacuation_drill_compliance",
+    "prodName": "evacuation_drill_compliance"
   }
 ];
 
