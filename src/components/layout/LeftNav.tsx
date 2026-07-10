@@ -120,6 +120,24 @@ const PREDICTIVE_RISK_NAV: NavSection[] = [
   },
 ];
 
+// Young Worker Profiles — young-worker PII + the task-assignment safety gate.
+// Gated to MANAGER_ROLES (safety_manager, ehs_manager, admin) via canManage
+// below, matching the young_workers RLS policy. Superadmins use the /sa console,
+// not this company nav.
+const YOUNG_WORKER_NAV: NavSection[] = [
+  {
+    group: "Workforce Protection",
+    items: [
+      {
+        href: "/team/young-workers",
+        label: "Young Worker Profiles",
+        description: "Under-18 permits, age & task gate",
+        icon: "🛡",
+      },
+    ],
+  },
+];
+
 const FIELD_OFFICER_NAV: NavSection[] = [
   {
     group: "My Work",
@@ -221,7 +239,7 @@ function getNav(user: DemoProfile): NavSection[] {
   // ehs_manager, admin) via canManage — ehs_coordinator/supervisor don't see it.
   if (canCoordinate(role)) {
     return canManage(role)
-      ? [...BASE_COMPANY_NAV, ...PREDICTIVE_RISK_NAV, ...COMPANY_ADMIN_EXTRA]
+      ? [...BASE_COMPANY_NAV, ...PREDICTIVE_RISK_NAV, ...YOUNG_WORKER_NAV, ...COMPANY_ADMIN_EXTRA]
       : [...BASE_COMPANY_NAV, ...COMPANY_ADMIN_EXTRA];
   }
   // Unknown / non-management company roles fall through to the base nav.
