@@ -1,10 +1,10 @@
 # Database Update Status: What's Live in Production
 
-Generated: 2026-07-07T16:48:36.609Z by `scripts/check-migration-status.ts`
+Generated: 2026-07-10T12:58:36.869Z by `scripts/check-migration-status.ts`
 Environment: safetyiq prod
 Prod history snapshot: retrieved 2026-07-07 from project `bjgqjpekhicqlunxbobo` via Supabase MCP list_migrations (supabase_migrations.schema_migrations) + read-only information_schema probes
 
-**51 of 54 local database updates are live in production** — 50 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **3 are NOT applied**, and 3 of those have application code that already depends on them.
+**51 of 55 local database updates are live in production** — 50 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **4 are NOT applied**, and 4 of those have application code that already depends on them.
 
 > Safety note: this only checks, it doesn't change anything. This is a read-only audit — applying any pending migration requires a separate, explicitly approved follow-up.
 
@@ -20,17 +20,24 @@ Prod history snapshot: retrieved 2026-07-07 from project `bjgqjpekhicqlunxbobo` 
 - 🚨 **ACTION NEEDED**: `20260707030000_predictive_risk_engine.sql` — predictive risk engine
   - Referenced in `src/lib/actions/predictive-risk-engine.ts:9` — `// and applied before this can run against a real leading_indicators /`
   - Referenced in `src/lib/actions/predictive-risk-engine.ts:10` — `// risk_score_bands / site_risk_scores schema.`
-  - Referenced in `src/lib/actions/predictive-risk-engine.ts:28` — `// import { createSupabaseServerClient } from "@/lib/supabase/server"; // needed once site_risk_scores exists`
-  - Referenced in `src/lib/actions/predictive-risk-engine.ts:94` — `//   await client.from("site_risk_scores").upsert({`
-  - Referenced in `src/lib/actions/predictive-risk-engine.ts:116` — `// mirroring how site_risk_scores writes work — because a Reliance superadmin`
-  - Referenced in `src/lib/actions/predictive-risk-engine.ts:224` — `// site_risk_scores exists; once the migration is applied, scope by`
+  - Referenced in `src/lib/actions/predictive-risk-engine.ts:29` — `// import { createSupabaseServerClient } from "@/lib/supabase/server"; // needed once site_risk_scores exists`
+  - Referenced in `src/lib/actions/predictive-risk-engine.ts:100` — `//   await client.from("site_risk_scores").upsert({`
+  - Referenced in `src/lib/actions/predictive-risk-engine.ts:122` — `// mirroring how site_risk_scores writes work — because a Reliance superadmin`
+  - Referenced in `src/lib/actions/predictive-risk-engine.ts:230` — `// site_risk_scores exists; once the migration is applied, scope by`
 - 🚨 **ACTION NEEDED**: `20260707040000_predictive_risk_go_live_signoff.sql` — predictive risk go live signoff
   - Referenced in `src/app/(app)/predictive-risk/page.tsx:11` — `// Reliance superadmin both sign off (see Phase1Go + predictive_risk_go_live),`
-  - Referenced in `src/lib/actions/predictive-risk-engine.ts:113` — `// sign-off panel. State lives in public.predictive_risk_go_live (one row per`
-  - Referenced in `src/lib/actions/predictive-risk-engine.ts:114` — `// tenant, see 20260707040000_predictive_risk_go_live_signoff.sql). Reads/writes`
-  - Referenced in `src/lib/actions/predictive-risk-engine.ts:142` — `.from("predictive_risk_go_live")`
-  - Referenced in `src/lib/actions/predictive-risk-engine.ts:197` — `.from("predictive_risk_go_live")`
-  - Referenced in `src/lib/actions/predictive-risk-engine.ts:205` — `.from("predictive_risk_go_live")`
+  - Referenced in `src/lib/actions/predictive-risk-engine.ts:119` — `// sign-off panel. State lives in public.predictive_risk_go_live (one row per`
+  - Referenced in `src/lib/actions/predictive-risk-engine.ts:120` — `// tenant, see 20260707040000_predictive_risk_go_live_signoff.sql). Reads/writes`
+  - Referenced in `src/lib/actions/predictive-risk-engine.ts:148` — `.from("predictive_risk_go_live")`
+  - Referenced in `src/lib/actions/predictive-risk-engine.ts:203` — `.from("predictive_risk_go_live")`
+  - Referenced in `src/lib/actions/predictive-risk-engine.ts:211` — `.from("predictive_risk_go_live")`
+- 🚨 **ACTION NEEDED**: `20260710000000_phase5_learning_loop.sql` — phase5 learning loop
+  - Referenced in `src/app/(app)/predictive-risk/model-update/page.tsx:23` — `.from("risk_model_validation_runs")`
+  - Referenced in `src/lib/actions/risk-model-feedback.ts:57` — `const { error } = await client.from("risk_model_feedback").insert({`
+  - Referenced in `src/lib/actions/risk-model-reweight.ts:94` — `.from("risk_model_feedback")`
+  - Referenced in `src/lib/actions/risk-model-reweight.ts:129` — `.from("risk_model_validation_runs")`
+  - Referenced in `src/lib/actions/risk-model-reweight.ts:168` — `.from("risk_model_validation_runs")`
+  - Referenced in `src/lib/actions/risk-model-reweight.ts:215` — `.from("risk_model_validation_runs")`
 
 Until these are applied, the code paths above hit a missing table/column at runtime in live mode. Applying them is a separate task requiring explicit approval.
 
@@ -94,6 +101,7 @@ Matching is by migration name (local filename timestamps are synthetic; the prod
 | 20260707020000 | `20260707020000_daily_suggestion_dismiss_rotation.sql` | daily suggestion dismiss rotation | ✅ Live (tracked) | 20260707144410 |
 | 20260707030000 | `20260707030000_predictive_risk_engine.sql` | predictive risk engine | 🚨 Pending — code depends on it | — |
 | 20260707040000 | `20260707040000_predictive_risk_go_live_signoff.sql` | predictive risk go live signoff | 🚨 Pending — code depends on it | — |
+| 20260710000000 | `20260710000000_phase5_learning_loop.sql` | phase5 learning loop | 🚨 Pending — code depends on it | — |
 
 ## Prod-Only History Entries
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 
 // ── Live-mode mocks for the server-action tests ─────────────────────────────
 // Force live mode (so role resolution goes through getServerUser, not mock
@@ -52,6 +52,13 @@ vi.mock("@/lib/supabase/server", () => ({
 
 import { computeSiteRiskScore } from "@/lib/predictive-risk-engine/scoring";
 import { recalculateSiteRiskScores, approveGoLiveStep } from "@/lib/actions/predictive-risk-engine";
+import { computeBandIncidentCorrelation, computeFalsePositiveRate } from "@/lib/risk-engine/validation";
+import {
+  loadHistoricalValidationDataset,
+  type HistoricalValidationDataset,
+  type ValidationRow,
+  type PredictedBand,
+} from "@/lib/risk-engine/validation-data";
 import type { Audit, Chemical, TrainingRecord, Incident } from "@/lib/types";
 
 // computeSiteRiskScore is pure (no Supabase/auth), so it's exercised directly
@@ -275,15 +282,120 @@ describe("approveGoLiveStep (two-person sign-off gate)", () => {
   });
 });
 
-describe("statistical validation (deferred — needs real data + EHS sign-off)", () => {
-  it.skip("validates correlation between historical incidents and predicted band", () => {
-    // Compute correlation coefficient + false-positive rate against historical
-    // incident data. Must be reviewed by someone who understands both the data
-    // and the real-world cost of a false alarm before any alerting is enabled
-    // in a later phase. See docs/predictive-risk-engine.md § Statistical validation.
-    expect(true).toBe(true);
+// ── Phase 5: statistical validation math ────────────────────────────────────
+// The correlation + false-positive helpers are pure, so they're exercised here
+// with synthetic fixtures (deterministic, offline). The against-REAL-data
+// assertions live in the gated integration block below — they only run when a
+// staging DB with 2+ years of history is wired up via SAFETYIQ_VALIDATION_DB,
+// because the standard test run is offline/mock and has no such data.
+
+function mkRow(band: PredictedBand, hadIncident: boolean, i = 0): ValidationRow {
+  return {
+    siteId: `site-${band}-${i}`,
+    predictedBand: band,
+    hadIncidentInWindow: hadIncident,
+    windowStart: "2026-01-01T00:00:00.000Z",
+    windowEnd: "2026-01-31T00:00:00.000Z",
+  };
+}
+
+// A dataset where higher predicted bands really do precede more incidents.
+function strongSignalDataset(perBand = 10, fpTolerance = 0.15): HistoricalValidationDataset {
+  const rows: ValidationRow[] = [];
+  for (let i = 0; i < perBand; i++) {
+    rows.push(mkRow("green", false, i));
+    rows.push(mkRow("amber", false, i));
+    rows.push(mkRow("orange", true, i));
+    rows.push(mkRow("red", true, i));
+  }
+  return { rows, fpTolerance };
+}
+
+describe("computeBandIncidentCorrelation", () => {
+  it("finds a significant positive correlation when higher bands precede incidents", () => {
+    const dataset = strongSignalDataset(10);
+    const { correlationCoefficient, pValue, sampleSize } = computeBandIncidentCorrelation(dataset);
+    expect(sampleSize).toBe(40);
+    expect(correlationCoefficient, `coef=${correlationCoefficient} should be positive`).toBeGreaterThan(0);
+    expect(
+      pValue,
+      `p=${pValue} coef=${correlationCoefficient} n=${sampleSize} — expected statistically significant`,
+    ).toBeLessThan(0.05);
+  });
+
+  it("returns a neutral, non-significant result for an empty dataset", () => {
+    const res = computeBandIncidentCorrelation({ rows: [], fpTolerance: 0.15 });
+    expect(res).toEqual({ correlationCoefficient: 0, pValue: 1, sampleSize: 0 });
+  });
+
+  it("does not claim significance when there is no variance in the band", () => {
+    const rows = Array.from({ length: 40 }, (_, i) => mkRow("red", i % 2 === 0, i));
+    const { correlationCoefficient, pValue } = computeBandIncidentCorrelation({ rows, fpTolerance: 0.15 });
+    expect(correlationCoefficient).toBe(0);
+    expect(pValue).toBe(1);
   });
 });
+
+describe("computeFalsePositiveRate", () => {
+  it("reports 0% when every high-risk period is followed by an incident", () => {
+    const { falsePositiveRate, tolerance, highRiskPeriods } = computeFalsePositiveRate(strongSignalDataset(10));
+    expect(highRiskPeriods).toBe(20); // orange + red
+    expect(falsePositiveRate).toBe(0);
+    expect(falsePositiveRate).toBeLessThanOrEqual(tolerance);
+  });
+
+  it("flags a high false-positive rate when high-risk periods have no incident", () => {
+    const rows = [
+      ...Array.from({ length: 10 }, (_, i) => mkRow("red", false, i)), // 10 false alarms
+      ...Array.from({ length: 10 }, (_, i) => mkRow("red", true, i + 100)),
+    ];
+    const { falsePositiveRate, tolerance } = computeFalsePositiveRate({ rows, fpTolerance: 0.15 });
+    expect(falsePositiveRate).toBeCloseTo(0.5, 5);
+    expect(falsePositiveRate).toBeGreaterThan(tolerance);
+  });
+
+  it("carries the tolerance from the dataset and treats no-high-risk as 0%", () => {
+    const rows = [mkRow("green", false), mkRow("amber", false)];
+    const res = computeFalsePositiveRate({ rows, fpTolerance: 0.2 });
+    expect(res.tolerance).toBe(0.2);
+    expect(res.highRiskPeriods).toBe(0);
+    expect(res.falsePositiveRate).toBe(0);
+  });
+});
+
+// Gated integration test — runs ONLY against a real staging DB (2+ yrs history).
+// Skipped in normal CI/mock runs so an offline suite never fails on missing data.
+describe.skipIf(!process.env.SAFETYIQ_VALIDATION_DB)(
+  "Predictive Risk Engine — statistical validation (real data)",
+  () => {
+    let dataset: HistoricalValidationDataset;
+
+    beforeAll(async () => {
+      dataset = await loadHistoricalValidationDataset({ lookbackDays: 730 });
+    });
+
+    it("correlates predicted risk band with actual historical incident occurrence (significant)", () => {
+      const { correlationCoefficient, pValue, sampleSize } = computeBandIncidentCorrelation(dataset);
+      expect(
+        sampleSize,
+        `n=${sampleSize} — insufficient history (need > 30 predicted periods). ${dataset.warning ?? ""}`,
+      ).toBeGreaterThan(30);
+      expect(
+        pValue,
+        `p=${pValue} coef=${correlationCoefficient} n=${sampleSize} — not statistically significant`,
+      ).toBeLessThan(0.05);
+    });
+
+    it("has a false-positive rate within the EHS-approved tolerance", () => {
+      const { falsePositiveRate, tolerance, highRiskPeriods, falsePositives } =
+        computeFalsePositiveRate(dataset);
+      expect(
+        falsePositiveRate,
+        `FP rate ${falsePositiveRate} (${falsePositives}/${highRiskPeriods}) exceeds tolerance ${tolerance}`,
+      ).toBeLessThanOrEqual(tolerance);
+    });
+  },
+);
 
 describe("RLS tenant isolation (verified manually against staging — not a unit test)", () => {
   it.skip("denies a user in tenant A reading tenant B's site_risk_scores", () => {
