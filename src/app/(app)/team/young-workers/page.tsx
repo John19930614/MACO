@@ -12,7 +12,7 @@ export default async function YoungWorkersPage() {
   if (!access.authorized) redirect("/dashboard");
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="h-full overflow-y-auto p-6 space-y-6">
       <PageHeader
         title="Young Worker Profiles"
         subtitle="Track age, work permits, and school status for workers under 18. Visible only to safety/EHS managers and admins."

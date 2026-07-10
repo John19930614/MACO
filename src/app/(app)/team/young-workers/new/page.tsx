@@ -18,7 +18,7 @@ export default async function NewYoungWorkerPage() {
     .map((p) => ({ id: p.id, display_name: p.display_name as string }));
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="h-full overflow-y-auto p-6 space-y-6">
       <PageHeader
         title="Add Young Worker Profile"
         subtitle="Record age, work permits, and school status for an employee under 18."

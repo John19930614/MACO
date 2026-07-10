@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { GENERATOR_CATEGORY_META, type GeneratorCategory } from "@/lib/waste/generator-category";
 import type { HierarchySplit } from "@/lib/waste/hierarchy";
-import { upsertMinimizationProgram } from "@/lib/actions/waste-minimization-program";
+import { upsertMinimizationProgram, suggestMinimizationProgram } from "@/lib/actions/waste-minimization-program";
 
 export interface SiteOption {
   id: string;
@@ -174,6 +174,42 @@ export function HazardousWasteGenerator({ headlineCategory, split, openActions, 
   const [formError, setFormError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [aiPending, setAiPending] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiRationale, setAiRationale] = useState<string | null>(null);
+
+  // Ask the AI to draft a program from the tenant's own waste data, then fill
+  // the form. Everything stays editable — this is a starting point, not a save.
+  async function onSuggest() {
+    setAiError(null);
+    setAiRationale(null);
+    setAiPending(true);
+    try {
+      const res = await suggestMinimizationProgram();
+      if (!res.ok) {
+        setAiError(res.error);
+        return;
+      }
+      const d = res.draft;
+      setForm((f) => ({
+        ...f,
+        name: d.name || f.name,
+        wasteStream: d.wasteStream || f.wasteStream,
+        baselineYear: d.baselineYear ? String(d.baselineYear) : f.baselineYear,
+        baselineQuantityKg: d.baselineQuantityKg ? String(Math.round(d.baselineQuantityKg)) : f.baselineQuantityKg,
+        reductionTargetPct: d.reductionTargetPct ? String(d.reductionTargetPct) : f.reductionTargetPct,
+        estimatedCost: d.estimatedCost ? String(Math.round(d.estimatedCost)) : f.estimatedCost,
+        estimatedSavings: d.estimatedSavings ? String(Math.round(d.estimatedSavings)) : f.estimatedSavings,
+      }));
+      setFieldErrors({});
+      setFormError(null);
+      setAiRationale(d.rationale || null);
+    } catch {
+      setAiError("AI suggestion failed — please fill the form manually.");
+    } finally {
+      setAiPending(false);
+    }
+  }
 
   const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -317,6 +353,29 @@ export function HazardousWasteGenerator({ headlineCategory, split, openActions, 
             {submitError && (
               <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-sm text-amber-800">{submitError}</div>
             )}
+
+            <div className="flex flex-wrap items-center gap-3 rounded-md border border-primary/30 bg-primary/5 p-3">
+              <button
+                type="button"
+                onClick={onSuggest}
+                disabled={aiPending}
+                className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {aiPending ? "Thinking…" : "✨ Suggest with AI"}
+              </button>
+              <span className="text-xs text-slate-600 dark:text-slate-300">
+                Drafts a program from your waste data. You can edit everything before saving.
+              </span>
+            </div>
+            {aiError && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">{aiError}</div>
+            )}
+            {aiRationale && (
+              <div className="rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900">
+                <strong>Why the AI suggested this:</strong> {aiRationale}
+              </div>
+            )}
+
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Fields with a ▾ let you pick from the list or type your own value.
             </p>

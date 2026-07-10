@@ -3,11 +3,12 @@
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { serverSecrets, MOCK_MODE } from "@/lib/env";
+import { serverSecrets, MOCK_MODE, hasLiveAi } from "@/lib/env";
 import { getServerTenantId, getServerProfileId } from "@/lib/auth/session";
 import { resolveCallerRole } from "@/lib/auth/resolve-role";
 import { COORDINATOR_ROLES, MANAGER_ROLES } from "@/lib/constants";
 import { computeReductionTargetQty, computeRoiPct } from "@/lib/waste/minimization";
+import { generateStructuredJson } from "@/lib/ai/provider";
 
 function svc() {
   const { serviceRoleKey } = serverSecrets();
@@ -102,6 +103,118 @@ export async function upsertMinimizationProgram(
   if (error || !inserted) return { ok: false, error: error?.message ?? "Failed to create program" };
   revalidatePath("/waste/compliance");
   return { ok: true, id: inserted.id };
+}
+
+export type MinimizationSuggestion = {
+  name: string;
+  wasteStream: string;
+  baselineYear: number;
+  baselineQuantityKg: number;
+  reductionTargetPct: number;
+  estimatedCost: number;
+  estimatedSavings: number;
+  rationale: string;
+};
+
+/**
+ * AI-assisted draft of a minimization program built from the tenant's OWN waste
+ * data (waste streams, recent monthly hazardous tallies, hierarchy records).
+ * Advisory only — the human edits before saving and it still goes through the
+ * normal draft → approve workflow. Degrades honestly when no AI key is set.
+ */
+export async function suggestMinimizationProgram(): Promise<
+  { ok: true; draft: MinimizationSuggestion } | { ok: false; error: string }
+> {
+  if (MOCK_MODE) return { ok: false, error: "AI suggestions run in live mode only." };
+
+  const role = await resolveCallerRole();
+  if (!role || !COORDINATOR_ROLES.includes(role)) {
+    return { ok: false, error: "You don't have permission to manage minimization programs." };
+  }
+  if (!hasLiveAi()) {
+    return { ok: false, error: "AI suggestions aren't configured — no AI key is set. Fill the form manually." };
+  }
+
+  const tenantId = await getServerTenantId();
+  if (!tenantId) return { ok: false, error: "Not authenticated" };
+
+  const db = svc();
+  const thisYear = new Date().getFullYear();
+
+  // Tenant-scoped signals; keep each query small.
+  const [streamsRes, tallyRes, hierarchyRes] = await Promise.all([
+    db.from("waste_streams")
+      .select("waste_name, classification, quantity, unit")
+      .eq("tenant_id", tenantId)
+      .order("quantity", { ascending: false })
+      .limit(25),
+    db.from("waste_monthly_tally")
+      .select("hazardous_waste_kg, acute_hazardous_waste_kg")
+      .eq("tenant_id", tenantId)
+      .order("period_year", { ascending: false })
+      .order("period_month", { ascending: false })
+      .limit(12),
+    db.from("waste_hierarchy_record")
+      .select("waste_stream, landfilled_kg, recycled_kg, prevented_kg")
+      .eq("tenant_id", tenantId)
+      .order("period_year", { ascending: false })
+      .limit(24),
+  ]);
+
+  const streams = streamsRes.data ?? [];
+  const tally = tallyRes.data ?? [];
+  const hierarchy = hierarchyRes.data ?? [];
+
+  if (streams.length === 0 && tally.length === 0 && hierarchy.length === 0) {
+    return {
+      ok: false,
+      error: "Not enough waste data yet — add waste streams or a monthly tally first, then try again.",
+    };
+  }
+
+  const streamLines =
+    streams.map((s) => `- ${s.waste_name} (${s.classification}): ${s.quantity ?? 0} ${s.unit ?? "kg"}/period`).join("\n") ||
+    "(none)";
+  const totalHaz = tally.reduce((sum, t) => sum + Number(t.hazardous_waste_kg ?? 0), 0);
+  const landfilled = hierarchy.reduce((sum, h) => sum + Number(h.landfilled_kg ?? 0), 0);
+
+  try {
+    const result = await generateStructuredJson({
+      system:
+        "You are an EHS waste-minimization advisor. Using a facility's own waste data, propose ONE concrete, high-impact waste-minimization program targeting the largest or most hazardous stream. Prefer source reduction / substitution over recycling. Be realistic and conservative with cost and savings estimates in USD; if you cannot estimate one, use 0. Set reduction_target_pct to a defensible near-term target (typically 10-30%). This is advisory — a human reviews and edits it before saving.",
+      user:
+        `Facility waste streams (largest first):\n${streamLines}\n\n` +
+        `Reported hazardous waste over recent months: ${Math.round(totalHaz)} kg total.\n` +
+        `Landfilled (recent hierarchy records): ${Math.round(landfilled)} kg.\n\n` +
+        `Propose one minimization program. Use ${thisYear} as the baseline year unless the data clearly suggests another.`,
+      schema: {
+        name: "minimization_program_suggestion",
+        strict: true,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            name: { type: "string", description: "Short program name" },
+            wasteStream: { type: "string", description: "Target waste stream; match a facility stream when possible" },
+            baselineYear: { type: "integer" },
+            baselineQuantityKg: { type: "number", description: "Baseline annual quantity of the target stream, kg" },
+            reductionTargetPct: { type: "number", description: "Reduction target percent, 0-100" },
+            estimatedCost: { type: "number", description: "Estimated program cost in USD, 0 if unknown" },
+            estimatedSavings: { type: "number", description: "Estimated annual savings in USD, 0 if unknown" },
+            rationale: { type: "string", description: "Why this program and target" },
+          },
+          required: [
+            "name", "wasteStream", "baselineYear", "baselineQuantityKg",
+            "reductionTargetPct", "estimatedCost", "estimatedSavings", "rationale",
+          ],
+        },
+      },
+      maxTokens: 700,
+    });
+    return { ok: true, draft: result.data as MinimizationSuggestion };
+  } catch {
+    return { ok: false, error: "AI suggestion failed — please fill the form manually." };
+  }
 }
 
 /**
