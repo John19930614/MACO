@@ -314,10 +314,11 @@ interface LeftNavProps {
   openCapas?: number;
   openRisks?: number;
   pendingTasks?: number;
+  openRegulatoryClocks?: number;
   serverUser?: ServerUser | null;
 }
 
-export function LeftNav({ openCapas = 0, openRisks = 0, pendingTasks = 0, serverUser }: LeftNavProps) {
+export function LeftNav({ openCapas = 0, openRisks = 0, pendingTasks = 0, openRegulatoryClocks = 0, serverUser }: LeftNavProps) {
   const { user } = useDemoUser();
   const pathname = usePathname();
   const allSections = getNav(user);
@@ -417,6 +418,7 @@ export function LeftNav({ openCapas = 0, openRisks = 0, pendingTasks = 0, server
                   {item.href === "/workspace"  && pendingTasks > 0  && <Badge text={String(pendingTasks)} />}
                   {item.href === "/capa"       && openCapas > 0     && <Badge text={String(openCapas)} />}
                   {item.href === "/risk"       && openRisks > 0     && <Badge text={String(openRisks)} />}
+                  {item.href === "/incidents"  && openRegulatoryClocks > 0 && <Badge text={String(openRegulatoryClocks)} />}
                 </Link>
               );
             })}

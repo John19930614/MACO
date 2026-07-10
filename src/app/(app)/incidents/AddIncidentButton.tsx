@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Modal, Field, Input, Select, Textarea, SubmitRow } from "@/components/modals/Modal";
 import { addIncident } from "@/lib/actions/ehs";
 import { playCreateSound } from "@/lib/sounds";
+import { INCIDENT_TYPES, INCIDENT_TYPE_META } from "@/lib/constants";
 
 export function AddIncidentButton() {
   const [open, setOpen] = useState(false);
@@ -42,15 +43,9 @@ export function AddIncidentButton() {
             <div className="grid grid-cols-2 gap-4">
               <Field label="Incident Type">
                 <Select name="incident_type">
-                  <option value="near_miss">Near Miss</option>
-                  <option value="first_aid">First Aid</option>
-                  <option value="medical_treatment">Medical Treatment</option>
-                  <option value="lost_time_injury">Lost Time Injury</option>
-                  <option value="property_damage">Property Damage</option>
-                  <option value="environmental_spill">Environmental Spill</option>
-                  <option value="chemical_release">Chemical Release</option>
-                  <option value="fire_explosion">Fire / Explosion</option>
-                  <option value="regulatory_breach">Regulatory Breach</option>
+                  {INCIDENT_TYPES.map((t) => (
+                    <option key={t} value={t}>{INCIDENT_TYPE_META[t].label}</option>
+                  ))}
                 </Select>
               </Field>
               <Field label="Severity">

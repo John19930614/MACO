@@ -1,10 +1,10 @@
 # Database Update Status: What's Live in Production
 
-Generated: 2026-07-10T16:29:42.616Z by `scripts/check-migration-status.ts`
+Generated: 2026-07-10T17:16:58.497Z by `scripts/check-migration-status.ts`
 Environment: safetyiq prod
 Prod history snapshot: retrieved 2026-07-07 from project `bjgqjpekhicqlunxbobo` via Supabase MCP list_migrations (supabase_migrations.schema_migrations) + read-only information_schema probes
 
-**51 of 59 local database updates are live in production** — 50 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **8 are NOT applied**, and 8 of those have application code that already depends on them.
+**51 of 60 local database updates are live in production** — 50 recorded in the migration history and 1 applied by hand and verified directly against the live schema. **9 are NOT applied**, and 9 of those have application code that already depends on them.
 
 > Safety note: this only checks, it doesn't change anything. This is a read-only audit — applying any pending migration requires a separate, explicitly approved follow-up.
 
@@ -50,7 +50,7 @@ Prod history snapshot: retrieved 2026-07-07 from project `bjgqjpekhicqlunxbobo` 
   - Referenced in `src/app/api/young-workers/route.ts:8` — `// RLS on young_workers is the second line of defence.`
   - Referenced in `src/app/api/young-workers/route.ts:34` — `.from("young_workers")`
   - Referenced in `src/app/api/young-workers/route.ts:36` — `"id, dob, classification, work_permit_expiry_date, profiles!young_workers_profile_id_fkey(display_name)",`
-  - Referenced in `src/components/layout/LeftNav.tsx:125` — `// below, matching the young_workers RLS policy. Superadmins use the /sa console,`
+  - Referenced in `src/components/layout/LeftNav.tsx:124` — `// below, matching the young_workers RLS policy. Superadmins use the /sa console,`
   - Referenced in `src/lib/actions/minor-injury-escalation.ts:10` — `// incidents.young_worker_id — set it when reporting an incident for a young`
 - 🚨 **ACTION NEEDED**: `20260710030000_hazardous_waste_generator_category_and_minimization.sql` — hazardous waste generator category and minimization
   - Referenced in `src/app/(app)/waste/compliance/HazardousWasteGenerator.tsx:13` — `current_generator_category: GeneratorCategory | null;`
@@ -66,6 +66,13 @@ Prod history snapshot: retrieved 2026-07-07 from project `bjgqjpekhicqlunxbobo` 
   - Referenced in `src/app/(app)/emergency/drill-calendar/page.tsx:61` — `.from("drill_wardens")`
   - Referenced in `src/app/(app)/emergency/drill-calendar/page.tsx:67` — `.from("drill_compliance_action")`
   - Referenced in `src/lib/actions/evacuation-drill-compliance-calendar.ts:142` — `.from("facility_profiles")`
+- 🚨 **ACTION NEEDED**: `20260710050000_regulatory_reporting_clocks.sql` — regulatory reporting clocks
+  - Referenced in `src/lib/actions/ehs-records.ts:205` — `.from("incident_regulatory_clocks")`
+  - Referenced in `src/lib/actions/regulatoryIncidentReportingClocks.ts:65` — `.from("regulatory_reporting_rules")`
+  - Referenced in `src/lib/actions/regulatoryIncidentReportingClocks.ts:84` — `.from("incident_regulatory_clocks")`
+  - Referenced in `src/lib/actions/regulatoryIncidentReportingClocks.ts:91` — `await supabase.from("incident_regulatory_clock_events").insert(`
+  - Referenced in `src/lib/actions/regulatoryIncidentReportingClocks.ts:105` — `.update({ has_open_regulatory_clocks: true, updated_at: now })`
+  - Referenced in `src/lib/actions/regulatoryIncidentReportingClocks.ts:136` — `.from("incident_regulatory_clocks")`
 
 Until these are applied, the code paths above hit a missing table/column at runtime in live mode. Applying them is a separate task requiring explicit approval.
 
@@ -134,6 +141,7 @@ Matching is by migration name (local filename timestamps are synthetic; the prod
 | 20260710020000 | `20260710020000_young_worker_module.sql` | young worker module | 🚨 Pending — code depends on it | — |
 | 20260710030000 | `20260710030000_hazardous_waste_generator_category_and_minimization.sql` | hazardous waste generator category and minimization | 🚨 Pending — code depends on it | — |
 | 20260710040000 | `20260710040000_evacuation_drill_compliance.sql` | evacuation drill compliance | 🚨 Pending — code depends on it | — |
+| 20260710050000 | `20260710050000_regulatory_reporting_clocks.sql` | regulatory reporting clocks | 🚨 Pending — code depends on it | — |
 
 ## Prod-Only History Entries
 

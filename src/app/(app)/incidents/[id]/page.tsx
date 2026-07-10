@@ -8,6 +8,13 @@ import { PrintButton } from "@/components/ui/PrintButton";
 import type { PrintReportData } from "@/components/ui/PrintButton";
 import { ArrowLeft, AlertTriangle, Clock, MapPin, Activity } from "lucide-react";
 import { IncidentRcaPanel } from "./IncidentRcaPanel";
+import { EditIncidentForm } from "./EditIncidentForm";
+import { CreateCapaButton } from "./CreateCapaButton";
+import { getIncidentRegulatoryClocks } from "@/lib/regulatory/read";
+import { RegulatoryIncidentReporting } from "./reporting/RegulatoryIncidentReporting";
+import { ImmediateResponseChecklist } from "./response-checklist/ImmediateResponseChecklist";
+import { CloseIncidentGate } from "./close/CloseIncidentGate";
+import { EnvironmentalReleaseInvestigation } from "./environmental-release/EnvironmentalReleaseInvestigation";
 
 function fmt(d: string) {
   return new Date(d + "T00:00:00").toLocaleDateString("en-US", {
@@ -41,13 +48,16 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
   const { id } = await params;
   const tenantId = await getEffectiveTenantId();
 
-  const [incident, capas, profiles] = await Promise.all([
+  const [incident, capas, profiles, clocks] = await Promise.all([
     getIncidentById(id),
     getCapaActions(tenantId),
     getProfiles(tenantId),
+    getIncidentRegulatoryClocks(id),
   ]);
 
   if (!incident) notFound();
+
+  const isEnvironmentalRelease = incident.incident_type === "environmental_release";
 
   const profileMap = Object.fromEntries(profiles.map((p) => [p.id, p.display_name]));
   const linkedCapas = capas.filter(
@@ -160,6 +170,28 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
               </Card>
             )}
 
+            {/* Environmental-release investigation gets its own EPA/state timer set */}
+            {isEnvironmentalRelease && (
+              <EnvironmentalReleaseInvestigation incidentId={incident.id} clocks={clocks} />
+            )}
+
+            {/* Regulatory reporting clocks — the single Reporting Status panel.
+                For an environmental-release incident the EPA clocks render in the
+                dedicated panel above, so exclude them here to avoid duplicates. */}
+            <RegulatoryIncidentReporting
+              incidentId={incident.id}
+              clocks={isEnvironmentalRelease
+                ? clocks.filter((c) => c.jurisdiction !== "epa_environmental_release")
+                : clocks}
+            />
+
+            {/* Immediate-response checklist */}
+            <Card>
+              <div className="p-4">
+                <ImmediateResponseChecklist incidentId={incident.id} />
+              </div>
+            </Card>
+
             {/* AI Root Cause Analysis — always visible, auto-detects incident type */}
             <div>
               <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Root Cause Analysis</div>
@@ -228,6 +260,9 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
                     : `${linkedCapas.length} corrective action${linkedCapas.length !== 1 ? "s" : ""}`
                 }
               />
+              <div className="px-4 pb-3">
+                <CreateCapaButton incident={incident} />
+              </div>
               {linkedCapas.length > 0 ? (
                 <div className="divide-y divide-slate-50">
                   {linkedCapas.map((c) => (
@@ -261,6 +296,13 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
                   No CAPAs have been linked to this incident yet.
                 </div>
               )}
+            </Card>
+            {/* Edit incident — status change here runs the server-side closure gate */}
+            <Card>
+              <CardHeader title="Edit incident" subtitle="Update details, status, reviews, and recordability" />
+              <div className="px-4 pb-4">
+                <EditIncidentForm incident={incident} />
+              </div>
             </Card>
           </div>
 
@@ -328,6 +370,15 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
                 )}
               </div>
             </Card>
+
+            {incident.status !== "closed" && (
+              <Card>
+                <CardHeader title="Closing this incident" />
+                <div className="px-4 pb-4">
+                  <CloseIncidentGate incidentId={incident.id} />
+                </div>
+              </Card>
+            )}
 
             <Card>
               <CardHeader title="Timeline" />

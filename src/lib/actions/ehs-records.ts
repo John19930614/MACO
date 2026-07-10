@@ -195,6 +195,35 @@ export async function updateIncident(id: string, formData: FormData) {
     if (!ctx) return { ok: false, error: "Session expired — please reload." };
     if (ctx) {
       const med = formData.get("medical_treatment") as string;
+      // ── Regulatory reporting closure gate ──────────────────────────────────
+      // Block closing an incident while any regulatory reporting clock is still
+      // outstanding. Enforced server-side (not just in the UI) for legal
+      // defensibility. See src/lib/actions/regulatoryIncidentReportingClocks.ts.
+      const nextStatus = (formData.get("status") as string) || "reported";
+      if (nextStatus === "closed") {
+        const { count: openClocks, error: clockErr } = await ctx.client
+          .from("incident_regulatory_clocks")
+          .select("id", { count: "exact", head: true })
+          .eq("incident_id", id)
+          .in("status", ["pending_start", "running", "escalated_amber", "escalated_red", "overdue"]);
+        // Fail closed: if we can't verify reporting status, don't allow closure.
+        if (clockErr) {
+          return {
+            ok: false,
+            error:
+              "We couldn't verify this incident's regulatory reporting status. Please try again before closing.",
+          };
+        }
+        if ((openClocks ?? 0) > 0) {
+          return {
+            ok: false,
+            error:
+              "This incident can't be closed yet — regulatory reporting is still outstanding. " +
+              "Open the Reporting Status panel to enter each confirmation number, or mark a report " +
+              "as not reportable with a short explanation, then try again.",
+          };
+        }
+      }
       const { data: updated, error } = await ctx.client.from("incidents").update({
         title:       (formData.get("title") as string) || "Untitled Incident",
         description: (formData.get("description") as string) || "",

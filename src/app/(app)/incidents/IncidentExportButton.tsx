@@ -20,8 +20,8 @@ function fmtDate(s: string | null | undefined): string {
   return new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function humanize(s: string): string {
-  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+function humanize(s: string | null | undefined): string {
+  return (s ?? "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export function IncidentExportButton({ incidents, profiles, oshaHours = OSHA_HOURS_WORKED }: { incidents: Incident[]; profiles: Profile[]; oshaHours?: number }) {

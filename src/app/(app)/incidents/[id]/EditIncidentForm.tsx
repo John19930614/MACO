@@ -4,19 +4,23 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Field, Input, Select, Textarea } from "@/components/modals/Modal";
 import { updateIncident } from "@/lib/actions/ehs";
+import { INCIDENT_TYPES, INCIDENT_TYPE_META } from "@/lib/constants";
 import type { Incident } from "@/lib/types";
 
 export function EditIncidentForm({ incident }: { incident: Incident }) {
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setPending(true);
     setSaved(false);
+    setError(null);
     const res = await updateIncident(incident.id, new FormData(e.currentTarget));
     if (res.ok) { setSaved(true); router.refresh(); }
+    else { setError(res.error ?? "Couldn't save changes. Please try again."); }
     setPending(false);
   }
 
@@ -32,6 +36,12 @@ export function EditIncidentForm({ incident }: { incident: Incident }) {
         </div>
       )}
 
+      {error && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {error}
+        </div>
+      )}
+
       <Field label="Title" required>
         <Input name="title" defaultValue={incident.title} required />
       </Field>
@@ -43,15 +53,9 @@ export function EditIncidentForm({ incident }: { incident: Incident }) {
       <div className="grid grid-cols-2 gap-4">
         <Field label="Incident Type">
           <Select name="incident_type" defaultValue={incident.incident_type}>
-            <option value="near_miss">Near Miss</option>
-            <option value="first_aid">First Aid</option>
-            <option value="medical_treatment">Medical Treatment</option>
-            <option value="lost_time_injury">Lost Time Injury</option>
-            <option value="property_damage">Property Damage</option>
-            <option value="environmental_spill">Environmental Spill</option>
-            <option value="chemical_release">Chemical Release</option>
-            <option value="fire_explosion">Fire / Explosion</option>
-            <option value="regulatory_breach">Regulatory Breach</option>
+            {INCIDENT_TYPES.map((t) => (
+              <option key={t} value={t}>{INCIDENT_TYPE_META[t].label}</option>
+            ))}
           </Select>
         </Field>
         <Field label="Severity">

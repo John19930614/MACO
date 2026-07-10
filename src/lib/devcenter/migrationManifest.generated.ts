@@ -370,6 +370,12 @@ export const LOCAL_MIGRATIONS: LocalMigrationEntry[] = [
     "filename": "20260710040000_evacuation_drill_compliance.sql",
     "name": "evacuation_drill_compliance",
     "prodName": "evacuation_drill_compliance"
+  },
+  {
+    "version": "20260710050000",
+    "filename": "20260710050000_regulatory_reporting_clocks.sql",
+    "name": "regulatory_reporting_clocks",
+    "prodName": "regulatory_reporting_clocks"
   }
 ];
 

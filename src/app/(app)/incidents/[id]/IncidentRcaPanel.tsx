@@ -177,6 +177,10 @@ export function IncidentRcaPanel({
   const [createError, setCreateError]   = useState<string | null>(null);
   const [saveError, setSaveError]       = useState<string | null>(null);
   const [_saving, startSave]            = useTransition();
+  // User-editable root-cause statement (seeded from the AI summary, or blank in
+  // manual mode) and the input for adding their own corrective actions.
+  const [editableSummary, setEditableSummary] = useState("");
+  const [customText, setCustomText]           = useState("");
 
   function runAnalysis() {
     setState("loading");
@@ -190,6 +194,7 @@ export function IncidentRcaPanel({
     setTimeout(() => {
       const result = generateRca(incidentType, title, description);
       setRca(result);
+      setEditableSummary(result.summary);
       setActions(generateTriggeredActions(result.type, title));
       setState("done");
       setTab("whys");
@@ -197,10 +202,48 @@ export function IncidentRcaPanel({
     }, 1800);
   }
 
+  // Skip the AI and go straight to writing your own root cause + actions.
+  function startManual() {
+    setRca({ type: "incident_manual", whys: [], fishbone: {}, summary: "" });
+    setEditableSummary(existingRootCause ?? "");
+    setActions([]);
+    setApplied(false);
+    setSavedMsg(null);
+    setSaveError(null);
+    setAllCreated(false);
+    setCreatedCount(0);
+    setCreateError(null);
+    setState("done");
+    setTab("summary");
+  }
+
+  // Append a user-authored corrective action to the list; it is created through
+  // the same batch as the AI-suggested ones.
+  function addCustomAction() {
+    const text = customText.trim();
+    if (!text) return;
+    setActions((prev) => [
+      ...prev,
+      {
+        id: `custom-${Date.now()}`,
+        module: "Corrective Actions",
+        icon: "✎",
+        color: "bg-slate-200 text-slate-700",
+        badge: "Custom Action",
+        href: "/capa",
+        text,
+        enabled: true,
+        created: false,
+      },
+    ]);
+    setCustomText("");
+  }
+
   function handleSaveRootCause() {
-    if (!rca) return;
+    const text = editableSummary.trim();
+    if (!text) { setSaveError("Enter a root cause statement first."); return; }
     startSave(async () => {
-      const res = await saveIncidentRootCause(incidentId, rca.summary);
+      const res = await saveIncidentRootCause(incidentId, text);
       if (!res.ok) { setSaveError(res.error ?? "Failed to save."); return; }
       setApplied(true);
       setSavedMsg("Root cause saved to incident record.");
@@ -264,10 +307,16 @@ export function IncidentRcaPanel({
           )}
         </div>
         {state === "idle" && (
-          <button type="button" onClick={runAnalysis}
-            className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700">
-            <Sparkles className="h-3 w-3" /> Analyze RCA
-          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={startManual}
+              className="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-50">
+              Write my own
+            </button>
+            <button type="button" onClick={runAnalysis}
+              className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700">
+              <Sparkles className="h-3 w-3" /> Analyze RCA
+            </button>
+          </div>
         )}
         {state === "loading" && (
           <div className="flex items-center gap-1.5 text-xs text-violet-600">
@@ -353,8 +402,17 @@ export function IncidentRcaPanel({
             {tab === "summary" && (
               <div className="space-y-4">
                 <div className="rounded-lg border border-violet-100 bg-white p-3">
-                  <div className="mb-1.5 text-[10px] font-extrabold uppercase tracking-wide text-violet-600">Recommended Root Cause Statement</div>
-                  <p className="text-xs text-slate-700 leading-relaxed">{rca.summary}</p>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <div className="text-[10px] font-extrabold uppercase tracking-wide text-violet-600">Root Cause Statement</div>
+                    <span className="text-[10px] font-medium text-slate-400">Edit or add your own notes</span>
+                  </div>
+                  <textarea
+                    value={editableSummary}
+                    onChange={(e) => { setEditableSummary(e.target.value); if (applied) setApplied(false); }}
+                    rows={5}
+                    placeholder="Write the root cause and any investigation notes…"
+                    className="w-full resize-y rounded-md border border-violet-200 px-3 py-2 text-xs leading-relaxed text-slate-700 focus:border-violet-400 focus:outline-none"
+                  />
                 </div>
 
                 {saveError && <p className="text-xs text-red-600">{saveError}</p>}
@@ -364,8 +422,8 @@ export function IncidentRcaPanel({
                   </div>
                 )}
 
-                <button type="button" onClick={handleSaveRootCause} disabled={applied}
-                  className={`flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-colors ${
+                <button type="button" onClick={handleSaveRootCause} disabled={applied || !editableSummary.trim()}
+                  className={`flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${
                     applied ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-violet-600 text-white hover:bg-violet-700"
                   }`}>
                   {applied
@@ -378,7 +436,9 @@ export function IncidentRcaPanel({
                   <div className="flex items-center gap-2 border-b border-amber-200 px-3 py-2.5">
                     <Zap className="h-3.5 w-3.5 text-amber-600 shrink-0" />
                     <span className="text-xs font-bold text-amber-800">
-                      Triggered System Actions — {actions.length} actions across {new Set(actions.map((a) => a.module)).size} modules
+                      {actions.length > 0
+                        ? `Corrective Actions — ${actions.length} action${actions.length !== 1 ? "s" : ""} across ${new Set(actions.map((a) => a.module)).size} module${new Set(actions.map((a) => a.module)).size !== 1 ? "s" : ""}`
+                        : "Corrective Actions — add your own below"}
                     </span>
                     {allCreated && <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">All created ✓</span>}
                   </div>
@@ -410,6 +470,26 @@ export function IncidentRcaPanel({
                     ))}
                   </div>
                   {!allCreated && (
+                    <div className="border-t border-amber-100 px-3 py-2.5">
+                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                        Add your own corrective action
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          value={customText}
+                          onChange={(e) => setCustomText(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomAction(); } }}
+                          placeholder="Describe a corrective action to add…"
+                          className="flex-1 rounded-md border border-amber-200 bg-white px-2 py-1 text-[11px] text-slate-700 focus:border-amber-400 focus:outline-none"
+                        />
+                        <button type="button" onClick={addCustomAction} disabled={!customText.trim()}
+                          className="rounded-md bg-slate-700 px-3 py-1 text-[11px] font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {!allCreated && enabledActions.length > 0 && (
                     <div className="border-t border-amber-200 p-3">
                       <button type="button" onClick={createAllActions} disabled={creating || enabledActions.length === 0}
                         className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-2 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50 transition-colors">

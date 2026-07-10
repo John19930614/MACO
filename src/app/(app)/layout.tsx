@@ -10,6 +10,7 @@ import { AuthGuard } from "@/components/layout/AuthGuard";
 import { GuidedTour } from "@/components/tour/GuidedTour";
 import { getCapaActions, getRiskAssessments, getWorkspaceTasks, getIncidents } from "@/lib/data/ehsRepo";
 import { getEffectiveTenantId, getServerUser, getServerProfileId } from "@/lib/auth/session";
+import { countOpenRegulatoryClocks } from "@/lib/regulatory/read";
 import type { NotifItem } from "@/components/layout/NotificationsDropdown";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -19,11 +20,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     getServerProfileId(),
   ]);
 
-  const [capas, risks, tasks, incidents] = await Promise.all([
+  const [capas, risks, tasks, incidents, openRegulatoryClocks] = await Promise.all([
     getCapaActions(effectiveTenantId),
     getRiskAssessments(effectiveTenantId),
     getWorkspaceTasks(profileId, effectiveTenantId),
     getIncidents(effectiveTenantId),
+    countOpenRegulatoryClocks(effectiveTenantId),
   ]);
 
   const now = new Date();
@@ -31,7 +33,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const openCapas     = capas.filter((c) => c.status === "open" || c.status === "in_progress" || c.status === "overdue").length;
   const openRisks     = risks.filter((r) => r.status === "active" && (r.risk_level === "high" || r.risk_level === "extreme")).length;
   const pendingTasks  = tasks.filter((t) => t.status !== "done").length;
-  const openIncidents = incidents.filter((i) => i.status === "reported" || i.status === "under_investigation").length;
 
   // Build notification items from live data
   const capaNotifs: NotifItem[] = capas
@@ -101,7 +102,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <CommandPalette />
           <div className="flex flex-1 overflow-hidden">
             <div className="hidden md:block print:hidden" data-tour="left-nav">
-              <LeftNav openCapas={openCapas} openRisks={openRisks} pendingTasks={pendingTasks} serverUser={serverUser} />
+              <LeftNav openCapas={openCapas} openRisks={openRisks} pendingTasks={pendingTasks} openRegulatoryClocks={openRegulatoryClocks} serverUser={serverUser} />
             </div>
             <main id="main-content" className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <ModuleGateClient>

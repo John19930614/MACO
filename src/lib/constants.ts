@@ -183,6 +183,7 @@ export const INCIDENT_TYPES = [
   "fire_explosion",
   "chemical_release",
   "regulatory_breach",
+  "environmental_release",
 ] as const;
 export type IncidentType = (typeof INCIDENT_TYPES)[number];
 
@@ -197,6 +198,7 @@ export const INCIDENT_TYPE_META: Record<IncidentType, { label: string; severity:
   fire_explosion:      { label: "Fire / explosion",      severity: "critical" },
   chemical_release:    { label: "Chemical release",      severity: "high"     },
   regulatory_breach:   { label: "Regulatory breach",     severity: "high"     },
+  environmental_release: { label: "Environmental release", severity: "high"   },
 };
 
 // ── AI Review Status ──────────────────────────────────────────────────────────
