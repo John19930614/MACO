@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { ServerUser } from "@/lib/auth/types";
 import { ROLE_META, canCoordinate, canManage, type Role, type EhsModule } from "@/lib/constants";
 import { getActiveKey } from "@/lib/nav/activeKey";
+import { NFPA704_BETA_ENABLED } from "@/lib/nfpa704/flag";
 
 // Maps a nav item's href to the EHS module that gates it (mirrors
 // ModuleGateClient's PATH_TO_MODULE — kept in sync there). Items with no entry
@@ -49,6 +50,7 @@ type NavLink = {
   icon: string; // Unicode emoji or symbol
   badge?: string;
   badgeType?: "red" | "info" | "warn";
+  beta?: boolean; // hidden unless the corresponding feature flag is on
 };
 type NavSection = { group: string; items: NavLink[]; gold?: boolean };
 
@@ -78,6 +80,7 @@ const BASE_COMPANY_NAV: NavSection[] = [
       { href: "/training",   label: "Training & Competency",   description: "Staff training records",         icon: "🎓" },
       { href: "/documents",  label: "Documents & Programs",    description: "SOPs & safety programs",         icon: "📄" },
       { href: "/chemicals",  label: "Chemical Management",     description: "SDS, inventory & exposure",      icon: "⚗" },
+      { href: "/chemicals/nfpa", label: "NFPA 704 Ratings",    description: "Container → area → building diamonds", icon: "◆", beta: true },
       { href: "/biosafety",  label: "Biosafety & Lab Safety",  description: "BSL protocols & cabinets",       icon: "🔬" },
       { href: "/waste",      label: "Waste Management",        description: "Streams, universal waste, recycling & compliance", icon: "♻" },
       { href: "/ergonomics", label: "Ergonomics & MSD",         description: "Workstation & MSD risk controls",icon: "🪑" },
@@ -132,6 +135,23 @@ const YOUNG_WORKER_NAV: NavSection[] = [
         label: "Young Worker Profiles",
         description: "Under-18 permits, age & task gate",
         icon: "🛡",
+      },
+    ],
+  },
+];
+
+// Lab Risk & Hazard Overview — combined chemical/radioactive/biological risk
+// per lab (site) + at-a-glance GHS/NFPA labels + rankings. Gated to
+// MANAGER_ROLES via canManage below (data-only, read-only view).
+const LAB_RISK_NAV: NavSection[] = [
+  {
+    group: "Lab Safety",
+    items: [
+      {
+        href: "/labs",
+        label: "Lab Risk Overview",
+        description: "Combined lab risk + hazard labels & rankings",
+        icon: "🧫",
       },
     ],
   },
@@ -238,7 +258,7 @@ function getNav(user: DemoProfile): NavSection[] {
   // ehs_manager, admin) via canManage — ehs_coordinator/supervisor don't see it.
   if (canCoordinate(role)) {
     return canManage(role)
-      ? [...BASE_COMPANY_NAV, ...PREDICTIVE_RISK_NAV, ...YOUNG_WORKER_NAV, ...COMPANY_ADMIN_EXTRA]
+      ? [...BASE_COMPANY_NAV, ...LAB_RISK_NAV, ...PREDICTIVE_RISK_NAV, ...YOUNG_WORKER_NAV, ...COMPANY_ADMIN_EXTRA]
       : [...BASE_COMPANY_NAV, ...COMPANY_ADMIN_EXTRA];
   }
   // Unknown / non-management company roles fall through to the base nav.
@@ -347,6 +367,7 @@ export function LeftNav({ openCapas = 0, openRisks = 0, pendingTasks = 0, openRe
     .map((section) => ({
       ...section,
       items: section.items.filter((item) => {
+        if (item.beta && !NFPA704_BETA_ENABLED) return false;
         const moduleKey = NAV_HREF_TO_MODULE[item.href];
         return !moduleKey || !disabledModules.has(moduleKey);
       }),
